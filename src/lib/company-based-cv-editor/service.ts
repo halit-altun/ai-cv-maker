@@ -8,8 +8,15 @@ import {
   CompanyBasedCVData
 } from './types';
 
-const GEMINI_API_KEY = 'AIzaSyC8J2mGXXUvDWUowUpAGRboH4yTCDU56-o';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+// Gemini API Keys - Fallback System
+const GEMINI_API_KEYS = [
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY_1 || 'AIzaSyBV2D8hKVbpw7FAP-EkwYtne_P-wwT-iSg',
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY_2 || 'AIzaSyC8J2mGXXUvDWUowUpAGRboH4yTCDU56-o'
+].filter(Boolean); // Undefined değerleri filtrele
+const GEMINI_API_URL = process.env.NEXT_PUBLIC_GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+// API Key rotation system
+let currentApiKeyIndex = 0;
 
 export class CompanyBasedCVService {
   
@@ -115,6 +122,140 @@ export class CompanyBasedCVService {
     console.log('Final result:', finalResult);
     
     return finalResult;
+  }
+
+  // CV'yi İngilizce'den Türkçe'ye çevir
+  static async translateCVToTurkish(cvData: CompanyBasedCVData): Promise<CompanyBasedCVData> {
+    const prompt = `
+    Aşağıdaki CV verilerini Türkçe'ye çevir. ÖNEMLİ KURALLAR:
+    
+    1. BİREBİR ÇEVİRİ: Hiçbir anlam ekleme veya çıkarma yapma
+    2. KORUMA: Şirket isimlerini, pozisyon isimlerini aynen koru
+    3. FORMAT: JSON yapısını tamamen koru
+    4. PROFESYONEL: İş dünyasına uygun Türkçe kullan
+    5. TUTARLILIK: Aynı terimler için aynı Türkçe karşılığı kullan
+    
+    ÇEVİRİ KURALLARI - MUTLAKA UYGULA:
+    
+    TARİH ÇEVİRİLERİ (ZORUNLU):
+    - "Oct" → "Eki"
+    - "Aug" → "Ağu" 
+    - "Jan" → "Oca"
+    - "Feb" → "Şub"
+    - "Mar" → "Mar"
+    - "Apr" → "Nis"
+    - "May" → "May"
+    - "Jun" → "Haz"
+    - "Jul" → "Tem"
+    - "Sep" → "Eyl"
+    - "Nov" → "Kas"
+    - "Dec" → "Ara"
+    
+    ÖRNEK TARİH ÇEVİRİLERİ:
+    - "Oct 2023 - Aug 2024" → "Eki 2023 - Ağu 2024"
+    - "Jan 2022 - Present" → "Oca 2022 - Present"
+    - "Jun 2021 - Sep 2022" → "Haz 2021 - Eyl 2022"
+    
+    DİĞER ÇEVİRİLER:
+    - Şehir isimleri: "Istanbul" → "İstanbul", "Ankara" → "Ankara"
+    - Ülke isimleri: "Turkey" → "Türkiye"
+    - Beceriler: "Analytical thinking" → "Analitik düşünme", "Problem solving" → "Problem çözme", "Teamwork" → "Takım çalışması", "Time management" → "Zaman yönetimi"
+    - Diller: "Arabic" → "Arapça", "English" → "İngilizce", "Turkish" → "Türkçe"
+    - Hakkımda içeriği: Tam cümleleri Türkçe'ye çevir
+    - İş deneyimi açıklamaları: Bullet point'leri Türkçe'ye çevir
+    - Eğitim açıklamaları: Bölüm ve okul açıklamalarını Türkçe'ye çevir
+    
+    EĞİTİM ÇEVİRİ KURALLARI:
+    - Bölüm isimlerini Türkçe'ye çevir: "Computer Engineering" → "Bilgisayar Mühendisliği"
+    - Üniversite isimlerini KORU: "İstanbul Teknik University" → "İstanbul Teknik Üniversitesi"
+    - Sadece "University" kelimesini çevir: "University" → "Üniversitesi"
+    - Tarih formatı: "08/2025" gibi format kullan
+    
+    EĞİTİM ÇEVİRİ ÖRNEKLERİ:
+    - "Computer Engineering" → "Bilgisayar Mühendisliği"
+    - "Software Engineering" → "Yazılım Mühendisliği"
+    - "Industrial Engineering" → "Endüstri Mühendisliği"
+    - "Electrical Engineering" → "Elektrik Mühendisliği"
+    - "Mechanical Engineering" → "Makine Mühendisliği"
+    - "Business Administration" → "İşletme"
+    - "Economics" → "İktisat"
+    - "Psychology" → "Psikoloji"
+    - "İstanbul Teknik University" → "İstanbul Teknik Üniversitesi"
+    - "Boğaziçi University" → "Boğaziçi Üniversitesi"
+    - "Orta Doğu Teknik University" → "Orta Doğu Teknik Üniversitesi"
+    
+    BECERİ ÇEVİRİ KURALLARI:
+    - İngilizce beceri isimlerini Türkçe'ye çevir: "Problem solving" → "Problem çözme"
+    - Teknik terimleri KORU: "React", "NextJS", "JavaScript", "TypeScript", "Node.js", "Python", "Java", "C#", "SQL", "MongoDB", "PostgreSQL", "Git", "Docker", "AWS", "Azure", "Figma", "Photoshop", "Adobe XD"
+    - Sadece İngilizce cümleleri çevir, teknik terimlere dokunma
+    
+    BECERİ ÇEVİRİ ÖRNEKLERİ:
+    - "Problem solving" → "Problem çözme"
+    - "Teamwork" → "Takım çalışması"
+    - "Time management" → "Zaman yönetimi"
+    - "Analytical thinking" → "Analitik düşünme"
+    - "Communication skills" → "İletişim becerileri"
+    - "Leadership" → "Liderlik"
+    - "Creativity" → "Yaratıcılık"
+    - "Adaptability" → "Adaptasyon"
+    - "React" → "React" (değişmez)
+    - "NextJS" → "NextJS" (değişmez)
+    - "JavaScript" → "JavaScript" (değişmez)
+    
+    KORUNACAK ALANLAR:
+    - Şirket isimleri: "Kafein Teknoloji" → "Kafein Teknoloji" (aynı kalır)
+    - Pozisyon isimleri: "Full Stack Developer" → "Full Stack Developer" (aynı kalır)
+    - Sayısal tarihler: "01/2025 - Present" → "01/2025 - Present" (aynı kalır)
+    
+    CV Verisi:
+    ${JSON.stringify(cvData, null, 2)}
+    
+    ÖNEMLİ: 
+    1. Sadece geçerli JSON formatında cevap ver
+    2. JSON dışında hiçbir metin ekleme
+    3. Tüm string değerleri çift tırnak içinde yaz
+    4. TARİHLERİ MUTLAKA ÇEVİR: "Oct" → "Eki", "Aug" → "Ağu"
+    5. Tüm İngilizce metinleri Türkçe'ye çevir
+    6. JSON YAPISINI KORU: workExperience array olarak kalmalı, skills array olarak kalmalı
+    7. TÜM ARRAY YAPILARINI KORU: workExperience, skills, languages, education
+    
+    Örnek format:
+    {
+      "personalInfo": {
+        "firstName": "John",
+        "lastName": "Doe",
+        "city": "İstanbul",
+        "country": "Türkiye"
+      },
+      "about": "Profesyonel bir...",
+      "workExperience": [
+        {
+          "id": "1",
+          "position": "Full Stack Developer",
+          "company": "Şirket Adı",
+          "startDate": "Eki 2023",
+          "endDate": "Ağu 2024",
+          "city": "İstanbul",
+          "country": "Türkiye",
+          "bulletPoints": ["Web uygulamaları geliştirdim", "Takım projelerini yönettim"]
+        }
+      ],
+      "skills": ["Analitik düşünme", "Problem çözme"],
+      "languages": [
+        {
+          "id": "1",
+          "language": "İngilizce",
+          "level": "İleri"
+        }
+      ]
+    }
+    `;
+
+    const response = await this.callGeminiAPI(prompt);
+    const translatedData = this.parseJSONResponse(response);
+    
+    // Veri yapısını doğrula ve düzelt
+    return this.validateAndFixCVData(translatedData, cvData);
   }
 
   // CV'yi analiz et ve şirket için uyarla
@@ -283,87 +424,146 @@ export class CompanyBasedCVService {
   }
 
   static async analyzeAndAdaptCV(request: CVAnalysisRequest): Promise<CVAnalysisResponse> {
-    const prompt = `
-    Aşağıdaki CV'yi analiz et ve verilen şirket bilgilerine göre tüm bölümlerini uyarla.
+    const isEnglish = request.cvLanguage === 'english';
+    const languageInstructions = isEnglish ? 
+      `IMPORTANT: The CV is in English. You must respond in English and adapt the CV content in English.` :
+      `IMPORTANT: The CV is in Turkish. You must respond in Turkish and adapt the CV content in Turkish.`;
     
-    CV Metni:
+    const prompt = `
+    ${languageInstructions}
+    
+    Analyze the following CV and adapt all sections according to the given company information.
+    
+    CV Text:
     ${request.cvText}
     
-    Şirket Bilgileri:
-    ${request.companyInfo ? JSON.stringify(request.companyInfo, null, 2) : 'Şirket bilgileri analiz ediliyor...'}
+    Company Information:
+    ${request.companyInfo ? JSON.stringify(request.companyInfo, null, 2) : 'Company information is being analyzed...'}
     
-    Lütfen şu JSON formatında cevap ver:
+    Please respond in the following JSON format:
     {
-      "originalAbout": "Orijinal hakkımda metni",
-      "updatedAbout": "Şirket için uyarlanmış hakkımda metni",
-      "originalExperience": "Orijinal iş deneyimi metni",
-      "updatedExperience": "Şirket için uyarlanmış iş deneyimi metni",
-      "originalSkills": "Orijinal beceriler metni",
-      "updatedSkills": "Şirket için uyarlanmış beceriler metni",
-      "originalLanguages": "Orijinal diller metni",
-      "updatedLanguages": "Şirket için uyarlanmış diller metni",
-      "recommendations": ["Öneri 1", "Öneri 2", "Öneri 3"],
+      "originalAbout": "${isEnglish ? 'Original about section text' : 'Orijinal hakkımda metni'}",
+      "updatedAbout": "${isEnglish ? 'Company-adapted about section text' : 'Şirket için uyarlanmış hakkımda metni'}",
+      "originalExperience": "${isEnglish ? 'Original work experience text' : 'Orijinal iş deneyimi metni'}",
+      "updatedExperience": "${isEnglish ? 'Company-adapted work experience text' : 'Şirket için uyarlanmış iş deneyimi metni'}",
+      "originalSkills": "${isEnglish ? 'Original skills text' : 'Orijinal beceriler metni'}",
+      "updatedSkills": "${isEnglish ? 'Company-adapted skills text' : 'Şirket için uyarlanmış beceriler metni'}",
+      "originalLanguages": "${isEnglish ? 'Original languages text' : 'Orijinal diller metni'}",
+      "updatedLanguages": "${isEnglish ? 'Company-adapted languages text' : 'Şirket için uyarlanmış diller metni'}",
+      "recommendations": ["${isEnglish ? 'Recommendation 1' : 'Öneri 1'}", "${isEnglish ? 'Recommendation 2' : 'Öneri 2'}", "${isEnglish ? 'Recommendation 3' : 'Öneri 3'}"],
       "matchScore": 85
     }
     
-    ÖNEMLİ: updatedExperience alanında TÜM iş deneyimlerini dahil et. CV'de kaç tane iş deneyimi varsa hepsini aynı formatta yaz:
-    - Her iş deneyimi için: Pozisyon, Şirket, Tarih, Şehir, Açıklama
-    - Sonra bullet point'ler
-    - Sonra bir sonraki iş deneyimi
-    - Tüm deneyimleri aynı formatta sırala
-    
-    ÖRNEK FORMAT (2 iş deneyimi varsa):
-    "Full Stack Web Developer
-    Pronist Yazılım ve Danışmanlık
-    01/2025 - Present
-    İstanbul, Türkiye
-    Şirket açıklaması...
-    • Bullet point 1
-    • Bullet point 2
-    
-    Stajyer / Backend Web Developer
-    Yıldız Teknik Üniversitesi
-    08/2023 - 10/2023
-    İstanbul, Türkiye
-    Proje açıklaması...
-    • Bullet point 1
-    • Bullet point 2"
-    
-    Önemli kurallar:
-    1. HAKKIMDA BÖLÜMÜ İÇİN ÖZEL KURALLAR:
-       - Hakkımda bölümü kişinin kendini tanıttığı profesyonel bir paragraf olmalı
-       - Şirkete mesaj yazma, kişinin kendini tanıtması
-       - İçermesi gerekenler: Meslek/uzmanlık alanı, tecrübe/güçlü yönler, hedef, öne çıkan yetenekler
-       - Şirketin değerlerine uygun ama kişisel bir ton kullan
-       - Örnek format: "Problem çözme becerisi gelişmiş, araştırma yönü güçlü ve yenilikçi çözümler üretebilen bir [meslek] olarak çalışıyorum. [Güçlü yönler] ile [hedef/amaç]. [Öğrenme/katkı hedefi]."
-    2. İŞ DENEYİMİ İÇİN ÖZEL KURALLAR:
-       - POZİSYON, ŞİRKET ADI, TARİH, ADRES BİLGİLERİNİ ASLA DEĞİŞTİRME
-       - SADECE BULLET POINT'LERİN İÇERİĞİNİ YENİDEN YAZ
-       - HEDEF ŞİRKET ADINI KULLANMA, KİŞİNİN GERÇEK ÇALIŞTIĞI ŞİRKET ADINI KORU
-       - Bullet point'leri şu prensiple yaz: "Ne yaptım + Nasıl yaptım + Sonuç ne oldu"
-       - Güçlü fiillerle başla: "Geliştirdim", "Yönettim", "Artırdım", "Sağladım"
-       - Rakam kullan: "%20", "200+", "5 kişilik ekip" gibi
-       - Somut ve net ol: "Başarılı oldum" değil → "Süreyi %15 kısalttım"
-       - Hedef şirketin değerlerine uygun ama gerçek deneyimi koru
-       - Örnek format: "Next.js ve .NET kullanarak e-ticaret platformu geliştirdim ve müşteri deneyimini %30 artırdım"
-       - ÖNEMLİ: CV'de kaç tane iş deneyimi varsa hepsini uyarla, sadece ilkini değil
-       - Her iş deneyimini ayrı ayrı işle ve bullet point'lerini hedef şirket odaklı yap
-    3. Beceriler bölümünde şirketin aradığı teknik becerileri vurgula
-       - Becerileri sadece kısa isimlerle yaz (örn: "HTML", "Zaman Yönetimi", "React")
-       - En fazla 2 kelime kullan, uzun açıklamalar yazma
-       - Sadece beceri adını yaz, açıklama ekleme
-    4. Diller bölümünde şirketin çalıştığı ülkelerin dillerini öne çıkar
-    5. Match score 0-100 arasında olsun
-    6. Sadece JSON formatında cevap ver, markdown formatı kullanma
-    7. Türkçe karakterleri doğru kullan
+    ${isEnglish ? 
+      `IMPORTANT: Include ALL work experiences in the updatedExperience field. Write all work experiences in the same format:
+      - For each work experience: Position, Company, Date, City, Description
+      - Then bullet points
+      - Then next work experience
+      - List all experiences in the same format
+      
+      EXAMPLE FORMAT (if 2 work experiences):
+      "Full Stack Web Developer
+      Pronist Software and Consulting
+      01/2025 - Present
+      Istanbul, Turkey
+      Company description...
+      • Bullet point 1
+      • Bullet point 2
+      
+      Intern / Backend Web Developer
+      Yildiz Technical University
+      08/2023 - 10/2023
+      Istanbul, Turkey
+      Project description...
+      • Bullet point 1
+      • Bullet point 2"
+      
+      Important rules:
+      1. ABOUT SECTION RULES:
+         - About section should be a professional paragraph introducing the person
+         - Not writing to the company, but introducing oneself
+         - Should include: Profession/expertise area, experience/strengths, goals, standout skills
+         - Use company values but maintain personal tone
+         - Example format: "I work as a [profession] with developed problem-solving skills, strong research orientation and ability to produce innovative solutions. [Strengths] with [goals/objectives]. [Learning/contribution goals]."
+      2. WORK EXPERIENCE RULES:
+         - NEVER CHANGE POSITION, COMPANY NAME, DATE, ADDRESS INFORMATION
+         - ONLY REWRITE BULLET POINT CONTENT
+         - DON'T USE TARGET COMPANY NAME, KEEP PERSON'S REAL COMPANY NAME
+         - Write bullet points with this principle: "What I did + How I did it + What was the result"
+         - Start with strong verbs: "Developed", "Managed", "Increased", "Provided"
+         - Use numbers: "%20", "200+", "5-person team" etc.
+         - Be concrete and clear: Not "I was successful" → "I reduced time by 15%"
+         - Align with target company values but keep real experience
+         - Example format: "Developed e-commerce platform using Next.js and .NET and increased customer experience by 30%"
+         - IMPORTANT: Adapt all work experiences in CV, not just the first one
+         - Process each work experience separately and make bullet points target company focused
+      3. In skills section, emphasize technical skills the company is looking for
+         - Write skills only as short names (e.g. "HTML", "Time Management", "React")
+         - Use maximum 2 words, don't write long descriptions
+         - Only write skill name, don't add descriptions
+      4. In languages section, highlight languages of countries where the company operates
+      5. Match score should be 0-100
+      6. Only respond in JSON format, don't use markdown format
+      7. Use proper English characters` :
+      `ÖNEMLİ: updatedExperience alanında TÜM iş deneyimlerini dahil et. CV'de kaç tane iş deneyimi varsa hepsini aynı formatta yaz:
+      - Her iş deneyimi için: Pozisyon, Şirket, Tarih, Şehir, Açıklama
+      - Sonra bullet point'ler
+      - Sonra bir sonraki iş deneyimi
+      - Tüm deneyimleri aynı formatta sırala
+      
+      ÖRNEK FORMAT (2 iş deneyimi varsa):
+      "Full Stack Web Developer
+      Pronist Yazılım ve Danışmanlık
+      01/2025 - Present
+      İstanbul, Türkiye
+      Şirket açıklaması...
+      • Bullet point 1
+      • Bullet point 2
+      
+      Stajyer / Backend Web Developer
+      Yıldız Teknik Üniversitesi
+      08/2023 - 10/2023
+      İstanbul, Türkiye
+      Proje açıklaması...
+      • Bullet point 1
+      • Bullet point 2"
+      
+      Önemli kurallar:
+      1. HAKKIMDA BÖLÜMÜ İÇİN ÖZEL KURALLAR:
+         - Hakkımda bölümü kişinin kendini tanıttığı profesyonel bir paragraf olmalı
+         - Şirkete mesaj yazma, kişinin kendini tanıtması
+         - İçermesi gerekenler: Meslek/uzmanlık alanı, tecrübe/güçlü yönler, hedef, öne çıkan yetenekler
+         - Şirketin değerlerine uygun ama kişisel bir ton kullan
+         - Örnek format: "Problem çözme becerisi gelişmiş, araştırma yönü güçlü ve yenilikçi çözümler üretebilen bir [meslek] olarak çalışıyorum. [Güçlü yönler] ile [hedef/amaç]. [Öğrenme/katkı hedefi]."
+      2. İŞ DENEYİMİ İÇİN ÖZEL KURALLAR:
+         - POZİSYON, ŞİRKET ADI, TARİH, ADRES BİLGİLERİNİ ASLA DEĞİŞTİRME
+         - SADECE BULLET POINT'LERİN İÇERİĞİNİ YENİDEN YAZ
+         - HEDEF ŞİRKET ADINI KULLANMA, KİŞİNİN GERÇEK ÇALIŞTIĞI ŞİRKET ADINI KORU
+         - Bullet point'leri şu prensiple yaz: "Ne yaptım + Nasıl yaptım + Sonuç ne oldu"
+         - Güçlü fiillerle başla: "Geliştirdim", "Yönettim", "Artırdım", "Sağladım"
+         - Rakam kullan: "%20", "200+", "5 kişilik ekip" gibi
+         - Somut ve net ol: "Başarılı oldum" değil → "Süreyi %15 kısalttım"
+         - Hedef şirketin değerlerine uygun ama gerçek deneyimi koru
+         - Örnek format: "Next.js ve .NET kullanarak e-ticaret platformu geliştirdim ve müşteri deneyimini %30 artırdım"
+         - ÖNEMLİ: CV'de kaç tane iş deneyimi varsa hepsini uyarla, sadece ilkini değil
+         - Her iş deneyimini ayrı ayrı işle ve bullet point'lerini hedef şirket odaklı yap
+      3. Beceriler bölümünde şirketin aradığı teknik becerileri vurgula
+         - Becerileri sadece kısa isimlerle yaz (örn: "HTML", "Zaman Yönetimi", "React")
+         - En fazla 2 kelime kullan, uzun açıklamalar yazma
+         - Sadece beceri adını yaz, açıklama ekleme
+      4. Diller bölümünde şirketin çalıştığı ülkelerin dillerini öne çıkar
+      5. Match score 0-100 arasında olsun
+      6. Sadece JSON formatında cevap ver, markdown formatı kullanma
+      7. Türkçe karakterleri doğru kullan`
+    }
     `;
 
     const response = await this.callGeminiAPI(prompt);
     return this.parseJSONResponse(response);
   }
 
-  // Gemini API'yi çağır
-  private static async callGeminiAPI(prompt: string): Promise<string> {
+  // Gemini API'yi çağır - Fallback sistemi ile
+  private static async callGeminiAPI(prompt: string, retryCount: number = 0): Promise<string> {
     const requestBody: GeminiAPIRequest = {
       contents: [
         {
@@ -376,30 +576,70 @@ export class CompanyBasedCVService {
       ]
     };
 
+    // API key kontrolü
+    if (GEMINI_API_KEYS.length === 0) {
+      throw new Error('No valid API keys found. Please check your environment variables.');
+    }
+
+    const currentApiKey = GEMINI_API_KEYS[currentApiKeyIndex];
+    
+    if (!currentApiKey) {
+      throw new Error(`API key at index ${currentApiKeyIndex} is undefined.`);
+    }
+    
     try {
+      console.log(`Using API key ${currentApiKeyIndex + 1}/${GEMINI_API_KEYS.length}: ${currentApiKey.substring(0, 10)}...`);
+      
       const response = await fetch(GEMINI_API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-goog-api-key': GEMINI_API_KEY
+          'X-goog-api-key': currentApiKey
         },
         body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
+        // Rate limit hatası (429) veya diğer hatalar
+        if (response.status === 429) {
+          console.warn(`Rate limit hit with API key ${currentApiKeyIndex + 1}, trying next key...`);
+          
+          // Sonraki API key'e geç
+          currentApiKeyIndex = (currentApiKeyIndex + 1) % GEMINI_API_KEYS.length;
+          
+          // Eğer tüm API key'ler denendiyse ve hala hata varsa
+          if (retryCount >= GEMINI_API_KEYS.length - 1) {
+            throw new Error(`All API keys exhausted. Last error: ${response.status} ${response.statusText}`);
+          }
+          
+          // Kısa bir bekleme sonrası tekrar dene
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return this.callGeminiAPI(prompt, retryCount + 1);
+        }
+        
         throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
       }
 
       const data: GeminiAPIResponse = await response.json();
       
       if (data.candidates && data.candidates.length > 0) {
+        console.log(`API call successful with key ${currentApiKeyIndex + 1}`);
         return data.candidates[0].content.parts[0].text;
       } else {
         throw new Error('Gemini API did not return valid response');
       }
     } catch (error) {
-      console.error('Gemini API call failed:', error);
-      throw error;
+      console.error(`Gemini API call failed with key ${currentApiKeyIndex + 1}:`, error);
+      
+      // Eğer rate limit hatası değilse veya tüm key'ler denendiyse hatayı fırlat
+      if (!(error as Error).message.includes('429') || retryCount >= GEMINI_API_KEYS.length - 1) {
+        throw error;
+      }
+      
+      // Sonraki API key'e geç ve tekrar dene
+      currentApiKeyIndex = (currentApiKeyIndex + 1) % GEMINI_API_KEYS.length;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return this.callGeminiAPI(prompt, retryCount + 1);
     }
   }
 

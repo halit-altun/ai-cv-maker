@@ -20,6 +20,7 @@ export interface CVAnalysisRequest {
   cvText: string;
   companyUrl: string;
   companyInfo?: CompanyInfo;
+  cvLanguage?: 'turkish' | 'english';
 }
 
 export interface CVAnalysisResponse {

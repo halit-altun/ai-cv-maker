@@ -199,6 +199,7 @@ const SortableBulletItem = ({
 interface CompanyBasedCVPreviewProps {
   data: CompanyBasedCVData;
   isEditing?: boolean;
+  cvLanguage?: 'turkish' | 'english';
   onUpdateField?: (field: string, value: any) => void;
   onUpdateWorkExperience?: (index: number, field: string, value: any) => void;
   onUpdateWorkExperienceBullet?: (expIndex: number, bulletIndex: number, value: string) => void;
@@ -213,6 +214,7 @@ interface CompanyBasedCVPreviewProps {
 const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({ 
   data, 
   isEditing = false, 
+  cvLanguage = 'turkish',
   onUpdateField, 
   onUpdateWorkExperience,
   onUpdateWorkExperienceBullet,
@@ -226,7 +228,7 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
   const cvRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [isTranslating, setIsTranslating] = React.useState(false);
-  const [isEnglish, setIsEnglish] = React.useState(false);
+  const [isEnglish, setIsEnglish] = React.useState(cvLanguage === 'english');
   
   // Başlık çevirileri
   const getSectionTitle = (section: string) => {
@@ -359,14 +361,32 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
     
     setIsTranslating(true);
     try {
-      console.log('Çeviri başlatılıyor...');
+      console.log('İngilizce çeviri başlatılıyor...');
       const translatedData = await CompanyBasedCVService.translateCVToEnglish(data);
-      console.log('Çeviri tamamlandı:', translatedData);
+      console.log('İngilizce çeviri tamamlandı:', translatedData);
       onTranslateToEnglish(translatedData);
       setIsEnglish(true);
     } catch (error) {
-      console.error('Çeviri hatası:', error);
-      alert('Çeviri yapılırken bir hata oluştu. Lütfen tekrar deneyin.');
+      console.error('İngilizce çeviri hatası:', error);
+      alert('İngilizce çeviri yapılırken bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  const handleTranslateToTurkish = async () => {
+    if (!onTranslateToEnglish) return;
+    
+    setIsTranslating(true);
+    try {
+      console.log('Türkçe çeviri başlatılıyor...');
+      const translatedData = await CompanyBasedCVService.translateCVToTurkish(data);
+      console.log('Türkçe çeviri tamamlandı:', translatedData);
+      onTranslateToEnglish(translatedData);
+      setIsEnglish(false);
+    } catch (error) {
+      console.error('Türkçe çeviri hatası:', error);
+      alert('Türkçe çeviri yapılırken bir hata oluştu. Lütfen tekrar deneyin.');
     } finally {
       setIsTranslating(false);
     }
@@ -374,8 +394,8 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
 
   const handleToggleLanguage = () => {
     if (isEnglish) {
-      // Türkçe'ye çevir - orijinal veriyi geri yükle
-      setIsEnglish(false);
+      // Türkçe'ye çevir
+      handleTranslateToTurkish();
     } else {
       // İngilizce'ye çevir
       handleTranslateToEnglish();
@@ -543,7 +563,7 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
               disabled={isTranslating}
               sx={{ textTransform: 'none' }}
             >
-              {isTranslating ? 'Çevriliyor...' : (isEnglish ? 'Türkçe\'ye Çevir' : 'İngilizce Çevir')}
+              {isTranslating ? 'Çevriliyor...' : (isEnglish ? 'Türkçe\'ye Çevir' : 'İngilizce\'ye Çevir')}
             </Button>
             <Button
               variant="contained"

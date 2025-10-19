@@ -72,6 +72,7 @@ export default function CompanyBasedCVEditor() {
   const [aiSettings, setAiSettings] = useState<AIAdaptationSettings>(defaultAISettings);
   const [isEditing, setIsEditing] = useState(false);
   const [editableCVData, setEditableCVData] = useState<CompanyBasedCVData | null>(null);
+  const [cvLanguage, setCvLanguage] = useState<'turkish' | 'english'>('turkish');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // AI'dan gelen metinleri parse et - sadece bullet point'leri uyarla
@@ -318,7 +319,8 @@ export default function CompanyBasedCVEditor() {
       const analysis = await CompanyBasedCVService.analyzeAndAdaptCV({
         cvText,
         companyUrl: companyLinks[0]?.url || '',
-        companyInfo
+        companyInfo,
+        cvLanguage
       });
 
       setAnalysisResult(analysis);
@@ -479,6 +481,30 @@ export default function CompanyBasedCVEditor() {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               PDF formatında CV dosyanızı seçin
             </Typography>
+            
+            {/* CV Dil Seçimi */}
+            <Box sx={{ mb: 3, maxWidth: 400, mx: 'auto' }}>
+              <Typography variant="h6" sx={{ mb: 2, color: '#333' }}>
+                CV'nizin dili nedir?
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                <Button
+                  variant={cvLanguage === 'turkish' ? 'contained' : 'outlined'}
+                  onClick={() => setCvLanguage('turkish')}
+                  sx={{ minWidth: 120 }}
+                >
+                  🇹🇷 Türkçe
+                </Button>
+                <Button
+                  variant={cvLanguage === 'english' ? 'contained' : 'outlined'}
+                  onClick={() => setCvLanguage('english')}
+                  sx={{ minWidth: 120 }}
+                >
+                  🇺🇸 English
+                </Button>
+              </Box>
+            </Box>
+            
             <input
               ref={fileInputRef}
               type="file"
@@ -497,6 +523,11 @@ export default function CompanyBasedCVEditor() {
             {cvFile && (
               <Box sx={{ mt: 2 }}>
                 <Chip label={cvFile.name} color="primary" />
+                <Chip 
+                  label={cvLanguage === 'turkish' ? 'Türkçe CV' : 'English CV'} 
+                  color="secondary" 
+                  sx={{ ml: 1 }} 
+                />
               </Box>
             )}
           </Box>
@@ -761,6 +792,7 @@ export default function CompanyBasedCVEditor() {
               <CompanyBasedCVPreview 
                 data={editableCVData} 
                 isEditing={isEditing}
+                cvLanguage={cvLanguage}
                 onUpdateField={handleUpdateField}
                 onUpdateWorkExperience={handleUpdateWorkExperience}
                 onUpdateWorkExperienceBullet={handleUpdateWorkExperienceBullet}
