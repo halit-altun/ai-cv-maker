@@ -1,5 +1,10 @@
 // Company-based CV Editor Types
 
+export interface CompanyLink {
+  url: string;
+  description: string;
+}
+
 export interface CompanyInfo {
   name: string;
   website: string;
@@ -8,6 +13,7 @@ export interface CompanyInfo {
   values: string[];
   requirements: string[];
   culture: string;
+  analyzedLinks: CompanyLink[];
 }
 
 export interface CVAnalysisRequest {
@@ -21,6 +27,10 @@ export interface CVAnalysisResponse {
   updatedAbout: string;
   originalExperience: string;
   updatedExperience: string;
+  originalSkills: string;
+  updatedSkills: string;
+  originalLanguages: string;
+  updatedLanguages: string;
   recommendations: string[];
   matchScore: number;
 }

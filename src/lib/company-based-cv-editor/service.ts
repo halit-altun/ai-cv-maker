@@ -1,5 +1,6 @@
 import { 
   CompanyInfo, 
+  CompanyLink,
   CVAnalysisRequest, 
   CVAnalysisResponse, 
   GeminiAPIRequest, 
@@ -13,33 +14,277 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 export class CompanyBasedCVService {
   
   // Şirket bilgilerini analiz et
-  static async analyzeCompany(companyUrl: string): Promise<CompanyInfo> {
-    const prompt = `
-    Aşağıdaki şirket web sitesini analiz et ve şirket hakkında detaylı bilgi ver:
-    Şirket URL: ${companyUrl}
+  static async analyzeCompany(companyUrls: CompanyLink[]): Promise<CompanyInfo> {
+    console.log('=== COMPANY ANALYSIS STARTED ===');
+    console.log('Number of links to analyze:', companyUrls.length);
+    console.log('Links:', companyUrls.map(link => ({ url: link.url, description: link.description })));
     
-    Lütfen şu bilgileri JSON formatında döndür:
+    // Her linki sırayla analiz et
+    const linkAnalysisResults = [];
+    for (let i = 0; i < companyUrls.length; i++) {
+      const link = companyUrls[i];
+      console.log(`Analyzing link ${i + 1}/${companyUrls.length}: ${link.url}`);
+      
+      try {
+        const linkPrompt = `
+        Aşağıdaki şirket web sitesi sayfasını analiz et:
+        URL: ${link.url}
+        Açıklama: ${link.description}
+        
+        Bu sayfadan şirket hakkında şu bilgileri çıkar:
+        - Şirket adı
+        - Şirket açıklaması
+        - Sektör
+        - Şirket değerleri
+        - Şirket kültürü
+        - İş gereksinimleri
+        - Bu sayfaya özel bilgiler
+        
+        Lütfen şu JSON formatında cevap ver:
+        {
+          "name": "Şirket adı",
+          "description": "Bu sayfadan çıkarılan şirket açıklaması",
+          "industry": "Sektör",
+          "values": ["Değer 1", "Değer 2", "Değer 3"],
+          "requirements": ["Gereksinim 1", "Gereksinim 2", "Gereksinim 3"],
+          "culture": "Şirket kültürü açıklaması",
+          "pageSpecificInfo": "Bu sayfaya özel bilgiler"
+        }
+        
+        Sadece JSON formatında cevap ver, başka açıklama ekleme.
+        `;
+        
+        const linkResponse = await this.callGeminiAPI(linkPrompt);
+        const linkData = this.parseJSONResponse(linkResponse);
+        linkAnalysisResults.push({
+          link: link,
+          data: linkData
+        });
+        
+        console.log(`Link ${i + 1} analysis completed:`, linkData);
+      } catch (error) {
+        console.error(`Error analyzing link ${i + 1}:`, error);
+        linkAnalysisResults.push({
+          link: link,
+          data: null,
+          error: error
+        });
+      }
+    }
+    
+    // Tüm link analizlerini birleştir
+    const combinedPrompt = `
+    Aşağıdaki şirket web sitesi sayfalarının analiz sonuçlarını birleştir ve kapsamlı bir şirket profili oluştur:
+    
+    ${linkAnalysisResults.map((result, index) => `
+    Link ${index + 1}:
+    URL: ${result.link.url}
+    Açıklama: ${result.link.description}
+    Analiz Sonucu: ${result.data ? JSON.stringify(result.data, null, 2) : 'Analiz başarısız'}
+    `).join('\n')}
+    
+    Tüm sayfaların bilgilerini birleştirerek şu JSON formatında cevap ver:
     {
       "name": "Şirket adı",
-      "website": "Web sitesi URL'si",
-      "description": "Şirket açıklaması",
+      "website": "Ana web sitesi URL'si",
+      "description": "Birleştirilmiş şirket açıklaması",
       "industry": "Sektör",
       "values": ["Değer 1", "Değer 2", "Değer 3"],
       "requirements": ["Gereksinim 1", "Gereksinim 2", "Gereksinim 3"],
-      "culture": "Şirket kültürü açıklaması"
+      "culture": "Şirket kültürü açıklaması",
+      "analyzedLinks": [
+        {
+          "url": "URL 1",
+          "description": "Açıklama 1"
+        }
+      ]
     }
     
-    Sadece JSON formatında cevap ver, başka açıklama ekleme. Markdown formatı kullanma.
+    Önemli kurallar:
+    1. Tüm sayfaların bilgilerini birleştir
+    2. Çelişkili bilgiler varsa en güncel olanı kullan
+    3. Her sayfadan önemli bilgileri dahil et
+    4. analyzedLinks array'ine tüm analiz edilen linkleri ekle
+    5. Sadece JSON formatında cevap ver
     `;
-
-    const response = await this.callGeminiAPI(prompt);
-    return this.parseJSONResponse(response);
+    
+    const combinedResponse = await this.callGeminiAPI(combinedPrompt);
+    const finalResult = this.parseJSONResponse(combinedResponse);
+    
+    console.log('=== COMPANY ANALYSIS COMPLETED ===');
+    console.log('Final result:', finalResult);
+    
+    return finalResult;
   }
 
   // CV'yi analiz et ve şirket için uyarla
+  static async translateCVToEnglish(cvData: CompanyBasedCVData): Promise<CompanyBasedCVData> {
+    const prompt = `
+    Aşağıdaki CV verilerini İngilizce'ye çevir. ÖNEMLİ KURALLAR:
+    
+    1. BİREBİR ÇEVİRİ: Hiçbir anlam ekleme veya çıkarma yapma
+    2. KORUMA: Şirket isimlerini, pozisyon isimlerini aynen koru
+    3. FORMAT: JSON yapısını tamamen koru
+    4. PROFESYONEL: İş dünyasına uygun İngilizce kullan
+    5. TUTARLILIK: Aynı terimler için aynı İngilizce karşılığı kullan
+    
+    ÇEVİRİ KURALLARI - MUTLAKA UYGULA:
+    
+    TARİH ÇEVİRİLERİ (ZORUNLU):
+    - "Eki" → "Oct"
+    - "Ağu" → "Aug" 
+    - "Oca" → "Jan"
+    - "Şub" → "Feb"
+    - "Mar" → "Mar"
+    - "Nis" → "Apr"
+    - "May" → "May"
+    - "Haz" → "Jun"
+    - "Tem" → "Jul"
+    - "Eyl" → "Sep"
+    - "Kas" → "Nov"
+    - "Ara" → "Dec"
+    
+    ÖRNEK TARİH ÇEVİRİLERİ:
+    - "Eki 2023 - Ağu 2024" → "Oct 2023 - Aug 2024"
+    - "Oca 2022 - Present" → "Jan 2022 - Present"
+    - "Haz 2021 - Eyl 2022" → "Jun 2021 - Sep 2022"
+    
+    DİĞER ÇEVİRİLER:
+    - Şehir isimleri: "İstanbul" → "Istanbul", "Ankara" → "Ankara"
+    - Ülke isimleri: "Türkiye" → "Turkey"
+    - Beceriler: "Analitik düşünme" → "Analytical thinking", "Problem çözme" → "Problem solving", "Takım çalışması" → "Teamwork", "Zaman yönetimi" → "Time management"
+    - Diller: "Arapça" → "Arabic", "İngilizce" → "English", "Türkçe" → "Turkish"
+    - Hakkımda içeriği: Tam cümleleri İngilizce'ye çevir
+    - İş deneyimi açıklamaları: Bullet point'leri İngilizce'ye çevir
+    - Eğitim açıklamaları: Bölüm ve okul açıklamalarını İngilizce'ye çevir
+    
+    EĞİTİM ÇEVİRİ KURALLARI:
+    - Bölüm isimlerini İngilizce'ye çevir: "Bilgisayar Mühendisliği" → "Computer Engineering"
+    - Üniversite isimlerini KORU: "İstanbul Teknik Üniversitesi" → "İstanbul Teknik University"
+    - Sadece "Üniversitesi" kelimesini çevir: "Üniversitesi" → "University"
+    - Tarih formatı: "08/2025" gibi format kullan
+    
+    EĞİTİM ÇEVİRİ ÖRNEKLERİ:
+    - "Bilgisayar Mühendisliği" → "Computer Engineering"
+    - "Yazılım Mühendisliği" → "Software Engineering"
+    - "Endüstri Mühendisliği" → "Industrial Engineering"
+    - "Elektrik Mühendisliği" → "Electrical Engineering"
+    - "Makine Mühendisliği" → "Mechanical Engineering"
+    - "İşletme" → "Business Administration"
+    - "İktisat" → "Economics"
+    - "Psikoloji" → "Psychology"
+    - "İstanbul Teknik Üniversitesi" → "İstanbul Teknik University"
+    - "Boğaziçi Üniversitesi" → "Boğaziçi University"
+    - "Orta Doğu Teknik Üniversitesi" → "Orta Doğu Teknik University"
+    
+    BECERİ ÇEVİRİ KURALLARI:
+    - Türkçe beceri isimlerini İngilizce'ye çevir: "Problem çözme" → "Problem solving"
+    - Teknik terimleri KORU: "React", "NextJS", "JavaScript", "TypeScript", "Node.js", "Python", "Java", "C#", "SQL", "MongoDB", "PostgreSQL", "Git", "Docker", "AWS", "Azure", "Figma", "Photoshop", "Adobe XD"
+    - Sadece Türkçe cümleleri çevir, teknik terimlere dokunma
+    
+    BECERİ ÇEVİRİ ÖRNEKLERİ:
+    - "Problem çözme" → "Problem solving"
+    - "Takım çalışması" → "Teamwork"
+    - "Zaman yönetimi" → "Time management"
+    - "Analitik düşünme" → "Analytical thinking"
+    - "İletişim becerileri" → "Communication skills"
+    - "Liderlik" → "Leadership"
+    - "Yaratıcılık" → "Creativity"
+    - "Adaptasyon" → "Adaptability"
+    - "React" → "React" (değişmez)
+    - "NextJS" → "NextJS" (değişmez)
+    - "JavaScript" → "JavaScript" (değişmez)
+    
+    KORUNACAK ALANLAR:
+    - Şirket isimleri: "Kafein Teknoloji" → "Kafein Teknoloji" (aynı kalır)
+    - Pozisyon isimleri: "Full Stack Developer" → "Full Stack Developer" (aynı kalır)
+    - Sayısal tarihler: "01/2025 - Present" → "01/2025 - Present" (aynı kalır)
+    
+    CV Verisi:
+    ${JSON.stringify(cvData, null, 2)}
+    
+    ÖNEMLİ: 
+    1. Sadece geçerli JSON formatında cevap ver
+    2. JSON dışında hiçbir metin ekleme
+    3. Tüm string değerleri çift tırnak içinde yaz
+    4. TARİHLERİ MUTLAKA ÇEVİR: "Eki" → "Oct", "Ağu" → "Aug"
+    5. Tüm Türkçe metinleri İngilizce'ye çevir
+    6. JSON YAPISINI KORU: workExperience array olarak kalmalı, skills array olarak kalmalı
+    7. TÜM ARRAY YAPILARINI KORU: workExperience, skills, languages, education
+    
+    Örnek format:
+    {
+      "personalInfo": {
+        "firstName": "John",
+        "lastName": "Doe",
+        "city": "Istanbul",
+        "country": "Turkey"
+      },
+      "about": "I am a professional...",
+      "workExperience": [
+        {
+          "id": "1",
+          "position": "Full Stack Developer",
+          "company": "Company Name",
+          "startDate": "Oct 2023",
+          "endDate": "Aug 2024",
+          "city": "Istanbul",
+          "country": "Turkey",
+          "bulletPoints": ["Developed web applications", "Managed team projects"]
+        }
+      ],
+      "skills": ["Analytical thinking", "Problem solving"],
+      "languages": [
+        {
+          "id": "1",
+          "language": "English",
+          "level": "Advanced"
+        }
+      ]
+    }
+    `;
+
+    const response = await this.callGeminiAPI(prompt);
+    const translatedData = this.parseJSONResponse(response);
+    
+    // Veri yapısını doğrula ve düzelt
+    return this.validateAndFixCVData(translatedData, cvData);
+  }
+
+  // Çeviri sonrası veri yapısını doğrula ve düzelt
+  private static validateAndFixCVData(translatedData: any, originalData: CompanyBasedCVData): CompanyBasedCVData {
+    try {
+      // Orijinal veri yapısını koru
+      const fixedData: CompanyBasedCVData = {
+        personalInfo: translatedData.personalInfo || originalData.personalInfo,
+        about: translatedData.about || originalData.about,
+        workExperience: Array.isArray(translatedData.workExperience) 
+          ? translatedData.workExperience 
+          : originalData.workExperience,
+        education: Array.isArray(translatedData.education) 
+          ? translatedData.education 
+          : originalData.education,
+        skills: Array.isArray(translatedData.skills) 
+          ? translatedData.skills 
+          : originalData.skills,
+        languages: Array.isArray(translatedData.languages) 
+          ? translatedData.languages 
+          : originalData.languages,
+        companyInfo: translatedData.companyInfo || originalData.companyInfo
+      };
+
+      console.log('Fixed CV data structure:', fixedData);
+      return fixedData;
+    } catch (error) {
+      console.error('Error fixing CV data structure:', error);
+      // Hata durumunda orijinal veriyi döndür
+      return originalData;
+    }
+  }
+
   static async analyzeAndAdaptCV(request: CVAnalysisRequest): Promise<CVAnalysisResponse> {
     const prompt = `
-    Aşağıdaki CV'yi analiz et ve verilen şirket bilgilerine göre "Hakkımda" ve "İş Deneyimi" bölümlerini uyarla.
+    Aşağıdaki CV'yi analiz et ve verilen şirket bilgilerine göre tüm bölümlerini uyarla.
     
     CV Metni:
     ${request.cvText}
@@ -53,17 +298,64 @@ export class CompanyBasedCVService {
       "updatedAbout": "Şirket için uyarlanmış hakkımda metni",
       "originalExperience": "Orijinal iş deneyimi metni",
       "updatedExperience": "Şirket için uyarlanmış iş deneyimi metni",
+      "originalSkills": "Orijinal beceriler metni",
+      "updatedSkills": "Şirket için uyarlanmış beceriler metni",
+      "originalLanguages": "Orijinal diller metni",
+      "updatedLanguages": "Şirket için uyarlanmış diller metni",
       "recommendations": ["Öneri 1", "Öneri 2", "Öneri 3"],
       "matchScore": 85
     }
     
+    ÖNEMLİ: updatedExperience alanında TÜM iş deneyimlerini dahil et. CV'de kaç tane iş deneyimi varsa hepsini aynı formatta yaz:
+    - Her iş deneyimi için: Pozisyon, Şirket, Tarih, Şehir, Açıklama
+    - Sonra bullet point'ler
+    - Sonra bir sonraki iş deneyimi
+    - Tüm deneyimleri aynı formatta sırala
+    
+    ÖRNEK FORMAT (2 iş deneyimi varsa):
+    "Full Stack Web Developer
+    Pronist Yazılım ve Danışmanlık
+    01/2025 - Present
+    İstanbul, Türkiye
+    Şirket açıklaması...
+    • Bullet point 1
+    • Bullet point 2
+    
+    Stajyer / Backend Web Developer
+    Yıldız Teknik Üniversitesi
+    08/2023 - 10/2023
+    İstanbul, Türkiye
+    Proje açıklaması...
+    • Bullet point 1
+    • Bullet point 2"
+    
     Önemli kurallar:
-    1. Sadece "Hakkımda" ve "İş Deneyimi" bölümlerini uyarla
-    2. Diğer bölümler (Eğitim, Beceriler, Diller) aynı kalsın
-    3. Şirketin değerleri ve kültürüne uygun ifadeler kullan
-    4. Match score 0-100 arasında olsun
-    5. Sadece JSON formatında cevap ver, markdown formatı kullanma
-    6. Türkçe karakterleri doğru kullan
+    1. HAKKIMDA BÖLÜMÜ İÇİN ÖZEL KURALLAR:
+       - Hakkımda bölümü kişinin kendini tanıttığı profesyonel bir paragraf olmalı
+       - Şirkete mesaj yazma, kişinin kendini tanıtması
+       - İçermesi gerekenler: Meslek/uzmanlık alanı, tecrübe/güçlü yönler, hedef, öne çıkan yetenekler
+       - Şirketin değerlerine uygun ama kişisel bir ton kullan
+       - Örnek format: "Problem çözme becerisi gelişmiş, araştırma yönü güçlü ve yenilikçi çözümler üretebilen bir [meslek] olarak çalışıyorum. [Güçlü yönler] ile [hedef/amaç]. [Öğrenme/katkı hedefi]."
+    2. İŞ DENEYİMİ İÇİN ÖZEL KURALLAR:
+       - POZİSYON, ŞİRKET ADI, TARİH, ADRES BİLGİLERİNİ ASLA DEĞİŞTİRME
+       - SADECE BULLET POINT'LERİN İÇERİĞİNİ YENİDEN YAZ
+       - HEDEF ŞİRKET ADINI KULLANMA, KİŞİNİN GERÇEK ÇALIŞTIĞI ŞİRKET ADINI KORU
+       - Bullet point'leri şu prensiple yaz: "Ne yaptım + Nasıl yaptım + Sonuç ne oldu"
+       - Güçlü fiillerle başla: "Geliştirdim", "Yönettim", "Artırdım", "Sağladım"
+       - Rakam kullan: "%20", "200+", "5 kişilik ekip" gibi
+       - Somut ve net ol: "Başarılı oldum" değil → "Süreyi %15 kısalttım"
+       - Hedef şirketin değerlerine uygun ama gerçek deneyimi koru
+       - Örnek format: "Next.js ve .NET kullanarak e-ticaret platformu geliştirdim ve müşteri deneyimini %30 artırdım"
+       - ÖNEMLİ: CV'de kaç tane iş deneyimi varsa hepsini uyarla, sadece ilkini değil
+       - Her iş deneyimini ayrı ayrı işle ve bullet point'lerini hedef şirket odaklı yap
+    3. Beceriler bölümünde şirketin aradığı teknik becerileri vurgula
+       - Becerileri sadece kısa isimlerle yaz (örn: "HTML", "Zaman Yönetimi", "React")
+       - En fazla 2 kelime kullan, uzun açıklamalar yazma
+       - Sadece beceri adını yaz, açıklama ekleme
+    4. Diller bölümünde şirketin çalıştığı ülkelerin dillerini öne çıkar
+    5. Match score 0-100 arasında olsun
+    6. Sadece JSON formatında cevap ver, markdown formatı kullanma
+    7. Türkçe karakterleri doğru kullan
     `;
 
     const response = await this.callGeminiAPI(prompt);
@@ -147,10 +439,19 @@ export class CompanyBasedCVService {
         aggressiveClean = aggressiveClean.replace(/```\s*/g, '');
         aggressiveClean = aggressiveClean.replace(/```/g, '');
         
+        // Başlangıç ve bitiş metinlerini kaldır
+        aggressiveClean = aggressiveClean.replace(/^[^{]*/, '');
+        aggressiveClean = aggressiveClean.replace(/[^}]*$/, '');
+        
         // JSON objesini bul
         const jsonMatch = aggressiveClean.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          const jsonStr = jsonMatch[0];
+          let jsonStr = jsonMatch[0];
+          
+          // Son kalan karakterleri temizle
+          jsonStr = jsonStr.replace(/,\s*}/g, '}');
+          jsonStr = jsonStr.replace(/,\s*]/g, ']');
+          
           console.log('Extracted JSON:', jsonStr);
           return JSON.parse(jsonStr);
         }

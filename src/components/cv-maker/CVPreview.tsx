@@ -48,7 +48,8 @@ const CVPreview: React.FC<CVPreviewProps> = ({ data }) => {
   const [isGenerating, setIsGenerating] = React.useState(false);
 
   const formatDate = (dateString: string) => {
-    if (!dateString) return 'Devam Ediyor';
+    if (!dateString || dateString === 'Present' || dateString === 'present') return 'Devam Ediyor';
+    if (dateString.includes('Present') || dateString.includes('present')) return 'Devam Ediyor';
     const [year, month] = dateString.split('-');
     const months = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
     return `${months[parseInt(month) - 1]} ${year}`;

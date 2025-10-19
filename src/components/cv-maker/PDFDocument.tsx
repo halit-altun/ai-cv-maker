@@ -179,13 +179,29 @@ interface PDFDocumentProps {
       level: string;
     }>;
   };
+  isEnglish?: boolean;
 }
 
-const formatDate = (dateString: string) => {
-  if (!dateString) return 'Devam Ediyor';
+const formatDate = (dateString: string, isEnglish: boolean = false) => {
+  if (!dateString || dateString === 'Present' || dateString === 'present') {
+    return isEnglish ? 'Present' : 'Devam Ediyor';
+  }
+  if (dateString.includes('Present') || dateString.includes('present')) {
+    return isEnglish ? 'Present' : 'Devam Ediyor';
+  }
+  
+  // Eğer tarih zaten İngilizce formatında ise (Oct, Aug, Jan vb.)
+  if (dateString.includes('Oct') || dateString.includes('Aug') || dateString.includes('Jan') || 
+      dateString.includes('Feb') || dateString.includes('Mar') || dateString.includes('Apr') ||
+      dateString.includes('May') || dateString.includes('Jun') || dateString.includes('Jul') ||
+      dateString.includes('Sep') || dateString.includes('Nov') || dateString.includes('Dec')) {
+    return dateString;
+  }
+  
+  // Hem Türkçe hem İngilizce için sayısal format - 2025-01 → 01/2025
   const [year, month] = dateString.split('-');
-  const months = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
-  return `${months[parseInt(month) - 1]} ${year}`;
+  if (!year || !month) return dateString; // undefined kontrolü
+  return `${month}/${year}`;
 };
 
 const formatUrl = (url: string) => {
@@ -198,8 +214,23 @@ const ensureHttps = (url: string) => {
   return url.startsWith('http') ? url : `https://${url}`;
 };
 
-const PDFDocument: React.FC<PDFDocumentProps> = ({ data }) => {
+const PDFDocument: React.FC<PDFDocumentProps> = ({ data, isEnglish = false }) => {
   const { personalInfo, about, workExperience, education, skills, languages } = data;
+
+  // Başlık çevirileri
+  const getSectionTitle = (section: string) => {
+    if (!isEnglish) return section;
+    
+    const translations: { [key: string]: string } = {
+      'Hakkımda': 'About Me',
+      'İş Deneyimi': 'Work Experience',
+      'Eğitim': 'Education',
+      'Beceriler': 'Skills',
+      'Diller': 'Languages'
+    };
+    
+    return translations[section] || section;
+  };
 
   return (
     <Document>
@@ -253,7 +284,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data }) => {
         {/* About */}
         {about && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Hakkımda</Text>
+            <Text style={styles.sectionTitle}>{getSectionTitle('Hakkımda')}</Text>
             <Text style={styles.text}>{about}</Text>
           </View>
         )}
@@ -261,13 +292,13 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data }) => {
         {/* Work Experience */}
         {workExperience.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>İş Deneyimi</Text>
+            <Text style={styles.sectionTitle}>{getSectionTitle('İş Deneyimi')}</Text>
             {workExperience.map((exp) => (
               <View key={exp.id} style={styles.experienceItem}>
                 <View style={styles.experienceHeader}>
                   <Text style={styles.experienceTitle}>{exp.position}</Text>
                   <Text style={styles.experienceDate}>
-                    {formatDate(exp.startDate)} - {formatDate(exp.endDate)}
+                    {formatDate(exp.startDate, isEnglish)} - {formatDate(exp.endDate, isEnglish)}
                   </Text>
                 </View>
                 <Text style={styles.experienceCompany}>
@@ -287,7 +318,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data }) => {
         {/* Education */}
         {education.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Eğitim</Text>
+            <Text style={styles.sectionTitle}>{getSectionTitle('Eğitim')}</Text>
             {education.map((edu) => (
               <View key={edu.id} style={styles.educationItem}>
                 <View style={styles.educationHeader}>
@@ -296,7 +327,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data }) => {
                     <Text style={styles.text}>{edu.department}</Text>
                   </View>
                   <Text style={styles.experienceDate}>
-                    {formatDate(edu.startDate)} - {formatDate(edu.endDate)}
+                    {formatDate(edu.startDate, isEnglish)} - {formatDate(edu.endDate, isEnglish)}
                   </Text>
                 </View>
               </View>
@@ -307,7 +338,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data }) => {
         {/* Skills */}
         {skills.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Beceriler</Text>
+            <Text style={styles.sectionTitle}>{getSectionTitle('Beceriler')}</Text>
             <Text style={styles.skillsContainer}>{skills.join(' - ')}</Text>
           </View>
         )}
@@ -315,7 +346,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data }) => {
         {/* Languages */}
         {languages.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Diller</Text>
+            <Text style={styles.sectionTitle}>{getSectionTitle('Diller')}</Text>
             <Text style={styles.languagesContainer}>
               {languages
                 .filter(lang => lang.language)
