@@ -100,7 +100,7 @@ const SortableSkillItem = ({ skill, index, onUpdate, onRemove }: {
       <TextField
         size="small"
         value={skill}
-        onChange={(e) => onUpdate(index, e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdate(index, e.target.value)}
         placeholder="Beceri adı"
         sx={{ flex: 1 }}
       />
@@ -174,7 +174,7 @@ const SortableBulletItem = ({
         fullWidth
         size="small"
         value={bullet}
-        onChange={(e) => onUpdate(expIndex, bulletIndex, e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdate(expIndex, bulletIndex, e.target.value)}
         placeholder="Görev açıklaması"
         multiline
         rows={1}
@@ -624,14 +624,14 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                   <TextField
                     size="small"
                     value={data.personalInfo.firstName || ''}
-                    onChange={(e) => onUpdateField?.('personalInfo.firstName', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.('personalInfo.firstName', e.target.value)}
                     placeholder="Ad"
                     sx={{ flex: 1 }}
                   />
                   <TextField
                     size="small"
                     value={data.personalInfo.lastName || ''}
-                    onChange={(e) => onUpdateField?.('personalInfo.lastName', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.('personalInfo.lastName', e.target.value)}
                     placeholder="Soyad"
                     sx={{ flex: 1 }}
                   />
@@ -639,7 +639,7 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                 <TextField
                   size="small"
                   value={data.personalInfo.title || ''}
-                  onChange={(e) => onUpdateField?.('personalInfo.title', e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.('personalInfo.title', e.target.value)}
                   placeholder="Ünvan/Pozisyon"
                   sx={{ width: '100%', maxWidth: 400 }}
                 />
@@ -662,14 +662,14 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                   <TextField
                     size="small"
                     value={data.personalInfo.city || ''}
-                    onChange={(e) => onUpdateField?.('personalInfo.city', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.('personalInfo.city', e.target.value)}
                     placeholder="Şehir"
                     sx={{ flex: 1 }}
                   />
                   <TextField
                     size="small"
                     value={data.personalInfo.country || ''}
-                    onChange={(e) => onUpdateField?.('personalInfo.country', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.('personalInfo.country', e.target.value)}
                     placeholder="Ülke"
                     sx={{ flex: 1 }}
                   />
@@ -678,14 +678,14 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                   <TextField
                     size="small"
                     value={data.personalInfo.phone || ''}
-                    onChange={(e) => onUpdateField?.('personalInfo.phone', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.('personalInfo.phone', e.target.value)}
                     placeholder="Telefon"
                     sx={{ flex: 1 }}
                   />
                   <TextField
                     size="small"
                     value={data.personalInfo.email || ''}
-                    onChange={(e) => onUpdateField?.('personalInfo.email', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.('personalInfo.email', e.target.value)}
                     placeholder="E-posta"
                     sx={{ flex: 1 }}
                   />
@@ -694,14 +694,14 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                   <TextField
                     size="small"
                     value={data.personalInfo.portfolio || ''}
-                    onChange={(e) => onUpdateField?.('personalInfo.portfolio', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.('personalInfo.portfolio', e.target.value)}
                     placeholder="Portfolio URL"
                     sx={{ flex: 1 }}
                   />
                   <TextField
                     size="small"
                     value={data.personalInfo.github || ''}
-                    onChange={(e) => onUpdateField?.('personalInfo.github', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.('personalInfo.github', e.target.value)}
                     placeholder="GitHub URL"
                     sx={{ flex: 1 }}
                   />
@@ -709,7 +709,7 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                 <TextField
                   size="small"
                   value={data.personalInfo.linkedin || ''}
-                  onChange={(e) => onUpdateField?.('personalInfo.linkedin', e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.('personalInfo.linkedin', e.target.value)}
                   placeholder="LinkedIn URL"
                   sx={{ width: '100%' }}
                 />
@@ -790,7 +790,7 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                     multiline
                     rows={4}
                     value={data.about}
-                    onChange={(e) => onUpdateField?.('about', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.('about', e.target.value)}
                     variant="outlined"
                     size="small"
                     sx={{ 
@@ -826,14 +826,14 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                             <TextField
                               size="small"
                               value={exp.position || ''}
-                              onChange={(e) => onUpdateWorkExperience?.(index, 'position', e.target.value)}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateWorkExperience?.(index, 'position', e.target.value)}
                               placeholder="Pozisyon"
                               sx={{ mb: 1 }}
                             />
                             <TextField
                               size="small"
                               value={exp.company || ''}
-                              onChange={(e) => onUpdateWorkExperience?.(index, 'company', e.target.value)}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateWorkExperience?.(index, 'company', e.target.value)}
                               placeholder="Şirket Adı"
                               sx={{ mb: 1 }}
                             />
@@ -841,14 +841,14 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                               <TextField
                                 size="small"
                                 value={exp.city || ''}
-                                onChange={(e) => onUpdateWorkExperience?.(index, 'city', e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateWorkExperience?.(index, 'city', e.target.value)}
                                 placeholder="Şehir"
                                 sx={{ flex: 1 }}
                               />
                               <TextField
                                 size="small"
                                 value={exp.country || ''}
-                                onChange={(e) => onUpdateWorkExperience?.(index, 'country', e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateWorkExperience?.(index, 'country', e.target.value)}
                                 placeholder="Ülke"
                                 sx={{ flex: 1 }}
                               />
@@ -857,14 +857,14 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                               <TextField
                                 size="small"
                                 value={exp.startDate || ''}
-                                onChange={(e) => onUpdateWorkExperience?.(index, 'startDate', e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateWorkExperience?.(index, 'startDate', e.target.value)}
                                 placeholder="Başlangıç (YYYY-MM)"
                                 sx={{ flex: 1 }}
                               />
                               <TextField
                                 size="small"
                                 value={exp.endDate || ''}
-                                onChange={(e) => onUpdateWorkExperience?.(index, 'endDate', e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateWorkExperience?.(index, 'endDate', e.target.value)}
                                 placeholder="Bitiş (YYYY-MM veya Present)"
                                 sx={{ flex: 1 }}
                               />
@@ -970,27 +970,27 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                         <TextField
                           size="small"
                           value={edu.university || ''}
-                          onChange={(e) => onUpdateField?.(`education.${index}.university`, e.target.value)}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.(`education.${index}.university`, e.target.value)}
                           placeholder="Üniversite Adı"
                         />
                         <TextField
                           size="small"
                           value={edu.department || ''}
-                          onChange={(e) => onUpdateField?.(`education.${index}.department`, e.target.value)}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.(`education.${index}.department`, e.target.value)}
                           placeholder="Bölüm"
                         />
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           <TextField
                             size="small"
                             value={edu.startDate || ''}
-                            onChange={(e) => onUpdateField?.(`education.${index}.startDate`, e.target.value)}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.(`education.${index}.startDate`, e.target.value)}
                             placeholder="Başlangıç (YYYY-MM)"
                             sx={{ flex: 1 }}
                           />
                           <TextField
                             size="small"
                             value={edu.endDate || ''}
-                            onChange={(e) => onUpdateField?.(`education.${index}.endDate`, e.target.value)}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.(`education.${index}.endDate`, e.target.value)}
                             placeholder="Bitiş (YYYY-MM)"
                             sx={{ flex: 1 }}
                           />
@@ -1093,14 +1093,14 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                       <TextField
                         size="small"
                         value={lang.language || ''}
-                        onChange={(e) => onUpdateField?.(`languages.${index}.language`, e.target.value)}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.(`languages.${index}.language`, e.target.value)}
                         placeholder="Dil adı"
                         sx={{ flex: 1 }}
                       />
                       <TextField
                         size="small"
                         value={lang.level || ''}
-                        onChange={(e) => onUpdateField?.(`languages.${index}.level`, e.target.value)}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.(`languages.${index}.level`, e.target.value)}
                         placeholder="Seviye (A1, B2, C1, vb.)"
                         sx={{ flex: 1 }}
                       />

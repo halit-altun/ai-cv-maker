@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   TextField,
@@ -11,7 +11,9 @@ import {
   Divider,
   Stack
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, Remove as RemoveIcon } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon, Remove as RemoveIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
+import AIPromptBox from '../common/AIPromptBox';
+import { CVMakerAIService } from '@/lib/cv-maker/service';
 
 export interface WorkExperienceItem {
   id: string;
@@ -27,9 +29,13 @@ export interface WorkExperienceItem {
 interface WorkExperienceProps {
   data: WorkExperienceItem[];
   onChange: (experiences: WorkExperienceItem[]) => void;
+  aboutData?: string;
 }
 
-const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange }) => {
+const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange, aboutData = '' }) => {
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [selectedExperienceId, setSelectedExperienceId] = useState<string | null>(null);
+
   const addExperience = () => {
     const newExperience: WorkExperienceItem = {
       id: Date.now().toString(),
@@ -89,6 +95,41 @@ const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange }) => {
     );
   };
 
+  const handleAIGenerate = async (prompt: string): Promise<string> => {
+    try {
+      console.log('=== İŞ DENEYİMİ AI GENERATION ===');
+      console.log('Orijinal prompt:', prompt);
+      console.log('Hakkımda bilgisi:', aboutData);
+      console.log('Hakkımda bilgisi var mı:', !!aboutData.trim());
+      
+      // Hakkımda bilgisini de prompt'a ekle
+      const enhancedPrompt = aboutData.trim() 
+        ? `${prompt}\n\nHakkımda bilgileri: ${aboutData}`
+        : prompt;
+      
+      console.log('Enhanced prompt:', enhancedPrompt);
+      console.log('===============================');
+      
+      const bullets = await CVMakerAIService.generateWorkExperienceBullets(enhancedPrompt);
+      return bullets.join('\n');
+    } catch (error) {
+      console.error('AI generation error:', error);
+      throw error;
+    }
+  };
+
+  const handleAISave = (result: string) => {
+    if (selectedExperienceId) {
+      const bullets = result.split('\n').filter(bp => bp.trim());
+      updateExperience(selectedExperienceId, 'bulletPoints', bullets);
+    }
+  };
+
+  const openAIDialog = (experienceId: string) => {
+    setSelectedExperienceId(experienceId);
+    setAiDialogOpen(true);
+  };
+
   return (
     <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -134,7 +175,7 @@ const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange }) => {
                   label="Pozisyon"
                   placeholder="Örn: Senior Frontend Developer"
                   value={experience.position}
-                  onChange={(e) => updateExperience(experience.id, 'position', e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateExperience(experience.id, 'position', e.target.value)}
                   variant="outlined"
                   required
                 />
@@ -144,7 +185,7 @@ const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange }) => {
                   label="Firma Adı"
                   placeholder="Örn: Microsoft, Google"
                   value={experience.company}
-                  onChange={(e) => updateExperience(experience.id, 'company', e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateExperience(experience.id, 'company', e.target.value)}
                   variant="outlined"
                   required
                 />
@@ -155,7 +196,7 @@ const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange }) => {
                     label="Başlangıç Tarihi"
                     type="month"
                     value={experience.startDate}
-                    onChange={(e) => updateExperience(experience.id, 'startDate', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateExperience(experience.id, 'startDate', e.target.value)}
                     variant="outlined"
                     InputLabelProps={{ shrink: true }}
                     required
@@ -166,7 +207,7 @@ const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange }) => {
                     label="Bitiş Tarihi"
                     type="month"
                     value={experience.endDate}
-                    onChange={(e) => updateExperience(experience.id, 'endDate', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateExperience(experience.id, 'endDate', e.target.value)}
                     variant="outlined"
                     InputLabelProps={{ shrink: true }}
                     placeholder="Halen devam ediyorsa boş bırakın"
@@ -178,7 +219,7 @@ const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange }) => {
                     fullWidth
                     label="Ülke"
                     value={experience.country}
-                    onChange={(e) => updateExperience(experience.id, 'country', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateExperience(experience.id, 'country', e.target.value)}
                     variant="outlined"
                   />
 
@@ -186,7 +227,7 @@ const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange }) => {
                     fullWidth
                     label="Şehir"
                     value={experience.city}
-                    onChange={(e) => updateExperience(experience.id, 'city', e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateExperience(experience.id, 'city', e.target.value)}
                     variant="outlined"
                   />
                 </Box>
@@ -196,13 +237,31 @@ const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange }) => {
                     <Typography variant="subtitle2" fontWeight={600}>
                       Sorumluluklar ve Başarılar
                     </Typography>
-                    <Button
-                      size="small"
-                      startIcon={<AddIcon />}
-                      onClick={() => addBulletPoint(experience.id)}
-                    >
-                      Madde Ekle
-                    </Button>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<AutoAwesomeIcon />}
+                        onClick={() => openAIDialog(experience.id)}
+                        sx={{ 
+                          color: '#1976d2',
+                          borderColor: '#1976d2',
+                          '&:hover': {
+                            backgroundColor: '#1976d2',
+                            color: 'white'
+                          }
+                        }}
+                      >
+                        AI ile Üret
+                      </Button>
+                      <Button
+                        size="small"
+                        startIcon={<AddIcon />}
+                        onClick={() => addBulletPoint(experience.id)}
+                      >
+                        Madde Ekle
+                      </Button>
+                    </Box>
                   </Box>
 
                   {experience.bulletPoints.map((bullet, index) => (
@@ -211,7 +270,7 @@ const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange }) => {
                         fullWidth
                         placeholder={`Madde ${index + 1}`}
                         value={bullet}
-                        onChange={(e) => updateBulletPoint(experience.id, index, e.target.value)}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateBulletPoint(experience.id, index, e.target.value)}
                         variant="outlined"
                         size="small"
                       />
@@ -232,6 +291,18 @@ const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange }) => {
           </Box>
         ))
       )}
+
+      <AIPromptBox
+        open={aiDialogOpen}
+        onClose={() => setAiDialogOpen(false)}
+        title="AI ile Sorumluluklar ve Başarılar Üret"
+        placeholder="Deneyimlerinizi, yaptığınız işleri ve başarılarınızı yazın..."
+        onGenerate={handleAIGenerate}
+        onSave={handleAISave}
+        type="work-experience"
+        workExperienceData={data}
+        aboutData={aboutData}
+      />
     </Paper>
   );
 };

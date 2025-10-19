@@ -82,6 +82,7 @@ export default function CVMakerAI() {
             <WorkExperience
               data={workExperience}
               onChange={setWorkExperience}
+              aboutData={about}
             />
 
             <Education
@@ -92,6 +93,7 @@ export default function CVMakerAI() {
             <Skills
               data={skills}
               onChange={setSkills}
+              workExperienceData={workExperience}
             />
 
             <Languages

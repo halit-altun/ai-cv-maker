@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   TextField,
@@ -11,15 +11,19 @@ import {
   Chip,
   Stack
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
+import AIPromptBox from '../common/AIPromptBox';
+import { CVMakerAIService } from '@/lib/cv-maker/service';
 
 interface SkillsProps {
   data: string[];
   onChange: (skills: string[]) => void;
+  workExperienceData?: any[];
 }
 
-const Skills: React.FC<SkillsProps> = ({ data, onChange }) => {
+const Skills: React.FC<SkillsProps> = ({ data, onChange, workExperienceData = [] }) => {
   const [currentSkill, setCurrentSkill] = React.useState('');
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
 
   const addSkill = () => {
     if (currentSkill.trim()) {
@@ -39,11 +43,50 @@ const Skills: React.FC<SkillsProps> = ({ data, onChange }) => {
     }
   };
 
+  const handleAIGenerate = async (prompt: string): Promise<string> => {
+    try {
+      console.log('=== BECERİLER AI GENERATION ===');
+      console.log('İş deneyimi verisi:', workExperienceData);
+      console.log('Bullet point sayısı:', workExperienceData.flatMap(exp => exp.bulletPoints || []).length);
+      console.log('Tüm bullet point\'ler:', workExperienceData.flatMap(exp => exp.bulletPoints || []));
+      console.log('================================');
+      
+      // Beceriler için prompt'a ihtiyaç yok, direkt iş deneyiminden üret
+      const skills = await CVMakerAIService.generateSkillsFromExperience(workExperienceData);
+      return skills.join('\n');
+    } catch (error) {
+      console.error('AI generation error:', error);
+      throw error;
+    }
+  };
+
+  const handleAISave = (result: string) => {
+    const skills = result.split('\n').filter(skill => skill.trim());
+    onChange(skills);
+  };
+
   return (
     <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-      <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 600 }}>
-        Beceriler
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" sx={{ fontWeight: 600 }}>
+          Beceriler
+        </Typography>
+        <Button
+          variant="outlined"
+          startIcon={<AutoAwesomeIcon />}
+          onClick={() => setAiDialogOpen(true)}
+          sx={{ 
+            color: '#1976d2',
+            borderColor: '#1976d2',
+            '&:hover': {
+              backgroundColor: '#1976d2',
+              color: 'white'
+            }
+          }}
+        >
+          AI ile Üret
+        </Button>
+      </Box>
 
       <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
         <TextField
@@ -84,6 +127,17 @@ const Skills: React.FC<SkillsProps> = ({ data, onChange }) => {
           ))}
         </Stack>
       )}
+
+      <AIPromptBox
+        open={aiDialogOpen}
+        onClose={() => setAiDialogOpen(false)}
+        title="AI ile Beceriler Üret"
+        placeholder="Beceriler iş deneyimlerinizden otomatik olarak üretilecektir..."
+        onGenerate={handleAIGenerate}
+        onSave={handleAISave}
+        type="skills"
+        workExperienceData={workExperienceData}
+      />
     </Paper>
   );
 };
