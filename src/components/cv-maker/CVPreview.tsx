@@ -41,24 +41,44 @@ interface CVData {
 
 interface CVPreviewProps {
   data: CVData;
+  isEnglish?: boolean;
 }
 
-const CVPreview: React.FC<CVPreviewProps> = ({ data }) => {
+const CVPreview: React.FC<CVPreviewProps> = ({ data, isEnglish = false }) => {
   const cvRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = React.useState(false);
 
   const formatDate = (dateString: string) => {
-    if (!dateString || dateString === 'Present' || dateString === 'present') return 'Devam Ediyor';
-    if (dateString.includes('Present') || dateString.includes('present')) return 'Devam Ediyor';
+    if (!dateString || dateString === 'Present' || dateString === 'present') {
+      return isEnglish ? 'Present' : 'Devam Ediyor';
+    }
+    if (dateString.includes('Present') || dateString.includes('present')) {
+      return isEnglish ? 'Present' : 'Devam Ediyor';
+    }
+    
+    // Eğer tarih zaten İngilizce formatında ise (Oct, Aug, Jan vb.)
+    if (dateString.includes('Oct') || dateString.includes('Aug') || dateString.includes('Jan') || 
+        dateString.includes('Feb') || dateString.includes('Mar') || dateString.includes('Apr') ||
+        dateString.includes('May') || dateString.includes('Jun') || dateString.includes('Jul') ||
+        dateString.includes('Sep') || dateString.includes('Nov') || dateString.includes('Dec')) {
+      return dateString;
+    }
+    
+    // Hem Türkçe hem İngilizce için sayısal format - 2025-01 → 01/2025
     const [year, month] = dateString.split('-');
-    const months = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
-    return `${months[parseInt(month) - 1]} ${year}`;
+    if (!year || !month) return dateString; // undefined kontrolü
+    return `${month}/${year}`;
   };
 
   const formatUrl = (url: string) => {
     if (!url) return '';
     return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
   };
+
+const formatLinkedInDisplayUrl = (url: string) => {
+  if (!url) return '';
+  return formatUrl(url).replace(/^www\./, '');
+};
 
   const handleDownloadPDF = async () => {
     if (isGenerating) return;
@@ -69,7 +89,7 @@ const CVPreview: React.FC<CVPreviewProps> = ({ data }) => {
       console.log('PDF oluşturuluyor...');
       
       // PDF document oluştur
-      const blob = await pdf(<PDFDocument data={data} />).toBlob();
+      const blob = await pdf(<PDFDocument data={data} isEnglish={isEnglish} />).toBlob();
       
       console.log('PDF blob oluşturuldu, boyut:', blob.size);
       
@@ -149,6 +169,30 @@ const CVPreview: React.FC<CVPreviewProps> = ({ data }) => {
               marginBottom: 0,
             }
           },
+          '& .experience-item': {
+            pageBreakInside: 'avoid',
+            breakInside: 'avoid',
+            '@media print': {
+              pageBreakInside: 'avoid',
+              breakInside: 'avoid',
+            }
+          },
+          '& .section-item': {
+            pageBreakInside: 'avoid',
+            breakInside: 'avoid',
+            '@media print': {
+              pageBreakInside: 'avoid',
+              breakInside: 'avoid',
+            }
+          },
+          '& .education-item': {
+            pageBreakInside: 'avoid',
+            breakInside: 'avoid',
+            '@media print': {
+              pageBreakInside: 'avoid',
+              breakInside: 'avoid',
+            }
+          },
           '& .page-number': {
             position: 'absolute',
             bottom: '10mm',
@@ -165,7 +209,7 @@ const CVPreview: React.FC<CVPreviewProps> = ({ data }) => {
           <Typography className="page-number">Sayfa 1</Typography>
 
       {/* Header - Kişisel Bilgiler */}
-      <Box sx={{ mb: 3, textAlign: 'center' }}>
+      <Box className="section-item" sx={{ mb: 3, textAlign: 'center' }}>
         <Typography variant="h4" sx={{ fontWeight: 700, color: '#1a1a1a', mb: 0.5 }}>
           {data.personalInfo.firstName || 'Ad'} {data.personalInfo.lastName || 'Soyad'}
         </Typography>
@@ -225,7 +269,7 @@ const CVPreview: React.FC<CVPreviewProps> = ({ data }) => {
                   rel="noopener noreferrer"
                   style={{ color: 'inherit', textDecoration: 'none' }}
                 >
-                  {formatUrl(data.personalInfo.linkedin)}
+                  {formatLinkedInDisplayUrl(data.personalInfo.linkedin)}
                 </a>
               )}
             </Typography>
@@ -238,7 +282,7 @@ const CVPreview: React.FC<CVPreviewProps> = ({ data }) => {
       {/* Hakkımda */}
       {data.about && (
         <>
-          <Box sx={{ mb: 3 }}>
+          <Box className="section-item" sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: '#1a1a1a' }}>
               Hakkımda
             </Typography>
@@ -258,7 +302,13 @@ const CVPreview: React.FC<CVPreviewProps> = ({ data }) => {
               İş Deneyimi
             </Typography>
             {data.workExperience.map((exp, index) => (
-              <Box key={exp.id} sx={{ mb: 2.5 }}>
+              <Box 
+                key={exp.id} 
+                className="experience-item"
+                sx={{ 
+                  mb: 2.5,
+                }}
+              >
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
                   <Box>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#1a1a1a' }}>
@@ -309,7 +359,7 @@ const CVPreview: React.FC<CVPreviewProps> = ({ data }) => {
               Eğitim
             </Typography>
             {data.education.map((edu) => (
-              <Box key={edu.id} sx={{ mb: 2.5 }}>
+              <Box key={edu.id} className="education-item" sx={{ mb: 2.5 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
                   <Box>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#1a1a1a' }}>
@@ -333,7 +383,7 @@ const CVPreview: React.FC<CVPreviewProps> = ({ data }) => {
       {/* Beceriler */}
       {data.skills.length > 0 && (
         <>
-          <Box sx={{ mb: 3 }}>
+          <Box className="section-item" sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
               Beceriler
             </Typography>
@@ -358,7 +408,7 @@ const CVPreview: React.FC<CVPreviewProps> = ({ data }) => {
 
       {/* Diller */}
       {data.languages.length > 0 && (
-        <Box sx={{ mb: 2 }}>
+        <Box className="section-item" sx={{ mb: 2 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
             Diller
           </Typography>

@@ -30,9 +30,10 @@ interface WorkExperienceProps {
   data: WorkExperienceItem[];
   onChange: (experiences: WorkExperienceItem[]) => void;
   aboutData?: string;
+  isEnglish?: boolean;
 }
 
-const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange, aboutData = '' }) => {
+const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange, aboutData = '', isEnglish = false }) => {
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [selectedExperienceId, setSelectedExperienceId] = useState<string | null>(null);
 
@@ -204,13 +205,14 @@ const WorkExperience: React.FC<WorkExperienceProps> = ({ data, onChange, aboutDa
 
                   <TextField
                     fullWidth
-                    label="Bitiş Tarihi"
+                    label={isEnglish ? "End Date" : "Bitiş Tarihi"}
                     type="month"
                     value={experience.endDate}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateExperience(experience.id, 'endDate', e.target.value)}
                     variant="outlined"
                     InputLabelProps={{ shrink: true }}
-                    placeholder="Halen devam ediyorsa boş bırakın"
+                    placeholder={isEnglish ? "Leave empty if still working" : "Halen devam ediyorsa boş bırakın"}
+                    helperText={!experience.endDate ? (isEnglish ? "Currently working - will show as 'Present'" : "Halen devam ediyor - 'Devam Ediyor' olarak gösterilecek") : ''}
                   />
                 </Box>
 

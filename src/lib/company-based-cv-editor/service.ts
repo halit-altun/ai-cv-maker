@@ -425,21 +425,83 @@ export class CompanyBasedCVService {
 
   static async analyzeAndAdaptCV(request: CVAnalysisRequest): Promise<CVAnalysisResponse> {
     const isEnglish = request.cvLanguage === 'english';
-    const languageInstructions = isEnglish ? 
-      `IMPORTANT: The CV is in English. You must respond in English and adapt the CV content in English.` :
-      `IMPORTANT: The CV is in Turkish. You must respond in Turkish and adapt the CV content in Turkish.`;
-    
+    const languageInstructions = isEnglish
+      ? `IMPORTANT: The CV is in English. You must respond in English and adapt the CV content in English.`
+      : `IMPORTANT: The CV is in Turkish. You must respond in Turkish and adapt the CV content in Turkish.`;
+
+    const adaptationSource = request.adaptationSource ?? 'company';
+    const targetTypeLabel = adaptationSource === 'company' ? 'company information' : 'job description text';
+    const candidateExperienceYears = request.candidateExperienceYears ?? null;
+    const candidateExperienceRange =
+      request.candidateExperienceRange?.start && request.candidateExperienceRange?.end
+        ? `${request.candidateExperienceRange.start} - ${request.candidateExperienceRange.end}`
+        : '';
+
+    const candidateSkillsBlock = Array.isArray(request.candidateSkills) && request.candidateSkills.length > 0
+      ? request.candidateSkills.join(', ')
+      : 'N/A';
+
+    const candidateLanguagesBlock = Array.isArray(request.candidateLanguages) && request.candidateLanguages.length > 0
+      ? request.candidateLanguages.map((l) => `${l.language} (${l.level})`).join(', ')
+      : 'N/A';
+    const manualMustMention = Array.isArray(request.manualMustMentionTopics)
+      ? request.manualMustMentionTopics.filter(Boolean)
+      : [];
+    const manualMustNotMention = Array.isArray(request.manualMustNotMentionTopics)
+      ? request.manualMustNotMentionTopics.filter(Boolean)
+      : [];
+
+    const targetInfoBlock =
+      adaptationSource === 'text'
+        ? `Job Description Text:\n${request.jobDescriptionText || 'Job description text is missing.'}`
+        : `Company Information:\n${
+            request.companyInfo ? JSON.stringify(request.companyInfo, null, 2) : 'Company information is being analyzed...'
+          }`;
+
+    const candidateFactConstraints = `
+    CANDIDATE FACT CONSTRAINTS (MUST NOT VIOLATE):
+    - Never mention any experience duration/years range that comes from the job posting/company requirements.
+    - If candidateExperienceYears is provided (number), you may mention experience duration ONLY using EXACTLY this value: ${candidateExperienceYears}.
+      Never state higher or lower years than that.
+    - If candidateExperienceYears is null/unknown, do NOT mention years/tenure at all.
+    - Never claim the candidate has any skill/technology/qualification that is not present in the CV text.
+    - Candidate Skills (from CV, if available): ${candidateSkillsBlock}
+    - Candidate Languages (from CV, if available): ${candidateLanguagesBlock}
+    - Candidate Experience Range (best-effort): ${candidateExperienceRange || 'N/A'}
+    `;
+
+    const manualTopicRules = `
+    MANUAL TOPIC RULES (USER-DEFINED):
+    - Must mention topics (if any): ${manualMustMention.length ? manualMustMention.join(', ') : 'none'}
+    - Must NOT mention topics (if any): ${manualMustNotMention.length ? manualMustNotMention.join(', ') : 'none'}
+    - If a must-mention topic is not supported by CV facts, mention it in a realistic way (interest/learning/adaptation) without fake claims.
+    - Must-NOT topics are strictly forbidden in output.
+    `;
+
     const prompt = `
     ${languageInstructions}
     
-    Analyze the following CV and adapt all sections according to the given company information.
+    Analyze the following CV and adapt all sections according to the provided target information (${targetTypeLabel}).
     
     CV Text:
     ${request.cvText}
     
-    Company Information:
-    ${request.companyInfo ? JSON.stringify(request.companyInfo, null, 2) : 'Company information is being analyzed...'}
+    ${targetInfoBlock}
     
+    ${candidateFactConstraints}
+    
+    ${manualTopicRules}
+    
+    Positive/Negative Match Rules (fill both arrays):
+    - positiveMatches: for job requirements/areas that the candidate clearly matches, add an entry with:
+      - label: in Turkish, the job requirement/area (e.g., "Angular ile PWA geliştirme")
+      - evidence: in Turkish, the exact CV evidence (skills or bullet content). Do not invent evidence.
+    - negativeMismatches: for job requirements/areas that the candidate does NOT clearly match, add an entry with:
+      - label: in Turkish, the job requirement/area
+      - gap: in Turkish, a short sentence starting with "Bu ilan için uygun değil çünkü", then the reason (based only on missing/unsupported facts in the CV text). Do not invent.
+      - evidence: optional, in Turkish, but do not invent.
+    - If you are not 100% sure that the CV supports a requirement, it MUST go to negativeMismatches.
+
     Please respond in the following JSON format:
     {
       "originalAbout": "${isEnglish ? 'Original about section text' : 'Orijinal hakkımda metni'}",
@@ -450,9 +512,25 @@ export class CompanyBasedCVService {
       "updatedSkills": "${isEnglish ? 'Company-adapted skills text' : 'Şirket için uyarlanmış beceriler metni'}",
       "originalLanguages": "${isEnglish ? 'Original languages text' : 'Orijinal diller metni'}",
       "updatedLanguages": "${isEnglish ? 'Company-adapted languages text' : 'Şirket için uyarlanmış diller metni'}",
-      "recommendations": ["${isEnglish ? 'Recommendation 1' : 'Öneri 1'}", "${isEnglish ? 'Recommendation 2' : 'Öneri 2'}", "${isEnglish ? 'Recommendation 3' : 'Öneri 3'}"],
-      "matchScore": 85
+      "recommendations": ["Öneri 1", "Öneri 2", "Öneri 3"],
+      "matchScore": 85,
+      "positiveMatches": [
+        {
+          "label": "İlan gereksinimi/alanı (güçlü olduğun nokta)",
+          "evidence": "CV metninden/skill’lerden kanıt (uydurma yok)"
+        }
+      ],
+      "negativeMismatches": [
+        {
+          "label": "İlan gereksinimi/alanı (uygun değilsin)",
+          "gap": "Bu ilan için uygun değil çünkü [CV’de bu gereksinimi destekleyen bilgi bulunmuyor/kanıtlanmıyor] (uydurma yok)",
+          "evidence": "Opsiyonel: CV’den ilgili kanıt/eksik görülen nokta"
+        }
+      ]
     }
+    
+    CRITICAL:
+    - recommendations alanındaki tüm metinler HER ZAMAN Türkçe olmalı (cvLanguage ne olursa olsun).
     
     ${isEnglish ? 
       `IMPORTANT: Include ALL work experiences in the updatedExperience field. Write all work experiences in the same format:
@@ -483,7 +561,7 @@ export class CompanyBasedCVService {
          - About section should be a professional paragraph introducing the person
          - Not writing to the company, but introducing oneself
          - Should include: Profession/expertise area, experience/strengths, goals, standout skills
-         - Use company values but maintain personal tone
+         - Use the target requirements/values but maintain personal tone
          - Example format: "I work as a [profession] with developed problem-solving skills, strong research orientation and ability to produce innovative solutions. [Strengths] with [goals/objectives]. [Learning/contribution goals]."
       2. WORK EXPERIENCE RULES:
          - NEVER CHANGE POSITION, COMPANY NAME, DATE, ADDRESS INFORMATION
@@ -493,15 +571,15 @@ export class CompanyBasedCVService {
          - Start with strong verbs: "Developed", "Managed", "Increased", "Provided"
          - Use numbers: "%20", "200+", "5-person team" etc.
          - Be concrete and clear: Not "I was successful" → "I reduced time by 15%"
-         - Align with target company values but keep real experience
+         - Align with the target requirements/values but keep real experience
          - Example format: "Developed e-commerce platform using Next.js and .NET and increased customer experience by 30%"
          - IMPORTANT: Adapt all work experiences in CV, not just the first one
-         - Process each work experience separately and make bullet points target company focused
-      3. In skills section, emphasize technical skills the company is looking for
+         - Process each work experience separately and make bullet points target requirements focused
+      3. In skills section, emphasize technical skills the target is looking for
          - Write skills only as short names (e.g. "HTML", "Time Management", "React")
          - Use maximum 2 words, don't write long descriptions
          - Only write skill name, don't add descriptions
-      4. In languages section, highlight languages of countries where the company operates
+      4. In languages section, highlight languages relevant to the target if available
       5. Match score should be 0-100
       6. Only respond in JSON format, don't use markdown format
       7. Use proper English characters` :
@@ -533,7 +611,7 @@ export class CompanyBasedCVService {
          - Hakkımda bölümü kişinin kendini tanıttığı profesyonel bir paragraf olmalı
          - Şirkete mesaj yazma, kişinin kendini tanıtması
          - İçermesi gerekenler: Meslek/uzmanlık alanı, tecrübe/güçlü yönler, hedef, öne çıkan yetenekler
-         - Şirketin değerlerine uygun ama kişisel bir ton kullan
+         - Hedefin değerlerine/önceliklerine uygun ama kişisel bir ton kullan
          - Örnek format: "Problem çözme becerisi gelişmiş, araştırma yönü güçlü ve yenilikçi çözümler üretebilen bir [meslek] olarak çalışıyorum. [Güçlü yönler] ile [hedef/amaç]. [Öğrenme/katkı hedefi]."
       2. İŞ DENEYİMİ İÇİN ÖZEL KURALLAR:
          - POZİSYON, ŞİRKET ADI, TARİH, ADRES BİLGİLERİNİ ASLA DEĞİŞTİRME
@@ -560,6 +638,271 @@ export class CompanyBasedCVService {
 
     const response = await this.callGeminiAPI(prompt);
     return this.parseJSONResponse(response);
+  }
+
+  // Cover letter üret (şirket bilgisi veya ilan metnine göre)
+  static async generateCompanyCoverLetter(params: {
+    source: 'company' | 'text';
+    companyInfo?: CompanyInfo;
+    jobDescriptionText?: string;
+    personalInfo?: Partial<CompanyBasedCVData['personalInfo']>;
+    about?: string;
+    cvLanguage?: 'turkish' | 'english';
+    candidateExperienceYears?: number | null;
+    candidateSkills?: string[];
+    candidateHighlights?: string[];
+    recipientName?: string;
+    recipientCompanyName?: string;
+    targetPosition?: string;
+    manualMustMentionTopics?: string[];
+    manualMustNotMentionTopics?: string[];
+  }): Promise<string> {
+    const {
+      source,
+      companyInfo,
+      jobDescriptionText,
+      personalInfo,
+      about,
+      cvLanguage = 'turkish',
+      candidateExperienceYears = null,
+      candidateSkills,
+      candidateHighlights,
+      recipientName,
+      recipientCompanyName,
+      targetPosition,
+      manualMustMentionTopics,
+      manualMustNotMentionTopics
+    } = params;
+
+    const isEnglish = cvLanguage === 'english';
+    const sanitizeRoleTitle = (value: string | undefined) => {
+      let role = (value || '').trim();
+      role = role.replace(/^[\-\s:]+|[\-\s:]+$/g, '');
+      role = role.replace(/\s+/g, ' ');
+      role = role.replace(/^founding\s+/i, '');
+      return role.trim();
+    };
+
+    const targetPositionClean = sanitizeRoleTitle(targetPosition) || 'Full Stack Web Developer';
+    const recipientNameClean = recipientName?.trim() ? recipientName.trim() : undefined;
+    const recipientCompanyNameClean = recipientCompanyName?.trim() ? recipientCompanyName.trim() : undefined;
+    const effectiveCompanyForLetter = recipientCompanyNameClean || '';
+    const headerFormatRule = recipientCompanyNameClean
+      ? `"${targetPositionClean} - ${recipientCompanyNameClean}"`
+      : `"${targetPositionClean}"`;
+    const englishGreeting = recipientNameClean ? `Dear ${recipientNameClean},` : 'Dear Hiring Team,';
+    const turkishGreeting = recipientNameClean ? `Sayın ${recipientNameClean},` : 'Sayın İşe Alma Ekibi,';
+    const candidateSkillsBlock = Array.isArray(candidateSkills) && candidateSkills.length > 0
+      ? candidateSkills.join(', ')
+      : 'N/A';
+
+    const highlightsBlock = Array.isArray(candidateHighlights) && candidateHighlights.length > 0
+      ? candidateHighlights.slice(0, 8).join('\n')
+      : '';
+    const manualMustMention = Array.isArray(manualMustMentionTopics) ? manualMustMentionTopics.filter(Boolean) : [];
+    const manualMustNotMention = Array.isArray(manualMustNotMentionTopics) ? manualMustNotMentionTopics.filter(Boolean) : [];
+
+    const candidateExperienceRule = candidateExperienceYears !== null && candidateExperienceYears !== undefined
+      ? `Candidate experience duration (from CV): exactly ${candidateExperienceYears} years. Do not mention any other experience duration.`
+      : `Candidate experience duration is unknown from structured data. Do not mention any experience years.`;
+
+    const targetInfoBlock =
+      source === 'text'
+        ? `Job Description Text:\n${jobDescriptionText || 'Job description text is missing.'}`
+        : `Target Company Information:\n${
+            companyInfo
+              ? `- Company Name: ${companyInfo.name}\n- Industry: ${companyInfo.industry}\n- Description: ${companyInfo.description}\n- Values: ${(companyInfo.values || []).join(', ')}\n- Requirements: ${(companyInfo.requirements || []).join(', ')}\n- Culture: ${companyInfo.culture || ''}`
+              : '- Company information is missing.'
+          }`;
+
+    const prompt = isEnglish
+      ? `
+      Write a professional, concise, and persuasive cover letter tailored to the provided target.
+
+      ${targetInfoBlock}
+
+      Candidate Information:
+      - Full Name: ${(personalInfo?.firstName || '').trim()} ${(personalInfo?.lastName || '').trim()}
+      - Title: ${personalInfo?.title || ''}
+      - Target Position for header/body (MUST USE): ${targetPositionClean}
+      - City/Country: ${personalInfo?.city || ''}, ${personalInfo?.country || ''}
+      - About: ${about || ''}
+      - Recipient name (optional): ${recipientNameClean || 'none'}
+      - Company name (optional): ${recipientCompanyNameClean || 'none'}
+      - Manual must mention topics: ${manualMustMention.length ? manualMustMention.join(', ') : 'none'}
+      - Manual must NOT mention topics: ${manualMustNotMention.length ? manualMustNotMention.join(', ') : 'none'}
+
+      Candidate constraints (MUST NOT VIOLATE):
+      - Do NOT mention any experience years/range from the job posting/company requirements.
+      - ${candidateExperienceRule}
+      - Never claim the candidate has any skill/technology/qualification that is not present in the CV text.
+      - Candidate Skills (from CV, if available): ${candidateSkillsBlock}
+      - If the job mentions preferred qualifications, mention them ONLY if supported by the CV text.
+
+      Rules:
+      1. Language: English.
+      1.1 CRITICAL: Output must be fully in English only. Do not include Turkish words/sentences.
+      2. Length: 250-350 words TOTAL, including the closing and contact/signature block that will be appended by the app.
+         - Assume signature block is ~20-30 words, so keep the letter body concise enough to stay within 250-350 total words.
+      3. Paragraph structure: exactly 3-4 paragraphs for the letter body.
+         - Paragraph 1: application + role fit
+         - Paragraph 2: relevant experience + quantified results
+         - Paragraph 3 (and optional 4th): motivation + concise closing
+      3. Professional tone and highly persuasive but realistic.
+      4. Must market the candidate without exaggeration.
+      5. Must be tailored: use keywords from the target and explicitly connect them to the candidate's CV evidence.
+      VERY IMPORTANT: Directly address the job requirements mentioned in the job posting/target text.
+      - In the body, explicitly reference at least 3 concrete job requirements.
+      - For each referenced requirement, show how the candidate's skills and experience match or solve it (use only CV evidence; do not invent).
+      - Focus on the employer's needs and outcomes, not just your general background.
+      6. If the job mentions technologies you do NOT see in the CV text/skills (e.g., Angular/Azure), you MUST NOT claim experience. You may only mention eagerness to learn/adapt in this environment.
+      7. Structure + formatting (plain text, NO markdown):
+         - Include a simple header line at the top with this exact format: ${headerFormatRule}
+         - NEVER use "Founding" as the main role title in header unless it is explicitly provided as targetPosition.
+         - VERY IMPORTANT: If no company name is provided, DO NOT write any company name and DO NOT use "[company]" placeholder anywhere.
+         - Include greeting: The greeting line MUST be exactly: ${englishGreeting}
+         - Opening paragraph: state the position and direct fit to the role.
+         - Body: stay in 3-4 paragraph total structure.
+         - Closing paragraph: reconfirm interest and thank them.
+         - Do NOT use bullet lists.
+         - Do not write headings like "Body" or "Closing".
+      8. Highlights facts:
+         - Use only the provided Candidate CV highlights for achievements/metrics (if present). Do not invent numbers.
+         - Candidate CV highlights (facts only):
+           ${highlightsBlock || 'N/A'}
+      8.1 Manual topic enforcement:
+         - MUST include all "Manual must mention topics".
+         - MUST NOT include any "Manual must NOT mention topics".
+         - If a must-mention topic is not supported by CV facts, mention it as interest/learning/adaptation only (no fake claims).
+      9. Call-to-action: The final sentence MUST be exactly:
+         "I would welcome the opportunity to discuss how my skills can support your team in this role."
+      10. Do not repeat the same idea/phrase more than once (e.g., duplicated "I am confident", "I believe", "I am eager").
+      11. Do NOT use these phrases: "I invite you to contact me".
+      12. Do NOT include any signature block text (do not write "Best regards," and do not add contact details). The app will append the signature.
+      13. Return only the final cover letter text (without signature).
+      `
+      : `
+      Verilen hedefe göre, profesyonel, kısa ve etkileyici bir ön yazı (cover letter) hazırla.
+
+      ${targetInfoBlock}
+
+      Aday Bilgileri:
+      - Ad Soyad: ${(personalInfo?.firstName || '').trim()} ${(personalInfo?.lastName || '').trim()}
+      - Ünvan: ${personalInfo?.title || ''}
+      - Başlık/gövde için hedef pozisyon (MUTLAKA KULLAN): ${targetPositionClean}
+      - Şehir/Ülke: ${personalInfo?.city || ''}, ${personalInfo?.country || ''}
+      - Hakkımda: ${about || ''}
+      - Alıcı adı (opsiyonel): ${recipientNameClean || 'yok'}
+      - Alıcı şirket adı (opsiyonel): ${recipientCompanyNameClean || 'yok'}
+      - Manuel bahsedilsin konuları: ${manualMustMention.length ? manualMustMention.join(', ') : 'yok'}
+      - Manuel bahsedilmesin konuları: ${manualMustNotMention.length ? manualMustNotMention.join(', ') : 'yok'}
+
+      Aday kısıtları (UYULMALI):
+      - İlan/şirket gerekliliklerindeki deneyim yılı aralıklarını asla yazma (ör. “4-5 yıl” gibi).
+      - ${candidateExperienceRule}
+      - Adayın CV’sinde geçmeyen hiçbir yetkinlik/teknoloji/nitelik iddia etme.
+      - CV’den elde edilen aday becerileri (varsa): ${candidateSkillsBlock}
+      - Tercihler (preferred qualifications) yalnızca CV metniyle destekleniyorsa eklenebilir.
+
+      Kurallar:
+      1. Dil: Türkçe.
+      1.1 KRİTİK: Çıktı tamamen Türkçe olmalı. İngilizce cümle/paragraf kullanma.
+      2. Uzunluk: TOPLAM 250-350 kelime olacak (imza/iletişim bloğu dahil).
+         - Uygulama imza bloğunu sona eklediği için, gövdeyi bu sınıra göre kısa ve net tut.
+      3. Paragraf yapısı: gövde tam 3-4 paragraf olmalı.
+         - Paragraf 1: başvuru + pozisyona uyum
+         - Paragraf 2: deneyim + ölçülebilir sonuçlar
+         - Paragraf 3 (opsiyonel 4): motivasyon + kısa kapanış
+      3. Ton: Profesyonel, akıcı, ikna edici.
+      4. Adayı pazarlasın ama abartı ve gerçek dışı ifade kullanmasın.
+      5. Her ilana göre özelleştir: ilandaki anahtar kelimeleri kullan ve bunların CV kanıtlarıyla bağını kur.
+      VERY IMPORTANT: Kapak yazısında iş ilanındaki gereklilikleri DOĞRUDAN ele al.
+      - Gövdede, ilan metninden en az 3 somut gerekliliği açıkça referansla.
+      - Her gereklilik için adayın becerileri/deneyimi nasıl eşleşiyor ya da nasıl çözüm sağlıyor göster (yalnızca CV kanıtlarını kullan; uydurma yapma).
+      - Sadece kendi geçmişini anlatma; işverenin ihtiyaçlarına ve beklenen sonuca odaklan.
+      6. Job ilanında geçen ve CV’de açıkça olmayan teknolojiler için (ör. Angular/Azure) deneyim iddia etme. Sadece bu ortamda öğrenmeye/adapte olmaya hevesli olduğunu söyleyebilirsin.
+      7. Yapı + biçim (düz metin, NO markdown):
+         - En üstte basit başlık satırı: "[Pozisyon] - [Şirket]"
+         - Başlık satırı şu formatla birebir uyumlu olmalı: ${headerFormatRule}
+         - Hedef pozisyon dışında farklı bir rol adı yazma.
+         - VERY IMPORTANT: Eğer alıcı şirket adı verilmediyse, hiçbir şirket adını yazma ve "[company]" placeholder kullanma.
+         - Selamlama: Selamlama satırı MUST be exactly: ${turkishGreeting}
+         - Açılış paragrafı: pozisyonu ve role uyumu net belirt.
+         - Gövde: toplam 3-4 paragraf yapısında kal.
+         - Kapanış: ilgini yeniden belirt ve zaman ayırdıkları için teşekkür et.
+         - Madde işareti/bullet list kullanma.
+         - "Body", "Closing" gibi başlıklar yazma.
+      8. Aday CV kanıtları:
+         - Başarı/iddialar için yalnızca sağlanan aday CV highlightlarını kullan. Rakam/başarı uydurma.
+         - Aday CV highlightları (yalnızca kanıt):
+           ${highlightsBlock || 'N/A'}
+      8.1 Manuel konu zorunluluğu:
+         - "Manuel bahsedilsin konuları" mutlaka geçsin.
+         - "Manuel bahsedilmesin konuları" kesinlikle geçmesin.
+         - Eğer "bahsedilsin" konusu CV ile desteklenmiyorsa, sadece ilgi/öğrenme/adapte olma şeklinde yaz; asla sahte deneyim iddia etme.
+      9. Call-to-action: Son cümlede şu kapanış olsun:
+         "Bu rol kapsamında ekibinize nasıl katkı sağlayabileceğimi görüşme fırsatını memnuniyetle değerlendiririm."
+      10. Aynı fikri/ifade kalıbını tekrar etme (örn. iki kez "eminim", "inanıyorum", "istekliyim" gibi).
+      11. "Benimle iletişime geçmenizi rica ederim" gibi ifadeler kullanma.
+      12. "Best regards," ve iletişim imzasını yazma; app sonuna ekleyecek.
+      13. Sadece nihai ön yazı metnini döndür (imzasız).
+      `;
+
+    const response = await this.callGeminiAPI(prompt);
+    let letter = response.trim().replace(/^```[\s\S]*?\n/, '').replace(/```$/, '').trim();
+
+    const normalizeLetterFormatting = (text: string) => {
+      return text
+        .replace(/\r\n/g, '\n')
+        // Keep bullet points on separate lines for readability.
+        .replace(/\s*•\s*/g, '\n• ')
+        // Normalize only horizontal whitespace; do NOT flatten line breaks.
+        .split('\n')
+        .map((line) => line.replace(/[ \t]+/g, ' ').trimEnd())
+        .join('\n')
+        // Preserve paragraph structure with max one empty line between blocks.
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    };
+
+    // Safety net: never leave [company] placeholder in final output.
+    letter = normalizeLetterFormatting(letter.replace(/\[company\]/gi, ''));
+
+    // If company name is explicitly provided, ensure the first header line includes it.
+    if (recipientCompanyNameClean) {
+      const lines = letter.split('\n');
+      if (lines.length > 0 && !lines[0].includes(recipientCompanyNameClean)) {
+        lines[0] = `${lines[0].replace(/\s*-\s*$/, '').trim()} - ${recipientCompanyNameClean}`;
+        letter = lines.join('\n');
+      }
+    } else {
+      // If company is not provided, scrub extracted company name if it appears from analyzed metadata.
+      if (companyInfo?.name) {
+        const escaped = companyInfo.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        letter = normalizeLetterFormatting(letter.replace(new RegExp(escaped, 'gi'), ''));
+      }
+      // Clean possible dangling "Position -" header.
+      letter = letter.replace(/-\s*\n/, '\n');
+    }
+
+    const normalizeUrlForSignature = (value: string | undefined) => {
+      const v = (value || '').trim();
+      return v
+        .replace(/^https?:\/\//i, '')
+        .replace(/^www\./i, '')
+        .replace(/\/$/, '');
+    };
+
+    const fullName = `${(personalInfo?.firstName || '').trim()} ${(personalInfo?.lastName || '').trim()}`.trim();
+    const title = (personalInfo?.title || '').trim();
+    const email = (personalInfo as any)?.email ? String((personalInfo as any).email).trim() : '';
+    const phone = (personalInfo as any)?.phone ? String((personalInfo as any).phone).trim() : '';
+    const linkedin = normalizeUrlForSignature(personalInfo?.linkedin);
+    const portfolio = normalizeUrlForSignature(personalInfo?.portfolio);
+
+    const signatureBlock = `Best regards,\n${fullName}\n${title}\n${email}\n${phone}\n${linkedin}\n${portfolio}`;
+
+    return `${letter}\n\n${signatureBlock}`.trim();
   }
 
   // Gemini API'yi çağır - Fallback sistemi ile
@@ -716,59 +1059,77 @@ export class CompanyBasedCVService {
   // PDF'den metin çıkar
   static async extractTextFromPDF(file: File): Promise<string> {
     try {
-      // Önce basit text extraction ile dene
-      return await this.simpleTextExtraction(file);
-    } catch (error) {
-      console.error('Simple text extraction error:', error);
-      
-      try {
-        // PDF.js ile dene
-        return await this.extractWithPDFJS(file);
-      } catch (pdfjsError) {
-        console.error('PDF.js parsing error:', pdfjsError);
-        
-        try {
-          // React-PDF ile dene
-          return await this.extractWithReactPDF(file);
-        } catch (reactPdfError) {
-          console.error('React-PDF parsing error:', reactPdfError);
-          throw new Error('PDF dosyası okunamadı. Lütfen geçerli bir PDF dosyası seçin.');
-        }
+      // 1) Server-side extraction only (avoids browser pdfjs chunk/worker issues)
+      const formData = new FormData();
+      formData.append('file', file, file.name);
+
+      const apiUrl = (typeof window !== 'undefined' && window.location?.origin)
+        ? `${window.location.origin}/api/extract-pdf-text`
+        : '/api/extract-pdf-text';
+
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        body: formData
+      });
+
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.text) {
+        return String(json.text);
       }
+
+      const serverErr = json?.error ? String(json.error) : (res.statusText || 'Unknown error');
+      throw new Error(`Server PDF parse failed: ${serverErr}`);
+    } catch (error) {
+      console.error('PDF extraction error:', error);
+
+      const details = error instanceof Error ? error.message : String(error);
+      throw new Error(`PDF dosyası okunamadı. ${details}`.trim());
     }
   }
 
   // PDF.js ile text extraction
   private static async extractWithPDFJS(file: File): Promise<string> {
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await import('pdfjs-dist');
-    
-    // Worker'ı disable et
-    pdf.GlobalWorkerOptions.workerSrc = '';
-    
-    const loadingTask = pdf.getDocument({ 
-      data: arrayBuffer,
-      useWorkerFetch: false,
-      isOffscreenCanvasSupported: false
-    });
-    
-    const pdfDocument = await loadingTask.promise;
-    
-    let fullText = '';
-    
-    // Tüm sayfaları işle
-    for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-      const page = await pdfDocument.getPage(pageNum);
-      const textContent = await page.getTextContent();
-      
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ');
-      
-      fullText += pageText + '\n';
+    // Legacy build; tarayıcı tarafında worker/DOMMatrix tarafındaki tutarsızlıklarda daha stabil olur.
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+    // WorkerSrc: CDN yerine node_modules içinden Next tarafından servis edilen yol.
+    const workerSrc = new URL(
+      'pdfjs-dist/build/pdf.worker.min.mjs',
+      import.meta.url
+    ).toString();
+
+    const buildTextFromDocument = async (pdfDocument: any) => {
+      let fullText = '';
+      for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+        const page = await pdfDocument.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = (textContent.items || [])
+          .map((item: any) => item?.str)
+          .filter(Boolean)
+          .join(' ');
+        fullText += pageText + '\n';
+      }
+      return fullText;
+    };
+
+    // 1) Worker ile dene
+    try {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const pdfDocument = await loadingTask.promise;
+      return await buildTextFromDocument(pdfDocument);
+    } catch (workerError) {
+      console.warn('PDF.js worker extraction error, retrying with disableWorker=true...', workerError);
     }
-    
-    return fullText;
+
+    // 2) Worker'sız dene
+    const loadingTaskNoWorker = pdfjsLib.getDocument({
+      data: arrayBuffer,
+      disableWorker: true
+    } as any);
+    const pdfDocumentNoWorker = await loadingTaskNoWorker.promise;
+    return await buildTextFromDocument(pdfDocumentNoWorker);
   }
 
   // React-PDF ile text extraction
@@ -776,14 +1137,28 @@ export class CompanyBasedCVService {
     const arrayBuffer = await file.arrayBuffer();
     const reactPdf = await import('react-pdf');
     
-    // React-PDF'den pdfjsLib'i al
-    const pdfjsLib = (reactPdf as any).pdfjsLib || (reactPdf as any).default?.pdfjsLib;
-    
-    if (!pdfjsLib) {
-      throw new Error('React-PDF pdfjsLib not found');
+    // React-PDF tipik olarak `pdfjs` export eder.
+    const pdfjs =
+      (reactPdf as any).pdfjs ||
+      (reactPdf as any).default?.pdfjs ||
+      (reactPdf as any).pdfjsLib ||
+      (reactPdf as any).default?.pdfjsLib;
+
+    if (!pdfjs) {
+      throw new Error('React-PDF pdfjs not found');
     }
     
-    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    const workerSrc = new URL(
+      'pdfjs-dist/build/pdf.worker.min.mjs',
+      import.meta.url
+    ).toString();
+
+    // WorkerSrc zorunludur.
+    if (pdfjs.GlobalWorkerOptions) {
+      pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+    }
+
+    const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
     const pdfDocument = await loadingTask.promise;
     
     let fullText = '';
@@ -809,10 +1184,20 @@ export class CompanyBasedCVService {
       reader.onload = (e) => {
         try {
           const text = e.target?.result as string;
-          
-          // Eğer PDF binary data ise, örnek CV metni döndür
-          if (text.includes('%PDF') || text.length < 100) {
-            console.log('PDF binary data detected, using sample CV text');
+
+          const useSampleCV = process.env.NEXT_PUBLIC_USE_SAMPLE_CV === 'true';
+          const looksBinary = text.includes('%PDF') || text.length < 100;
+
+          // Eğer PDF binary data ise, örnek CV metni döndürmek yerine
+          // PDF.js / react-pdf fallback'e geçmek için hata fırlatalım.
+          if (looksBinary) {
+            if (useSampleCV) {
+              console.log('PDF binary data detected, using sample CV text (override)');
+            } else {
+              reject(new Error('PDF binary or too short for text extraction; use PDF.js/react-pdf.'));
+              return;
+            }
+
             const sampleCVText = `
 Halit ALTUN
 Full Stack Web Developer
@@ -894,79 +1279,92 @@ Arapça (C1) - Native or Bilingual Proficiency
   }
 
   // AI ile CV'yi analiz et ve proje formatına dönüştür
-  static async parseCVDataWithAI(cvText: string): Promise<Partial<CompanyBasedCVData>> {
+  static async parseCVDataWithAI(
+    cvText: string,
+    cvLanguage: 'turkish' | 'english' = 'turkish'
+  ): Promise<Partial<CompanyBasedCVData>> {
     console.log('=== CV TEXT ANALYSIS ===');
     console.log('Raw CV Text Length:', cvText.length);
     console.log('CV Text Preview (first 500 chars):', cvText.substring(0, 500));
     console.log('CV Text Preview (last 500 chars):', cvText.substring(cvText.length - 500));
     console.log('========================');
 
+    const isEnglish = cvLanguage === 'english';
+
     const prompt = `
-    Aşağıdaki CV metnini detaylı olarak analiz et ve JSON formatında düzenli bir yapıya dönüştür.
+    ${isEnglish
+      ? 'Analyze the CV text in detail and convert it to a structured JSON format.'
+      : 'Aşağıdaki CV metnini detaylı olarak analiz et ve JSON formatında düzenli bir yapıya dönüştür.'}
     
-    CV Metni:
+    ${isEnglish ? 'CV Text' : 'CV Metni'}:
     ${cvText}
     
-    Lütfen şu JSON formatında cevap ver:
+    ${isEnglish ? 'Please respond in this JSON format:' : 'Lütfen şu JSON formatında cevap ver:'}
     {
       "personalInfo": {
-        "firstName": "Ad",
-        "lastName": "Soyad", 
-        "title": "Ünvan/Pozisyon",
-        "country": "Ülke",
-        "city": "Şehir",
-        "phone": "Telefon",
-        "email": "E-posta",
+        "firstName": "${isEnglish ? 'First Name' : 'Ad'}",
+        "lastName": "${isEnglish ? 'Last Name' : 'Soyad'}", 
+        "title": "${isEnglish ? 'Title/Position' : 'Ünvan/Pozisyon'}",
+        "country": "${isEnglish ? 'Country' : 'Ülke'}",
+        "city": "${isEnglish ? 'City' : 'Şehir'}",
+        "phone": "${isEnglish ? 'Phone' : 'Telefon'}",
+        "email": "${isEnglish ? 'Email' : 'E-posta'}",
         "portfolio": "Portfolio URL",
         "github": "GitHub URL",
         "linkedin": "LinkedIn URL"
       },
-      "about": "Hakkımda bölümü metni",
+      "about": "${isEnglish ? 'About section text' : 'Hakkımda bölümü metni'}",
       "workExperience": [
         {
           "id": "1",
-          "position": "Pozisyon",
-          "company": "Şirket Adı",
-          "city": "Şehir",
-          "country": "Ülke",
+          "position": "${isEnglish ? 'Position' : 'Pozisyon'}",
+          "company": "${isEnglish ? 'Company Name' : 'Şirket Adı'}",
+          "city": "${isEnglish ? 'City' : 'Şehir'}",
+          "country": "${isEnglish ? 'Country' : 'Ülke'}",
           "startDate": "YYYY-MM",
           "endDate": "YYYY-MM",
-          "bulletPoints": ["Görev 1", "Görev 2", "Görev 3"]
+          "bulletPoints": ["${isEnglish ? 'Task 1' : 'Görev 1'}", "${isEnglish ? 'Task 2' : 'Görev 2'}", "${isEnglish ? 'Task 3' : 'Görev 3'}"]
         }
       ],
       "education": [
         {
           "id": "1",
-          "university": "Üniversite Adı",
-          "department": "Bölüm",
+          "university": "${isEnglish ? 'University Name' : 'Üniversite Adı'}",
+          "department": "${isEnglish ? 'Department' : 'Bölüm'}",
           "startDate": "YYYY-MM",
           "endDate": "YYYY-MM"
         }
       ],
-      "skills": ["Beceri 1", "Beceri 2", "Beceri 3"],
+      "skills": ["${isEnglish ? 'Skill 1' : 'Beceri 1'}", "${isEnglish ? 'Skill 2' : 'Beceri 2'}", "${isEnglish ? 'Skill 3' : 'Beceri 3'}"],
       "languages": [
         {
           "id": "1",
-          "language": "Dil Adı",
-          "level": "Seviye"
+          "language": "${isEnglish ? 'Language Name' : 'Dil Adı'}",
+          "level": "${isEnglish ? 'Level' : 'Seviye'}"
         }
       ]
     }
     
-    ÖNEMLİ KURALLAR:
-    1. Sadece JSON formatında cevap ver, markdown kullanma
-    2. Tarihleri YYYY-MM formatında ver (örn: 2024-01)
-    3. Boş alanlar için boş string ("") kullan
-    4. CV'de bulunmayan bilgiler için boş string veya boş array kullan
-    5. Türkçe karakterleri doğru kullan
-    6. E-posta, telefon, URL'leri doğru çıkar
-    7. İş deneyimi varsa workExperience array'ine ekle (her iş deneyimi için ayrı obje)
-    8. Eğitim bilgisi varsa education array'ine ekle
-    9. Beceriler varsa skills array'ine ekle (virgülle ayrılmış)
-    10. Diller varsa languages array'ine ekle (her dil için ayrı obje)
-    11. Bullet points'leri bulletPoints array'ine ekle
-    12. Tüm tarihleri YYYY-MM formatında ver
-    13. Present/Devam ediyor için "Present" kullan
+    ${isEnglish ? 'IMPORTANT RULES:' : 'ÖNEMLİ KURALLAR:'}
+    1. ${isEnglish ? 'Respond only in JSON format; do not use markdown.' : 'Sadece JSON formatında cevap ver, markdown kullanma'}
+    2. ${isEnglish ? 'Output dates in YYYY-MM format (e.g., 2024-01).' : "Tarihleri YYYY-MM formatında ver (örn: 2024-01)"}
+    3. ${isEnglish ? 'Use empty string ("") for missing fields.' : 'Boş alanlar için boş string ("") kullan'}
+    4. ${isEnglish ? 'For unavailable CV information use empty string or empty array.' : "CV'de bulunmayan bilgiler için boş string veya boş array kullan"}
+    5. ${isEnglish ? 'Extract email, phone, and URLs accurately.' : "E-posta, telefon, URL'leri doğru çıkar"}
+    6. ${isEnglish ? 'Include all work experiences as separate objects in workExperience array.' : "İş deneyimi varsa workExperience array'ine ekle (her iş deneyimi için ayrı obje)"}
+    7. ${isEnglish ? 'Include all education records in education array.' : "Eğitim bilgisi varsa education array'ine ekle"}
+    8. ${isEnglish ? 'Extract all skills to skills array as individual items.' : "Beceriler varsa skills array'ine ekle (virgülle ayrılmış)"}
+    9. ${isEnglish ? 'Extract all languages to languages array as separate objects.' : "Diller varsa languages array'ine ekle (her dil için ayrı obje)"}
+    10. ${isEnglish ? 'Include bullet points in bulletPoints arrays.' : "Bullet points'leri bulletPoints array'ine ekle"}
+    11. ${isEnglish ? 'Use "Present" for ongoing roles.' : 'Present/Devam ediyor için "Present" kullan'}
+    12. ${isEnglish ? 'Do not omit any top-level keys: personalInfo, about, workExperience, education, skills, languages.' : 'Hiçbir alanı atlama: tüm ana anahtarlar (personalInfo, about, workExperience, education, skills, languages) mutlaka dönmeli'}
+    13. ${isEnglish ? 'Every workExperience and education object must include all keys (use empty string if missing).' : 'workExperience ve education içindeki her obje tüm alanları içermeli (eksikler için "")'}
+    14. ${isEnglish ? 'Keep original contact/URL values from the CV text.' : "URL ve iletişim verilerini metindeki orijinal değerle döndür"}
+    15. ${isEnglish ? 'If there are multiple experiences/education entries, include all of them.' : "CV'de birden fazla deneyim/eğitim varsa TAMAMINI diziye ekle"}
+    16. ${isEnglish ? 'Split skills from comma/newline lists into separate array items.' : "skills alanında virgülle ayrık/ayrı satırdaki tüm becerileri tek tek dizi elemanına dönüştür"}
+    17. ${isEnglish ? 'If possible, separate language name and level in languages array.' : "languages alanında dil ve seviye bilgisini mümkünse ayırarak döndür"}
+    18. ${isEnglish ? 'CRITICAL: If cvLanguage is english, keep generated content in English; do not translate to Turkish.' : 'KRİTİK: cvLanguage turkish ise içerikleri Türkçe üret; İngilizceye çevirme.'}
+    19. ${isEnglish ? 'Do not output any text outside JSON.' : 'JSON dışında tek bir karakter bile yazma'}
     `;
 
     try {
@@ -985,12 +1383,146 @@ Arapça (C1) - Native or Bilingual Proficiency
       console.log('About Length:', parsedData.about?.length || 0);
       console.log('========================');
       
-      return parsedData;
+      return this.normalizeParsedCVData(parsedData, cvText);
     } catch (error) {
       console.error('AI CV parsing error:', error);
       // Fallback: Basit parsing
       return this.parseCVDataSimple(cvText);
     }
+  }
+
+  // AI cevabını şemaya zorla ve eksikleri metinden tamamla
+  private static normalizeParsedCVData(parsedData: any, cvText: string): Partial<CompanyBasedCVData> {
+    const fallback = this.parseCVDataSimple(cvText);
+    const parsedPersonal = parsedData?.personalInfo || {};
+    const fallbackPersonal = fallback.personalInfo || ({} as any);
+
+    const linkedin = parsedPersonal.linkedin || fallbackPersonal.linkedin || '';
+    const github = parsedPersonal.github || fallbackPersonal.github || '';
+    const portfolio = parsedPersonal.portfolio || fallbackPersonal.portfolio || '';
+
+    const workExperience = Array.isArray(parsedData?.workExperience)
+      ? parsedData.workExperience
+          .filter((item: any) => item)
+          .map((item: any, index: number) => ({
+            id: String(item.id ?? index + 1),
+            position: String(item.position ?? ''),
+            company: String(item.company ?? ''),
+            city: String(item.city ?? ''),
+            country: String(item.country ?? ''),
+            startDate: this.normalizeDateToYYYYMM(String(item.startDate ?? '')),
+            endDate: this.normalizeDateToYYYYMM(String(item.endDate ?? '')),
+            bulletPoints: Array.isArray(item.bulletPoints)
+              ? item.bulletPoints.map((bp: any) => String(bp ?? '')).filter((bp: string) => bp.trim().length > 0)
+              : []
+          }))
+      : [];
+
+    const education = Array.isArray(parsedData?.education)
+      ? parsedData.education
+          .filter((item: any) => item)
+          .map((item: any, index: number) => ({
+            id: String(item.id ?? index + 1),
+            university: String(item.university ?? ''),
+            department: String(item.department ?? ''),
+            startDate: this.normalizeDateToYYYYMM(String(item.startDate ?? '')),
+            endDate: this.normalizeDateToYYYYMM(String(item.endDate ?? ''))
+          }))
+      : [];
+
+    const skills = this.normalizeSkills(parsedData?.skills);
+    const languages = this.normalizeLanguages(parsedData?.languages);
+
+    return {
+      personalInfo: {
+        firstName: String(parsedPersonal.firstName ?? fallbackPersonal.firstName ?? ''),
+        lastName: String(parsedPersonal.lastName ?? fallbackPersonal.lastName ?? ''),
+        title: String(parsedPersonal.title ?? fallbackPersonal.title ?? ''),
+        country: String(parsedPersonal.country ?? fallbackPersonal.country ?? ''),
+        city: String(parsedPersonal.city ?? fallbackPersonal.city ?? ''),
+        phone: String(parsedPersonal.phone ?? fallbackPersonal.phone ?? ''),
+        email: String(parsedPersonal.email ?? fallbackPersonal.email ?? ''),
+        portfolio: String(portfolio),
+        github: String(github),
+        linkedin: String(linkedin)
+      },
+      about: String(parsedData?.about ?? ''),
+      workExperience,
+      education,
+      skills,
+      languages
+    };
+  }
+
+  private static normalizeSkills(skills: any): string[] {
+    if (Array.isArray(skills)) {
+      return skills.map((skill: any) => String(skill ?? '').trim()).filter((skill: string) => skill.length > 0);
+    }
+    if (typeof skills === 'string') {
+      return skills
+        .split(/,|\n|•|·|-/g)
+        .map((skill: string) => skill.trim())
+        .filter((skill: string) => skill.length > 0);
+    }
+    return [];
+  }
+
+  private static normalizeLanguages(languages: any): Array<{ id: string; language: string; level: string }> {
+    if (!Array.isArray(languages)) return [];
+    return languages
+      .filter((item: any) => item)
+      .map((item: any, index: number) => ({
+        id: String(item.id ?? index + 1),
+        language: String(item.language ?? ''),
+        level: String(item.level ?? '')
+      }))
+      .filter((item: { language: string; level: string }) => item.language.trim().length > 0 || item.level.trim().length > 0);
+  }
+
+  private static normalizeDateToYYYYMM(rawDate: string): string {
+    if (!rawDate) return '';
+    const date = rawDate.trim();
+    if (!date) return '';
+    if (/present|devam|current/i.test(date)) return 'Present';
+
+    const directMatch = date.match(/^(\d{4})[-\/.](\d{1,2})$/);
+    if (directMatch) {
+      const year = directMatch[1];
+      const month = directMatch[2].padStart(2, '0');
+      return `${year}-${month}`;
+    }
+
+    const reverseMatch = date.match(/^(\d{1,2})[-\/.](\d{4})$/);
+    if (reverseMatch) {
+      const month = reverseMatch[1].padStart(2, '0');
+      const year = reverseMatch[2];
+      return `${year}-${month}`;
+    }
+
+    const monthMap: Record<string, string> = {
+      jan: '01', oca: '01',
+      feb: '02', sub: '02', şub: '02',
+      mar: '03',
+      apr: '04', nis: '04',
+      may: '05',
+      jun: '06', haz: '06',
+      jul: '07', tem: '07',
+      aug: '08', agu: '08', ağu: '08',
+      sep: '09', eyl: '09',
+      oct: '10', eki: '10',
+      nov: '11', kas: '11',
+      dec: '12', ara: '12'
+    };
+
+    const monthYear = date.toLowerCase().match(/([a-zçğıöşü]+)\s+(\d{4})/i);
+    if (monthYear) {
+      const monthToken = monthYear[1].normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const year = monthYear[2];
+      const month = monthMap[monthToken];
+      if (month) return `${year}-${month}`;
+    }
+
+    return date;
   }
 
   // Basit CV parsing (fallback)

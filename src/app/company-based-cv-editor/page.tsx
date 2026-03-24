@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -22,10 +22,17 @@ import {
   FormLabel,
   FormGroup,
   FormControlLabel,
+  Radio,
+  RadioGroup,
   Checkbox,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow
 } from '@mui/material';
 import {
   Upload as UploadIcon,
@@ -33,7 +40,8 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   Preview as PreviewIcon,
   ExpandMore as ExpandMoreIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  ContentCopy as ContentCopyIcon
 } from '@mui/icons-material';
 import CompanyBasedCVPreview from '@/components/company-based-cv-editor/CompanyBasedCVPreview';
 import { CompanyBasedCVService } from '@/lib/company-based-cv-editor/service';
@@ -60,6 +68,8 @@ const defaultAISettings: AIAdaptationSettings = {
   languages: false
 };
 
+const ANALYSIS_PREFS_STORAGE_KEY = 'company_based_cv_editor_analysis_preferences_v1';
+
 export default function CompanyBasedCVEditor() {
   const [activeStep, setActiveStep] = useState(0);
   const [cvFile, setCvFile] = useState<File | null>(null);
@@ -67,6 +77,16 @@ export default function CompanyBasedCVEditor() {
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [cvData, setCvData] = useState<CompanyBasedCVData | null>(null);
   const [analysisResult, setAnalysisResult] = useState<CVAnalysisResponse | null>(null);
+  const [coverLetter, setCoverLetter] = useState('');
+  const [coverLetterLanguage, setCoverLetterLanguage] = useState<'turkish' | 'english'>('turkish');
+  const [shouldGenerateCoverLetter, setShouldGenerateCoverLetter] = useState(true);
+  const [cvAdaptationSource, setCvAdaptationSource] = useState<'company' | 'text'>('company');
+  const [coverLetterSource, setCoverLetterSource] = useState<'company' | 'text'>('company');
+  const [coverLetterRecipientName, setCoverLetterRecipientName] = useState<string>('');
+  const [coverLetterCompanyName, setCoverLetterCompanyName] = useState<string>('');
+  const [manualMustMentionTopicsText, setManualMustMentionTopicsText] = useState<string>('');
+  const [manualMustNotMentionTopicsText, setManualMustNotMentionTopicsText] = useState<string>('');
+  const [jobDescriptionText, setJobDescriptionText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiSettings, setAiSettings] = useState<AIAdaptationSettings>(defaultAISettings);
@@ -74,6 +94,88 @@ export default function CompanyBasedCVEditor() {
   const [editableCVData, setEditableCVData] = useState<CompanyBasedCVData | null>(null);
   const [cvLanguage, setCvLanguage] = useState<'turkish' | 'english'>('turkish');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Geçici DB (localStorage): analiz tercihlerini her yeni analizde hazır tutar.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(ANALYSIS_PREFS_STORAGE_KEY);
+      if (!raw) return;
+
+      const parsed = JSON.parse(raw) as {
+        manualMustMentionTopicsText?: string;
+        manualMustNotMentionTopicsText?: string;
+        coverLetterRecipientName?: string;
+        coverLetterCompanyName?: string;
+      };
+
+      if (typeof parsed.manualMustMentionTopicsText === 'string') {
+        setManualMustMentionTopicsText(parsed.manualMustMentionTopicsText);
+      }
+      if (typeof parsed.manualMustNotMentionTopicsText === 'string') {
+        setManualMustNotMentionTopicsText(parsed.manualMustNotMentionTopicsText);
+      }
+      if (typeof parsed.coverLetterRecipientName === 'string') {
+        setCoverLetterRecipientName(parsed.coverLetterRecipientName);
+      }
+      if (typeof parsed.coverLetterCompanyName === 'string') {
+        setCoverLetterCompanyName(parsed.coverLetterCompanyName);
+      }
+    } catch (err) {
+      console.warn('Analiz tercihleri localStorage yüklenemedi:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        ANALYSIS_PREFS_STORAGE_KEY,
+        JSON.stringify({
+          manualMustMentionTopicsText,
+          manualMustNotMentionTopicsText,
+          coverLetterRecipientName,
+          coverLetterCompanyName
+        })
+      );
+    } catch (err) {
+      console.warn('Analiz tercihleri localStorage kaydedilemedi:', err);
+    }
+  }, [
+    manualMustMentionTopicsText,
+    manualMustNotMentionTopicsText,
+    coverLetterRecipientName,
+    coverLetterCompanyName
+  ]);
+
+  const sanitizeRoleTitle = (input: string) => {
+    let role = (input || '').trim();
+    role = role.replace(/^[\-\s:]+|[\-\s:]+$/g, '');
+    role = role.replace(/\s+/g, ' ');
+    // "Founding" çoğu zaman rolün çekirdeği değil, stage bilgisidir.
+    role = role.replace(/^founding\s+/i, '');
+    return role.trim();
+  };
+
+  const extractTargetPositionFromJobText = (jobText: string) => {
+    const text = (jobText || '').trim();
+    if (!text) return '';
+
+    const patterns: RegExp[] = [
+      /(?:position|role)\s+(?:at|for)?\s*(?:an?|the)?\s*([A-Za-z0-9+\/\-\s]{3,80}(?:Engineer|Developer|Manager|Specialist|Architect))/i,
+      /looking for\s+(?:an?|the)?\s*([A-Za-z0-9+\/\-\s]{3,80}(?:Engineer|Developer|Manager|Specialist|Architect))/i,
+      /^([A-Za-z][A-Za-z0-9+\/\-\s]{3,80}(?:Engineer|Developer|Manager|Specialist|Architect))$/im
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      const captured = match?.[1] || match?.[0] || '';
+      const normalized = sanitizeRoleTitle(captured);
+      if (normalized.length > 0) {
+        return normalized;
+      }
+    }
+
+    return '';
+  };
 
   // AI'dan gelen metinleri parse et - sadece bullet point'leri uyarla
   const parseWorkExperienceFromText = (text: string) => {
@@ -234,6 +336,67 @@ export default function CompanyBasedCVEditor() {
     }];
   };
 
+  const computeCandidateExperienceFromWorkItems = (workExperience: CompanyBasedCVData['workExperience']) => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    const parseYYYYMM = (value: string) => {
+      const m = value.match(/^(\d{4})-(\d{2})$/);
+      if (!m) return null;
+      return { year: parseInt(m[1], 10), month: parseInt(m[2], 10) };
+    };
+
+    const validItems = Array.isArray(workExperience) ? workExperience : [];
+    const hasPresentEnd = validItems.some(
+      (item) => typeof item?.endDate === 'string' && /present|devam|current/i.test(item.endDate)
+    );
+    const starts = validItems
+      .map((i) => (i?.startDate ? parseYYYYMM(i.startDate) : null))
+      .filter(Boolean) as Array<{ year: number; month: number }>;
+
+    if (starts.length === 0) {
+      return { years: null as number | null, range: null as { start: string; end: string } | null };
+    }
+
+    const earliest = starts.reduce((acc, cur) => {
+      if (cur.year < acc.year) return cur;
+      if (cur.year === acc.year && cur.month < acc.month) return cur;
+      return acc;
+    }, starts[0]);
+
+    let latestEnd: { year: number; month: number } | null = null;
+    for (const item of validItems) {
+      if (!item?.endDate) continue;
+      if (/present|devam|current/i.test(item.endDate)) {
+        latestEnd = { year: currentYear, month: currentMonth };
+        break;
+      }
+      const parsed = parseYYYYMM(item.endDate);
+      if (!parsed) continue;
+      if (!latestEnd) {
+        latestEnd = parsed;
+      } else if (parsed.year > latestEnd.year || (parsed.year === latestEnd.year && parsed.month > latestEnd.month)) {
+        latestEnd = parsed;
+      }
+    }
+
+    if (!latestEnd) {
+      return { years: null as number | null, range: null as { start: string; end: string } | null };
+    }
+
+    const months = (latestEnd.year * 12 + latestEnd.month) - (earliest.year * 12 + earliest.month) + 1;
+    const years = Math.max(0, Math.floor(months / 12));
+
+    return {
+      years,
+      range: {
+        start: `${earliest.year}-${String(earliest.month).padStart(2, '0')}`,
+        end: hasPresentEnd ? 'Present' : [latestEnd.year, String(latestEnd.month).padStart(2, '0')].join('-')
+      }
+    };
+  };
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type === 'application/pdf') {
@@ -266,7 +429,24 @@ export default function CompanyBasedCVEditor() {
   };
 
   const handleCompanyLinksSubmit = async () => {
-    // Validation
+    const needsCompanyInfo =
+      cvAdaptationSource === 'company' || (shouldGenerateCoverLetter && coverLetterSource === 'company');
+    const needsJobText =
+      cvAdaptationSource === 'text' || (shouldGenerateCoverLetter && coverLetterSource === 'text');
+
+    // Validation - Job description text
+    if (needsJobText && jobDescriptionText.trim().length < 30) {
+      setError('İlan metni boş olamaz (en az 30 karakter).');
+      return;
+    }
+
+    // Validation - Company links (only if needed)
+    if (!needsCompanyInfo) {
+      setCompanyInfo(null);
+      setActiveStep(2);
+      return;
+    }
+
     if (companyLinks.length === 0) {
       setError('En az 1 link eklemelisiniz.');
       return;
@@ -301,29 +481,101 @@ export default function CompanyBasedCVEditor() {
   };
 
   const handleAnalyzeCV = async () => {
-    if (!cvFile || !companyInfo) return;
+    if (!cvFile) return;
+
+    const needsCompanyInfoForCV = cvAdaptationSource === 'company';
+    const needsCompanyInfoForCoverLetter = shouldGenerateCoverLetter && coverLetterSource === 'company';
+    const needsJobTextForCV = cvAdaptationSource === 'text';
+    const needsJobTextForCoverLetter = shouldGenerateCoverLetter && coverLetterSource === 'text';
+
+    if ((needsCompanyInfoForCV || needsCompanyInfoForCoverLetter) && !companyInfo) {
+      setError('Şirket bilgileri gereken bir seçenek seçildi. Lütfen önce şirket linklerini analiz edin.');
+      return;
+    }
+
+    if ((needsJobTextForCV || needsJobTextForCoverLetter) && jobDescriptionText.trim().length < 30) {
+      setError('İlan metni gereken bir seçenek seçildi. Lütfen Job Description metnini doldurun.');
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
+      const toTopicArray = (value: string) =>
+        value
+          // Kullanıcı artık doğal cümle yazabilir; satır/satır veya ; ile ayrım desteklenir.
+          .split(/\n|;/g)
+          .map((t) => t.trim())
+          .filter(Boolean);
+
+      const manualMustMentionTopics = toTopicArray(manualMustMentionTopicsText);
+      const manualMustNotMentionTopics = toTopicArray(manualMustNotMentionTopicsText);
+
       // PDF'den metin çıkar
       const cvText = await CompanyBasedCVService.extractTextFromPDF(cvFile);
       console.log('Extracted CV text:', cvText);
       
       // AI ile CV'yi analiz et ve proje formatına dönüştür
-      const parsedCVData = await CompanyBasedCVService.parseCVDataWithAI(cvText);
+      const parsedCVData = await CompanyBasedCVService.parseCVDataWithAI(cvText, cvLanguage);
       console.log('AI parsed CV data:', parsedCVData);
+
+      const experienceMeta = computeCandidateExperienceFromWorkItems(parsedCVData.workExperience || []);
+      
       
       // CV'yi analiz et ve uyarla
       const analysis = await CompanyBasedCVService.analyzeAndAdaptCV({
         cvText,
-        companyUrl: companyLinks[0]?.url || '',
-        companyInfo,
-        cvLanguage
+        companyUrl: cvAdaptationSource === 'company' ? (companyLinks[0]?.url || '') : undefined,
+        companyInfo: cvAdaptationSource === 'company' ? companyInfo || undefined : undefined,
+        jobDescriptionText: cvAdaptationSource === 'text' ? jobDescriptionText : undefined,
+        adaptationSource: cvAdaptationSource,
+        cvLanguage,
+        candidateExperienceYears: experienceMeta.years,
+        candidateExperienceRange: experienceMeta.range ?? undefined,
+        candidateSkills: parsedCVData.skills || [],
+        candidateLanguages: parsedCVData.languages || [],
+        manualMustMentionTopics,
+        manualMustNotMentionTopics
       });
 
+      const aboutForCoverLetter = aiSettings.about ? analysis.updatedAbout : (parsedCVData.about || '');
+
+      // Cover letter'da sayı/başarı uydurmamak için yalnızca CV'den gelen highlight cümlelerini gönderiyoruz.
+      const cvWorkHighlights = (parsedCVData.workExperience || [])
+        .flatMap((w: any) => Array.isArray(w?.bulletPoints) ? w.bulletPoints : [])
+        .map((s: any) => String(s || '').trim())
+        .filter(Boolean);
+
+      const numericHighlights = cvWorkHighlights.filter((b) => /\d/.test(b) || /%/.test(b));
+      const selectedHighlights = (numericHighlights.length >= 3 ? numericHighlights : cvWorkHighlights).slice(0, 8);
+
+      const generatedCoverLetter = shouldGenerateCoverLetter
+        ? await CompanyBasedCVService.generateCompanyCoverLetter({
+            source: coverLetterSource,
+            companyInfo: coverLetterSource === 'company' ? companyInfo || undefined : undefined,
+            jobDescriptionText: coverLetterSource === 'text' ? jobDescriptionText : undefined,
+            personalInfo: parsedCVData.personalInfo,
+            about: aboutForCoverLetter,
+            cvLanguage,
+            candidateExperienceYears: experienceMeta.years,
+            candidateSkills: parsedCVData.skills || [],
+            candidateHighlights: selectedHighlights,
+            recipientName: coverLetterRecipientName.trim() ? coverLetterRecipientName.trim() : undefined,
+            recipientCompanyName: coverLetterCompanyName.trim() ? coverLetterCompanyName.trim() : undefined,
+            targetPosition: sanitizeRoleTitle(
+              (coverLetterSource === 'text' ? extractTargetPositionFromJobText(jobDescriptionText) : '') ||
+              parsedCVData.personalInfo?.title ||
+              'Full Stack Web Developer'
+            ),
+            manualMustMentionTopics,
+            manualMustNotMentionTopics
+          })
+        : '';
+
       setAnalysisResult(analysis);
+      setCoverLetter(shouldGenerateCoverLetter ? generatedCoverLetter : '');
+      setCoverLetterLanguage(cvLanguage);
 
       // AI ayarlarına göre CV data oluştur
       const adaptedCVData: CompanyBasedCVData = {
@@ -350,20 +602,44 @@ export default function CompanyBasedCVEditor() {
         languages: aiSettings.languages ? 
           parseLanguagesFromText(analysis.updatedLanguages) : 
           parsedCVData.languages || [],
-        companyInfo,
-        analysisResult: analysis
+        companyInfo: companyInfo || undefined,
+        analysisResult: analysis,
+        coverLetter: shouldGenerateCoverLetter ? generatedCoverLetter : undefined,
+        analysisPreferences: {
+          manualMustMentionTopics,
+          manualMustNotMentionTopics
+        }
       };
 
       setCvData(adaptedCVData);
       setEditableCVData(adaptedCVData);
       setActiveStep(3);
     } catch (err) {
-      setError('CV analiz edilirken bir hata oluştu.');
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message || 'CV analiz edilirken bir hata oluştu.');
       console.error('CV analysis error:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  const handleCopyCoverLetter = async () => {
+    if (!coverLetter) return;
+    try {
+      await navigator.clipboard.writeText(coverLetter);
+    } catch (copyError) {
+      console.error('Cover letter kopyalama hatası:', copyError);
+    }
+  };
+
+  const getCoverLetterWordCount = (value: string) => {
+    // Total word count should include full cover letter text (including signature/contact block).
+    const trimmed = (value || '').trim();
+    if (!trimmed) return 0;
+    return trimmed.split(/\s+/).filter(Boolean).length;
+  };
+
+  const coverLetterWordCount = coverLetter ? getCoverLetterWordCount(coverLetter) : 0;
 
   // Editör fonksiyonları
   const handleStartEditing = () => {
@@ -599,6 +875,118 @@ export default function CompanyBasedCVEditor() {
               )}
             </Box>
             
+            {/* Hedef Kaynağı Seçimi */}
+            <Card sx={{ mb: 3 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Hedef Kaynağı Seçimi
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  CV düzenleme ve cover letter için şirket web sitelerinden mi yoksa ilan metninden mi ilerleyeceğimizi seçin.
+                </Typography>
+
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                    CV Düzenleme
+                  </Typography>
+                  <RadioGroup
+                    row
+                    value={cvAdaptationSource}
+                    onChange={(e) => setCvAdaptationSource(e.target.value as 'company' | 'text')}
+                  >
+                    <FormControlLabel value="company" control={<Radio />} label="Şirket Web Siteleri" />
+                    <FormControlLabel value="text" control={<Radio />} label="İlan Metni" />
+                  </RadioGroup>
+                </Box>
+
+                <Box sx={{ mb: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={shouldGenerateCoverLetter}
+                        onChange={(e) => setShouldGenerateCoverLetter(e.target.checked)}
+                      />
+                    }
+                    label="Cover Letter üret (opsiyonel)"
+                  />
+                </Box>
+
+                {shouldGenerateCoverLetter && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                      Cover Letter Kaynağı
+                    </Typography>
+                    <RadioGroup
+                      row
+                      value={coverLetterSource}
+                      onChange={(e) => setCoverLetterSource(e.target.value as 'company' | 'text')}
+                    >
+                      <FormControlLabel value="company" control={<Radio />} label="Şirket Web Siteleri" />
+                      <FormControlLabel value="text" control={<Radio />} label="İlan Metni" />
+                    </RadioGroup>
+                  </Box>
+                )}
+
+                {shouldGenerateCoverLetter && (
+                  <TextField
+                    fullWidth
+                    label="Kime yazılacak? (opsiyonel)"
+                    placeholder="Örn: Hiring Manager / Ayşe Yılmaz"
+                    value={coverLetterRecipientName}
+                    onChange={(e) => setCoverLetterRecipientName(e.target.value)}
+                    sx={{ mb: 1 }}
+                  />
+                )}
+
+                {shouldGenerateCoverLetter && (
+                  <TextField
+                    fullWidth
+                    label="Firma adı (opsiyonel)"
+                    placeholder="Boş bırakılırsa şirket adı hiç yazılmaz"
+                    value={coverLetterCompanyName}
+                    onChange={(e) => setCoverLetterCompanyName(e.target.value)}
+                    sx={{ mb: 1 }}
+                  />
+                )}
+
+                <TextField
+                  fullWidth
+                  label="Manuel eklenmesini istediğiniz ifadeler (opsiyonel)"
+                  placeholder="Örn: bu pozisyonda istekli olduğumu, pozisyonla ilgili anlaşabileceğimize inandığımı kısaca belirt..."
+                  helperText="Doğrudan cümle/paragraf yazabilirsiniz. AI bu metni her analizde dikkate alır."
+                  value={manualMustMentionTopicsText}
+                  onChange={(e) => setManualMustMentionTopicsText(e.target.value)}
+                  multiline
+                  minRows={2}
+                  sx={{ mb: 1 }}
+                />
+
+                <TextField
+                  fullWidth
+                  label="Manuel geçmesin istediğiniz ifadeler (opsiyonel)"
+                  placeholder="Örn: 5+ yıl deneyim, ileri seviye azure uzmanlığı"
+                  helperText="Doğrudan cümle/paragraf yazabilirsiniz. AI bu metni çıktıda geçirmez."
+                  value={manualMustNotMentionTopicsText}
+                  onChange={(e) => setManualMustNotMentionTopicsText(e.target.value)}
+                  multiline
+                  minRows={2}
+                  sx={{ mb: 1 }}
+                />
+
+                {(cvAdaptationSource === 'text' || (shouldGenerateCoverLetter && coverLetterSource === 'text')) && (
+                  <TextField
+                    fullWidth
+                    label="Job Description / İlan Metni"
+                    placeholder="About the job ... (metni buraya yapıştırın)"
+                    value={jobDescriptionText}
+                    onChange={(e) => setJobDescriptionText(e.target.value)}
+                    multiline
+                    minRows={8}
+                  />
+                )}
+              </CardContent>
+            </Card>
+            
             {/* AI Ayarları Accordion */}
             <Accordion sx={{ mb: 3 }}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -661,10 +1049,14 @@ export default function CompanyBasedCVEditor() {
                 variant="contained"
                 size="large"
                 onClick={handleCompanyLinksSubmit}
-                disabled={loading || companyLinks.length === 0}
+                disabled={loading}
                 startIcon={loading ? <CircularProgress size={20} /> : <LinkIcon />}
               >
-                {loading ? 'Analiz Ediliyor...' : 'Şirketleri Analiz Et'}
+                {loading
+                  ? 'Analiz Ediliyor...'
+                  : (cvAdaptationSource === 'company' || (shouldGenerateCoverLetter && coverLetterSource === 'company'))
+                    ? 'Şirketleri Analiz Et'
+                    : 'Devam Et'}
               </Button>
             </Box>
           </Box>
@@ -757,6 +1149,51 @@ export default function CompanyBasedCVEditor() {
       case 3:
         return (
           <Box>
+            {coverLetter && (
+              <Card sx={{ mb: 3 }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="h6">
+                        Şirkete Özel Cover Letter
+                      </Typography>
+                      <Chip
+                        size="small"
+                        color="primary"
+                        label={coverLetterLanguage === 'english' ? 'English' : 'Türkçe'}
+                      />
+                    </Box>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<ContentCopyIcon />}
+                      onClick={handleCopyCoverLetter}
+                    >
+                      Kopyala
+                    </Button>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                    AI tarafından şirket bilgilerine göre kısa ve profesyonel olarak üretildi.
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={7}
+                    value={coverLetter}
+                    onChange={(e) => setCoverLetter(e.target.value)}
+                  />
+
+                  <Typography
+                    variant="caption"
+                    color={coverLetterWordCount >= 250 && coverLetterWordCount <= 350 ? 'success.main' : 'text.secondary'}
+                    sx={{ mt: 1, display: 'block' }}
+                  >
+                    Toplam kelime (imza dahil): {coverLetterWordCount} / hedef: 250-350
+                  </Typography>
+                </CardContent>
+              </Card>
+            )}
+
             {analysisResult && (
               <Card sx={{ mb: 3 }}>
                 <CardContent>
@@ -773,6 +1210,72 @@ export default function CompanyBasedCVEditor() {
                       sx={{ mt: 1 }}
                     />
                   </Box>
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                      Pozitif Uyum (Güçlü Yönler)
+                    </Typography>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ width: '40%' }}>İlan gereksinimi</TableCell>
+                          <TableCell>CV kanıtı</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(analysisResult.positiveMatches?.length ? analysisResult.positiveMatches : []).map((m, index) => (
+                          <TableRow key={`${m.label}-${index}`}>
+                            <TableCell>
+                              <strong>{m.label}</strong>
+                            </TableCell>
+                            <TableCell>{m.evidence}</TableCell>
+                          </TableRow>
+                        ))}
+                        {(!analysisResult.positiveMatches || analysisResult.positiveMatches.length === 0) && (
+                          <TableRow>
+                            <TableCell colSpan={2} color="text.secondary">
+                              Bulunamadı
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </Box>
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                      Negatif Uyumsuzluk (Uygun Olmayan Noktalar)
+                    </Typography>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ width: '40%' }}>İlan gereksinimi</TableCell>
+                          <TableCell>Uyumsuzluk nedeni</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(analysisResult.negativeMismatches?.length ? analysisResult.negativeMismatches : []).map((m, index) => (
+                          <TableRow key={`${m.label}-${index}`}>
+                            <TableCell>
+                              <strong>{m.label}</strong>
+                            </TableCell>
+                            <TableCell>
+                              {m.gap}
+                              {m.evidence ? <Typography variant="body2" color="text.secondary">({m.evidence})</Typography> : null}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {(!analysisResult.negativeMismatches || analysisResult.negativeMismatches.length === 0) && (
+                          <TableRow>
+                            <TableCell colSpan={2} color="text.secondary">
+                              Bulunamadı
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </Box>
+
                   <Typography variant="body2" sx={{ mb: 2 }}>
                     <strong>Öneriler:</strong>
                   </Typography>

@@ -96,6 +96,7 @@ const styles = StyleSheet.create({
   },
   experienceItem: {
     marginBottom: 12,
+    minHeight: 0,
   },
   experienceHeader: {
     flexDirection: 'row',
@@ -209,6 +210,11 @@ const formatUrl = (url: string) => {
   return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 };
 
+const formatLinkedInDisplayUrl = (url: string) => {
+  if (!url) return '';
+  return formatUrl(url).replace(/^www\./, '');
+};
+
 const ensureHttps = (url: string) => {
   if (!url) return '';
   return url.startsWith('http') ? url : `https://${url}`;
@@ -236,7 +242,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data, isEnglish = false }) =>
     <Document>
       <Page size="A4" style={styles.page}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={styles.header} wrap={false}>
           <Text style={styles.name}>
             {personalInfo.firstName} {personalInfo.lastName}
           </Text>
@@ -274,7 +280,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data, isEnglish = false }) =>
               )}
               {personalInfo.linkedin && (
                 <Link src={ensureHttps(personalInfo.linkedin)} style={styles.link}>
-                  {formatUrl(personalInfo.linkedin)}
+                  {formatLinkedInDisplayUrl(personalInfo.linkedin)}
                 </Link>
               )}
             </Text>
@@ -283,7 +289,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data, isEnglish = false }) =>
 
         {/* About */}
         {about && (
-          <View style={styles.section}>
+          <View style={styles.section} wrap={false}>
             <Text style={styles.sectionTitle}>{getSectionTitle('Hakkımda')}</Text>
             <Text style={styles.text}>{about}</Text>
           </View>
@@ -294,7 +300,11 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data, isEnglish = false }) =>
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{getSectionTitle('İş Deneyimi')}</Text>
             {workExperience.map((exp) => (
-              <View key={exp.id} style={styles.experienceItem}>
+              <View 
+                key={exp.id} 
+                style={styles.experienceItem}
+                wrap={false}
+              >
                 <View style={styles.experienceHeader}>
                   <Text style={styles.experienceTitle}>{exp.position}</Text>
                   <Text style={styles.experienceDate}>
@@ -320,7 +330,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data, isEnglish = false }) =>
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{getSectionTitle('Eğitim')}</Text>
             {education.map((edu) => (
-              <View key={edu.id} style={styles.educationItem}>
+              <View key={edu.id} style={styles.educationItem} wrap={false}>
                 <View style={styles.educationHeader}>
                   <View>
                     <Text style={styles.experienceTitle}>{edu.university}</Text>
@@ -337,7 +347,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data, isEnglish = false }) =>
 
         {/* Skills */}
         {skills.length > 0 && (
-          <View style={styles.section}>
+          <View style={styles.section} wrap={false}>
             <Text style={styles.sectionTitle}>{getSectionTitle('Beceriler')}</Text>
             <Text style={styles.skillsContainer}>{skills.join(' - ')}</Text>
           </View>
@@ -345,7 +355,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data, isEnglish = false }) =>
 
         {/* Languages */}
         {languages.length > 0 && (
-          <View style={styles.section}>
+          <View style={styles.section} wrap={false}>
             <Text style={styles.sectionTitle}>{getSectionTitle('Diller')}</Text>
             <Text style={styles.languagesContainer}>
               {languages

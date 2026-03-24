@@ -16,11 +16,21 @@ export interface CompanyInfo {
   analyzedLinks: CompanyLink[];
 }
 
+export type CVAdaptationSource = 'company' | 'text';
+
 export interface CVAnalysisRequest {
   cvText: string;
-  companyUrl: string;
+  companyUrl?: string;
   companyInfo?: CompanyInfo;
+  jobDescriptionText?: string;
+  adaptationSource?: CVAdaptationSource;
   cvLanguage?: 'turkish' | 'english';
+  candidateExperienceYears?: number | null;
+  candidateExperienceRange?: { start: string; end: string };
+  candidateSkills?: string[];
+  candidateLanguages?: Array<{ language: string; level: string }>;
+  manualMustMentionTopics?: string[];
+  manualMustNotMentionTopics?: string[];
 }
 
 export interface CVAnalysisResponse {
@@ -34,6 +44,16 @@ export interface CVAnalysisResponse {
   updatedLanguages: string;
   recommendations: string[];
   matchScore: number;
+  // Job ile CV uyumunu daha okunur şekilde göstermek için (Step 3 tablosu)
+  positiveMatches?: Array<{
+    label: string; // İş ilanı gereksinimi/alanı (örn: Angular SPA geliştirme)
+    evidence: string; // CV’den kanıt (örn: CV skill/bullet point)
+  }>;
+  negativeMismatches?: Array<{
+    label: string; // İş ilanı gereksinimi/alanı
+    gap: string; // CV’de neden karşılanmadığı (örn: CV’de geçmiyor)
+    evidence?: string; // Opsiyonel: CV’den zayıf kalan nokta/kanıt
+  }>;
 }
 
 export interface GeminiAPIRequest {
@@ -93,4 +113,9 @@ export interface CompanyBasedCVData {
   }>;
   companyInfo?: CompanyInfo;
   analysisResult?: CVAnalysisResponse;
+  coverLetter?: string;
+  analysisPreferences?: {
+    manualMustMentionTopics?: string[];
+    manualMustNotMentionTopics?: string[];
+  };
 }
