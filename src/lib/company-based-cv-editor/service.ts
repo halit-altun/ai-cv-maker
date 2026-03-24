@@ -8,11 +8,11 @@ import {
   CompanyBasedCVData
 } from './types';
 
-// Gemini API Keys - Fallback System
+// Gemini API Keys - Environment only (no hardcoded fallback)
 const GEMINI_API_KEYS = [
-  process.env.NEXT_PUBLIC_GEMINI_API_KEY_1 || 'AIzaSyBV2D8hKVbpw7FAP-EkwYtne_P-wwT-iSg',
-  process.env.NEXT_PUBLIC_GEMINI_API_KEY_2 || 'AIzaSyC8J2mGXXUvDWUowUpAGRboH4yTCDU56-o'
-].filter(Boolean); // Undefined değerleri filtrele
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY_1,
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY_2
+].filter((key): key is string => Boolean(key && key.trim()));
 const GEMINI_API_URL = process.env.NEXT_PUBLIC_GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 // API Key rotation system
