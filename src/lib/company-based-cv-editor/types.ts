@@ -23,6 +23,7 @@ export interface CVAnalysisRequest {
   companyUrl?: string;
   companyInfo?: CompanyInfo;
   jobDescriptionText?: string;
+  targetPosition?: string;
   adaptationSource?: CVAdaptationSource;
   cvLanguage?: 'turkish' | 'english';
   candidateExperienceYears?: number | null;
@@ -115,6 +116,7 @@ export interface CompanyBasedCVData {
   analysisResult?: CVAnalysisResponse;
   coverLetter?: string;
   analysisPreferences?: {
+    targetPosition?: string;
     manualMustMentionTopics?: string[];
     manualMustNotMentionTopics?: string[];
   };

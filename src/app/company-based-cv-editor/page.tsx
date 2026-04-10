@@ -58,14 +58,12 @@ interface AIAdaptationSettings {
   about: boolean;
   workExperience: boolean;
   skills: boolean;
-  languages: boolean;
 }
 
 const defaultAISettings: AIAdaptationSettings = {
   about: true,
   workExperience: false,
-  skills: false,
-  languages: false
+  skills: false
 };
 
 const ANALYSIS_PREFS_STORAGE_KEY = 'company_based_cv_editor_analysis_preferences_v1';
@@ -84,6 +82,7 @@ export default function CompanyBasedCVEditor() {
   const [coverLetterSource, setCoverLetterSource] = useState<'company' | 'text'>('company');
   const [coverLetterRecipientName, setCoverLetterRecipientName] = useState<string>('');
   const [coverLetterCompanyName, setCoverLetterCompanyName] = useState<string>('');
+  const [targetPosition, setTargetPosition] = useState<string>('');
   const [manualMustMentionTopicsText, setManualMustMentionTopicsText] = useState<string>('');
   const [manualMustNotMentionTopicsText, setManualMustNotMentionTopicsText] = useState<string>('');
   const [jobDescriptionText, setJobDescriptionText] = useState('');
@@ -102,12 +101,16 @@ export default function CompanyBasedCVEditor() {
       if (!raw) return;
 
       const parsed = JSON.parse(raw) as {
+        targetPosition?: string;
         manualMustMentionTopicsText?: string;
         manualMustNotMentionTopicsText?: string;
         coverLetterRecipientName?: string;
         coverLetterCompanyName?: string;
       };
 
+      if (typeof parsed.targetPosition === 'string') {
+        setTargetPosition(parsed.targetPosition);
+      }
       if (typeof parsed.manualMustMentionTopicsText === 'string') {
         setManualMustMentionTopicsText(parsed.manualMustMentionTopicsText);
       }
@@ -130,6 +133,7 @@ export default function CompanyBasedCVEditor() {
       localStorage.setItem(
         ANALYSIS_PREFS_STORAGE_KEY,
         JSON.stringify({
+          targetPosition,
           manualMustMentionTopicsText,
           manualMustNotMentionTopicsText,
           coverLetterRecipientName,
@@ -140,6 +144,7 @@ export default function CompanyBasedCVEditor() {
       console.warn('Analiz tercihleri localStorage kaydedilemedi:', err);
     }
   }, [
+    targetPosition,
     manualMustMentionTopicsText,
     manualMustNotMentionTopicsText,
     coverLetterRecipientName,
@@ -310,30 +315,29 @@ export default function CompanyBasedCVEditor() {
     return parsedExperiences;
   };
 
-  const parseSkillsFromText = (text: string) => {
-    if (!text) return [];
-    
-    // AI'dan gelen metni temizle ve kısa beceri isimlerine dönüştür
-    const skills = text.split(',').map(skill => {
-      // Uzun açıklamaları temizle, sadece ilk 2 kelimeyi al
-      const words = skill.trim().split(' ');
-      if (words.length > 2) {
-        return words.slice(0, 2).join(' ');
-      }
-      return skill.trim();
-    }).filter(skill => skill.length > 0 && skill.length < 50); // Çok uzun becerileri filtrele
-    
-    console.log('Parsed Skills:', skills);
-    return skills;
-  };
+  const parseSkillsFromText = (text: string, existingSkills: string[] = []) => {
+    const normalizedExisting = (existingSkills || [])
+      .map((skill) => String(skill || '').trim())
+      .filter(Boolean);
+    if (!text) return normalizedExisting;
 
-  const parseLanguagesFromText = (text: string) => {
-    if (!text) return [];
-    return [{
-      id: '1',
-      language: 'AI Uyarlanmış Dil',
-      level: 'AI Uyarlanmış Seviye'
-    }];
+    // AI'dan gelen metni temizle ve kısa beceri isimlerine dönüştür
+    const aiSkills = text
+      .split(',')
+      .map((skill) => {
+        // Uzun açıklamaları temizle, sadece ilk 2 kelimeyi al
+        const words = skill.trim().split(' ');
+        if (words.length > 2) {
+          return words.slice(0, 2).join(' ');
+        }
+        return skill.trim();
+      })
+      .filter((skill) => skill.length > 0 && skill.length < 50); // Çok uzun becerileri filtrele
+
+    // Mevcut CV becerilerini KORU, AI'dan gelenleri unique olarak ekle.
+    const mergedSkills = Array.from(new Set([...normalizedExisting, ...aiSkills]));
+    console.log('Parsed Skills (merged):', mergedSkills);
+    return mergedSkills;
   };
 
   const computeCandidateExperienceFromWorkItems = (workExperience: CompanyBasedCVData['workExperience']) => {
@@ -529,6 +533,7 @@ export default function CompanyBasedCVEditor() {
         companyUrl: cvAdaptationSource === 'company' ? (companyLinks[0]?.url || '') : undefined,
         companyInfo: cvAdaptationSource === 'company' ? companyInfo || undefined : undefined,
         jobDescriptionText: cvAdaptationSource === 'text' ? jobDescriptionText : undefined,
+        targetPosition: sanitizeRoleTitle(targetPosition) || undefined,
         adaptationSource: cvAdaptationSource,
         cvLanguage,
         candidateExperienceYears: experienceMeta.years,
@@ -564,6 +569,7 @@ export default function CompanyBasedCVEditor() {
             recipientName: coverLetterRecipientName.trim() ? coverLetterRecipientName.trim() : undefined,
             recipientCompanyName: coverLetterCompanyName.trim() ? coverLetterCompanyName.trim() : undefined,
             targetPosition: sanitizeRoleTitle(
+              targetPosition ||
               (coverLetterSource === 'text' ? extractTargetPositionFromJobText(jobDescriptionText) : '') ||
               parsedCVData.personalInfo?.title ||
               'Full Stack Web Developer'
@@ -597,15 +603,14 @@ export default function CompanyBasedCVEditor() {
           parsedCVData.workExperience || [],
         education: parsedCVData.education || [],
         skills: aiSettings.skills ? 
-          parseSkillsFromText(analysis.updatedSkills) : 
+          parseSkillsFromText(analysis.updatedSkills, parsedCVData.skills || []) : 
           parsedCVData.skills || [],
-        languages: aiSettings.languages ? 
-          parseLanguagesFromText(analysis.updatedLanguages) : 
-          parsedCVData.languages || [],
+        languages: parsedCVData.languages || [],
         companyInfo: companyInfo || undefined,
         analysisResult: analysis,
         coverLetter: shouldGenerateCoverLetter ? generatedCoverLetter : undefined,
         analysisPreferences: {
+          targetPosition: sanitizeRoleTitle(targetPosition) || undefined,
           manualMustMentionTopics,
           manualMustNotMentionTopics
         }
@@ -927,6 +932,16 @@ export default function CompanyBasedCVEditor() {
                   </Box>
                 )}
 
+                <TextField
+                  fullWidth
+                  label="İş Başlığı / Hedef Pozisyon (opsiyonel)"
+                  placeholder="Örn: React Developer"
+                  value={targetPosition}
+                  onChange={(e) => setTargetPosition(e.target.value)}
+                  helperText="Doldurursan AI analizinde ve cover letter'da bu pozisyonu hedef alır."
+                  sx={{ mb: 1 }}
+                />
+
                 {shouldGenerateCoverLetter && (
                   <TextField
                     fullWidth
@@ -1030,15 +1045,6 @@ export default function CompanyBasedCVEditor() {
                       }
                       label="Beceriler bölümü"
                     />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={aiSettings.languages}
-                          onChange={(e) => setAiSettings(prev => ({ ...prev, languages: e.target.checked }))}
-                        />
-                      }
-                      label="Diller bölümü"
-                    />
                   </FormGroup>
                 </FormControl>
               </AccordionDetails>
@@ -1117,8 +1123,7 @@ export default function CompanyBasedCVEditor() {
                   {aiSettings.about && <Chip label="Hakkımda" color="success" size="small" />}
                   {aiSettings.workExperience && <Chip label="İş Deneyimi" color="success" size="small" />}
                   {aiSettings.skills && <Chip label="Beceriler" color="success" size="small" />}
-                  {aiSettings.languages && <Chip label="Diller" color="success" size="small" />}
-                  {!aiSettings.about && !aiSettings.workExperience && !aiSettings.skills && !aiSettings.languages && (
+                  {!aiSettings.about && !aiSettings.workExperience && !aiSettings.skills && (
                     <Chip label="Hiçbir bölüm uyarlanmayacak" color="warning" size="small" />
                   )}
                 </Stack>

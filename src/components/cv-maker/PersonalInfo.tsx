@@ -1,7 +1,17 @@
 'use client';
 
 import React from 'react';
-import { Box, TextField, Typography, Paper, Stack } from '@mui/material';
+import { Box, TextField, Typography, Paper, Stack, InputAdornment } from '@mui/material';
+import {
+  LocationOn,
+  Phone as PhoneIcon,
+  Email as EmailIcon,
+  Public,
+  GitHub,
+  LinkedIn
+} from '@mui/icons-material';
+
+const adornmentIconSx = { color: 'action.active', fontSize: 22 };
 
 interface PersonalInfoProps {
   data: {
@@ -64,6 +74,13 @@ const PersonalInfo: React.FC<PersonalInfoProps> = ({ data, onChange }) => {
             value={data.country}
             onChange={(e) => onChange('country', e.target.value)}
             variant="outlined"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <LocationOn sx={adornmentIconSx} aria-hidden />
+                </InputAdornment>
+              )
+            }}
           />
           
           <TextField
@@ -72,6 +89,13 @@ const PersonalInfo: React.FC<PersonalInfoProps> = ({ data, onChange }) => {
             value={data.city}
             onChange={(e) => onChange('city', e.target.value)}
             variant="outlined"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <LocationOn sx={adornmentIconSx} aria-hidden />
+                </InputAdornment>
+              )
+            }}
           />
         </Box>
         
@@ -83,6 +107,13 @@ const PersonalInfo: React.FC<PersonalInfoProps> = ({ data, onChange }) => {
             onChange={(e) => onChange('phone', e.target.value)}
             variant="outlined"
             type="tel"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <PhoneIcon sx={adornmentIconSx} aria-hidden />
+                </InputAdornment>
+              )
+            }}
           />
           
           <TextField
@@ -93,6 +124,13 @@ const PersonalInfo: React.FC<PersonalInfoProps> = ({ data, onChange }) => {
             variant="outlined"
             type="email"
             required
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <EmailIcon sx={adornmentIconSx} aria-hidden />
+                </InputAdornment>
+              )
+            }}
           />
         </Box>
         
@@ -105,6 +143,13 @@ const PersonalInfo: React.FC<PersonalInfoProps> = ({ data, onChange }) => {
             onChange={(e) => onChange('portfolio', e.target.value)}
             variant="outlined"
             type="url"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Public sx={adornmentIconSx} aria-hidden />
+                </InputAdornment>
+              )
+            }}
           />
           
           <TextField
@@ -115,6 +160,13 @@ const PersonalInfo: React.FC<PersonalInfoProps> = ({ data, onChange }) => {
             onChange={(e) => onChange('github', e.target.value)}
             variant="outlined"
             type="url"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <GitHub sx={adornmentIconSx} aria-hidden />
+                </InputAdornment>
+              )
+            }}
           />
 
           <TextField
@@ -125,6 +177,13 @@ const PersonalInfo: React.FC<PersonalInfoProps> = ({ data, onChange }) => {
             onChange={(e) => onChange('linkedin', e.target.value)}
             variant="outlined"
             type="url"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <LinkedIn sx={adornmentIconSx} aria-hidden />
+                </InputAdornment>
+              )
+            }}
           />
         </Stack>
       </Stack>

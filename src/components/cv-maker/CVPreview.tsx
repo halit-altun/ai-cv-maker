@@ -10,9 +10,17 @@ import {
   Stack,
   Button
 } from '@mui/material';
-import { 
-  Download as DownloadIcon
+import {
+  Download as DownloadIcon,
+  LocationOn,
+  Phone as PhoneIcon,
+  Email as EmailIcon,
+  Public,
+  GitHub,
+  LinkedIn
 } from '@mui/icons-material';
+
+const contactPreviewIconSx = { fontSize: '1rem', color: '#555', flexShrink: 0 };
 import { pdf } from '@react-pdf/renderer';
 import PDFDocument from './PDFDocument';
 import { WorkExperienceItem } from './WorkExperience';
@@ -79,6 +87,10 @@ const formatLinkedInDisplayUrl = (url: string) => {
   if (!url) return '';
   return formatUrl(url).replace(/^www\./, '');
 };
+
+  const locationLine = [data.personalInfo.city, data.personalInfo.country]
+    .filter(Boolean)
+    .join(', ');
 
   const handleDownloadPDF = async () => {
     if (isGenerating) return;
@@ -219,60 +231,136 @@ const formatLinkedInDisplayUrl = (url: string) => {
 
         {/* İletişim Bilgileri */}
         <Box sx={{ fontSize: '0.85rem', color: '#555', textAlign: 'center' }}>
-          {/* İlk Satır: Adres | Telefon | E-posta */}
-          <Typography variant="body2" sx={{ mb: 0.5 }}>
-            {data.personalInfo.city && data.personalInfo.country && (
-              <span>{`${data.personalInfo.city}, ${data.personalInfo.country}`}</span>
+          {/* İlk Satır: Konum | Telefon | E-posta */}
+          <Box
+            sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+              alignItems: 'center',
+              columnGap: 1,
+              rowGap: 0.5,
+              mb: 0.5
+            }}
+          >
+            {locationLine && (
+              <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                <LocationOn sx={contactPreviewIconSx} aria-hidden />
+                <Typography component="span" variant="body2" sx={{ color: 'inherit' }}>
+                  {locationLine}
+                </Typography>
+              </Box>
             )}
-            {(data.personalInfo.city || data.personalInfo.country) && data.personalInfo.phone && ' | '}
-            {data.personalInfo.phone && <span>{data.personalInfo.phone}</span>}
-            {((data.personalInfo.city || data.personalInfo.country) || data.personalInfo.phone) && data.personalInfo.email && ' | '}
+            {data.personalInfo.phone && (
+              <>
+                {locationLine && (
+                  <Typography component="span" variant="body2" sx={{ color: '#bbb', userSelect: 'none' }}>
+                    |
+                  </Typography>
+                )}
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                  <PhoneIcon sx={contactPreviewIconSx} aria-hidden />
+                  <Typography component="span" variant="body2">
+                    {data.personalInfo.phone}
+                  </Typography>
+                </Box>
+              </>
+            )}
             {data.personalInfo.email && (
-              <a 
-                href={`mailto:${data.personalInfo.email}`} 
-                style={{ color: 'inherit', textDecoration: 'none' }}
-              >
-                {data.personalInfo.email}
-              </a>
+              <>
+                {(locationLine || data.personalInfo.phone) && (
+                  <Typography component="span" variant="body2" sx={{ color: '#bbb', userSelect: 'none' }}>
+                    |
+                  </Typography>
+                )}
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                  <EmailIcon sx={contactPreviewIconSx} aria-hidden />
+                  <a
+                    href={`mailto:${data.personalInfo.email}`}
+                    style={{ color: 'inherit', textDecoration: 'none' }}
+                  >
+                    {data.personalInfo.email}
+                  </a>
+                </Box>
+              </>
             )}
-          </Typography>
+          </Box>
 
           {/* İkinci Satır: Portfolyo | GitHub | LinkedIn */}
           {(data.personalInfo.portfolio || data.personalInfo.github || data.personalInfo.linkedin) && (
-            <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                alignItems: 'center',
+                columnGap: 1,
+                rowGap: 0.5,
+                wordBreak: 'break-all'
+              }}
+            >
               {data.personalInfo.portfolio && (
-                <a
-                  href={data.personalInfo.portfolio.startsWith('http') ? data.personalInfo.portfolio : `https://${data.personalInfo.portfolio}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: 'inherit', textDecoration: 'none' }}
-                >
-                  {formatUrl(data.personalInfo.portfolio)}
-                </a>
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                  <Public sx={contactPreviewIconSx} aria-hidden />
+                  <a
+                    href={
+                      data.personalInfo.portfolio.startsWith('http')
+                        ? data.personalInfo.portfolio
+                        : `https://${data.personalInfo.portfolio}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: 'inherit', textDecoration: 'none' }}
+                  >
+                    {formatUrl(data.personalInfo.portfolio)}
+                  </a>
+                </Box>
               )}
-              {data.personalInfo.portfolio && data.personalInfo.github && ' | '}
+              {data.personalInfo.portfolio && data.personalInfo.github && (
+                <Typography component="span" variant="body2" sx={{ color: '#bbb', userSelect: 'none' }}>
+                  |
+                </Typography>
+              )}
               {data.personalInfo.github && (
-                <a
-                  href={data.personalInfo.github.startsWith('http') ? data.personalInfo.github : `https://${data.personalInfo.github}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: 'inherit', textDecoration: 'none' }}
-                >
-                  {formatUrl(data.personalInfo.github)}
-                </a>
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                  <GitHub sx={contactPreviewIconSx} aria-hidden />
+                  <a
+                    href={
+                      data.personalInfo.github.startsWith('http')
+                        ? data.personalInfo.github
+                        : `https://${data.personalInfo.github}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: 'inherit', textDecoration: 'none' }}
+                  >
+                    {formatUrl(data.personalInfo.github)}
+                  </a>
+                </Box>
               )}
-              {(data.personalInfo.portfolio || data.personalInfo.github) && data.personalInfo.linkedin && ' | '}
+              {(data.personalInfo.portfolio || data.personalInfo.github) && data.personalInfo.linkedin && (
+                <Typography component="span" variant="body2" sx={{ color: '#bbb', userSelect: 'none' }}>
+                  |
+                </Typography>
+              )}
               {data.personalInfo.linkedin && (
-                <a
-                  href={data.personalInfo.linkedin.startsWith('http') ? data.personalInfo.linkedin : `https://${data.personalInfo.linkedin}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: 'inherit', textDecoration: 'none' }}
-                >
-                  {formatLinkedInDisplayUrl(data.personalInfo.linkedin)}
-                </a>
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                  <LinkedIn sx={contactPreviewIconSx} aria-hidden />
+                  <a
+                    href={
+                      data.personalInfo.linkedin.startsWith('http')
+                        ? data.personalInfo.linkedin
+                        : `https://${data.personalInfo.linkedin}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: 'inherit', textDecoration: 'none' }}
+                  >
+                    {formatLinkedInDisplayUrl(data.personalInfo.linkedin)}
+                  </a>
+                </Box>
               )}
-            </Typography>
+            </Box>
           )}
         </Box>
       </Box>

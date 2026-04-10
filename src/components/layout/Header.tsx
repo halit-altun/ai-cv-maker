@@ -9,19 +9,14 @@ import {
   Button,
   Box,
   IconButton,
-  Menu,
-  MenuItem,
   ListItemIcon,
   ListItemText,
   Avatar,
-  Chip,
   useTheme,
   useMediaQuery,
   Drawer,
   List,
   ListItem,
-  Divider,
-  Paper,
   Fade,
   Tooltip
 } from '@mui/material';
@@ -32,17 +27,25 @@ import {
   Business,
   Email,
   Send,
-  Dashboard,
-  Person
+  Dashboard
 } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
+
+type NavColorKey = 'primary' | 'secondary' | 'success' | 'warning';
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const navigationItems = [
+    {
+      title: 'Kontrol Paneli',
+      href: '/dashboard',
+      description: 'Özet, hızlı işlemler ve modül kısayolları',
+      icon: <Dashboard />,
+      color: 'primary'
+    },
     {
       title: 'CV Oluşturucu',
       href: '/cv-maker-ai',
@@ -73,65 +76,62 @@ const Header = () => {
     }
   ];
 
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
   const handleMobileMenuToggle = () => {
     setMobileMenuOpen(!mobileMenuOpen);
   };
 
   return (
     <>
-      <AppBar 
-        position="sticky" 
+      <AppBar
+        position="sticky"
         elevation={0}
-        sx={{ 
-          backgroundColor: 'white',
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-          backdropFilter: 'blur(20px)',
-          background: 'rgba(255, 255, 255, 0.8)'
+        sx={{
+          background: 'linear-gradient(92deg, #1a2744 0%, #1c3050 42%, #1e3a5c 100%)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          boxShadow: '0 4px 20px rgba(15, 23, 42, 0.25)',
         }}
       >
-        <Toolbar sx={{ justifyContent: 'space-between', py: 1 }}>
+        <Toolbar
+          sx={{
+            justifyContent: 'space-between',
+            py: 1.25,
+            px: { xs: 1.5, sm: 2 },
+            maxWidth: 1440,
+            width: '100%',
+            mx: 'auto',
+          }}
+        >
           {/* Logo */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
               <Avatar
                 sx={{
-                  background: 'linear-gradient(45deg, #2196F3 30%, #9C27B0 90%)',
-                  width: 40,
-                  height: 40,
-                  mr: 1
+                  background: 'linear-gradient(135deg, #5eb8ff 0%, #64b5f6 40%, #b39ddb 100%)',
+                  width: 42,
+                  height: 42,
+                  mr: 1,
+                  boxShadow: '0 2px 12px rgba(0, 0, 0, 0.35)',
                 }}
               >
-                <AutoAwesome />
+                <AutoAwesome sx={{ fontSize: 22, color: '#0f172a' }} />
               </Avatar>
-              <Typography
-                variant="h6"
-                component="div"
-                sx={{
-                  fontWeight: 700,
-                  background: 'linear-gradient(45deg, #2196F3 30%, #9C27B0 90%)',
-                  backgroundClip: 'text',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  display: { xs: 'none', sm: 'block' }
-                }}
-              >
-                CV AI Maker
-              </Typography>
+              <Box sx={{ display: { xs: 'none', sm: 'flex' }, flexDirection: 'column' }}>
+                <Typography variant="h6" component="div" sx={{ fontWeight: 800, lineHeight: 1.15, color: '#fff' }}>
+                  CV AI Maker
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{ color: 'rgba(255, 255, 255, 0.68)', fontWeight: 500, letterSpacing: 0.25 }}
+                >
+                  AI destekli kariyer araçları
+                </Typography>
+              </Box>
             </Link>
           </Box>
 
           {/* Desktop Navigation */}
           {!isMobile && (
-            <Box sx={{ display: 'flex', gap: 1 }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'flex-end' }}>
               {navigationItems.map((item, index) => (
                 <Tooltip
                   key={index}
@@ -139,6 +139,18 @@ const Header = () => {
                   placement="bottom"
                   arrow
                   TransitionComponent={Fade}
+                  componentsProps={{
+                    tooltip: {
+                      sx: {
+                        bgcolor: 'rgba(15, 23, 42, 0.94)',
+                        color: '#fff',
+                        fontSize: '0.8rem',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        maxWidth: 280,
+                      },
+                    },
+                    arrow: { sx: { color: 'rgba(15, 23, 42, 0.94)' } },
+                  }}
                 >
                   <Button
                     component={Link}
@@ -149,19 +161,23 @@ const Header = () => {
                     sx={{
                       borderRadius: 2,
                       textTransform: 'none',
-                      fontWeight: 500,
-                      px: 2,
-                      py: 1,
-                      borderColor: 'divider',
-                      color: 'text.primary',
+                      fontWeight: 600,
+                      px: 1.75,
+                      py: 0.85,
+                      fontSize: '0.8125rem',
+                      color: 'rgba(255, 255, 255, 0.92)',
+                      borderColor: 'rgba(255, 255, 255, 0.28)',
+                      bgcolor: 'rgba(255, 255, 255, 0.06)',
+                      '& .MuiButton-startIcon': { color: 'rgba(255, 255, 255, 0.88)' },
                       '&:hover': {
-                        borderColor: `${item.color}.main`,
-                        backgroundColor: `${item.color}.light`,
-                        color: `${item.color}.main`,
+                        borderColor: 'rgba(255, 255, 255, 0.45)',
+                        bgcolor: (t) => alpha(t.palette[item.color as NavColorKey].main, 0.22),
+                        color: '#fff',
                         transform: 'translateY(-1px)',
-                        boxShadow: 2
+                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
+                        '& .MuiButton-startIcon': { color: '#fff' },
                       },
-                      transition: 'all 0.2s ease-in-out'
+                      transition: 'all 0.2s ease-in-out',
                     }}
                   >
                     {item.title}
@@ -176,10 +192,12 @@ const Header = () => {
             <IconButton
               onClick={handleMobileMenuToggle}
               sx={{
-                color: 'text.primary',
+                color: '#fff',
+                bgcolor: 'rgba(255, 255, 255, 0.12)',
+                border: '1px solid rgba(255, 255, 255, 0.22)',
                 '&:hover': {
-                  backgroundColor: 'action.hover'
-                }
+                  bgcolor: 'rgba(255, 255, 255, 0.2)',
+                },
               }}
             >
               {mobileMenuOpen ? <CloseIcon /> : <MenuIcon />}
@@ -188,7 +206,7 @@ const Header = () => {
         </Toolbar>
       </AppBar>
 
-      {/* Mobile Drawer */}
+      {/* Mobil menü — üst şerit header ile uyumlu, liste beyaz zemin */}
       <Drawer
         anchor="right"
         open={mobileMenuOpen}
@@ -196,29 +214,56 @@ const Header = () => {
         sx={{
           '& .MuiDrawer-paper': {
             width: 320,
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: 'white'
-          }
+            maxWidth: '88vw',
+            bgcolor: '#ffffff',
+            borderLeft: '1px solid rgba(15, 23, 42, 0.1)',
+            boxShadow: '-12px 0 40px rgba(15, 23, 42, 0.12)',
+          },
         }}
       >
-        <Box sx={{ p: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-            <Avatar
-              sx={{
-                background: 'rgba(255, 255, 255, 0.2)',
-                width: 40,
-                height: 40,
-                mr: 2
-              }}
+        <Box
+          sx={{
+            p: 2.5,
+            background: 'linear-gradient(92deg, #1a2744 0%, #1e3a5c 100%)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Avatar
+                sx={{
+                  background: 'linear-gradient(135deg, #5eb8ff 0%, #90caf9 50%, #b39ddb 100%)',
+                  width: 44,
+                  height: 44,
+                  boxShadow: '0 2px 10px rgba(0, 0, 0, 0.35)',
+                }}
+              >
+                <AutoAwesome sx={{ color: '#0f172a' }} />
+              </Avatar>
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>
+                  CV AI Maker
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', fontWeight: 500 }}>
+                  Menü — tüm modüller
+                </Typography>
+              </Box>
+            </Box>
+            <IconButton
+              size="small"
+              onClick={handleMobileMenuToggle}
+              sx={{ color: 'rgba(255, 255, 255, 0.85)' }}
             >
-              <AutoAwesome />
-            </Avatar>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              CV AI Maker
-            </Typography>
+              <CloseIcon fontSize="small" />
+            </IconButton>
           </Box>
-          
-          <List sx={{ mt: 2 }}>
+        </Box>
+
+        <Box sx={{ p: 2, pt: 2, bgcolor: '#ffffff' }}>
+          <Typography variant="overline" sx={{ px: 1, color: 'text.disabled', letterSpacing: 1, fontWeight: 700 }}>
+            Sayfalar
+          </Typography>
+          <List sx={{ mt: 1 }}>
             {navigationItems.map((item, index) => (
               <ListItem
                 key={index}
@@ -228,28 +273,30 @@ const Header = () => {
                 sx={{
                   borderRadius: 2,
                   mb: 1,
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  py: 1.25,
+                  border: '1px solid rgba(25, 118, 210, 0.08)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.7)',
                   '&:hover': {
-                    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                    transform: 'translateX(4px)'
+                    backgroundColor: 'rgba(227, 242, 253, 0.65)',
+                    borderColor: `${item.color}.light`,
+                    transform: 'translateX(-3px)',
                   },
                   transition: 'all 0.2s ease-in-out',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
                 }}
               >
-                <ListItemIcon sx={{ color: 'white', minWidth: 40 }}>
-                  {item.icon}
-                </ListItemIcon>
+                <ListItemIcon sx={{ color: `${item.color}.main`, minWidth: 44 }}>{item.icon}</ListItemIcon>
                 <ListItemText
                   primary={item.title}
                   secondary={item.description}
                   primaryTypographyProps={{
-                    fontWeight: 500,
-                    color: 'white'
+                    fontWeight: 700,
+                    color: 'text.primary',
+                    fontSize: '0.9rem',
                   }}
                   secondaryTypographyProps={{
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    fontSize: '0.875rem'
+                    color: 'text.secondary',
+                    fontSize: '0.75rem',
                   }}
                 />
               </ListItem>

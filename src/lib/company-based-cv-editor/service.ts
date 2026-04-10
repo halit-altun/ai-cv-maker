@@ -436,6 +436,7 @@ export class CompanyBasedCVService {
       request.candidateExperienceRange?.start && request.candidateExperienceRange?.end
         ? `${request.candidateExperienceRange.start} - ${request.candidateExperienceRange.end}`
         : '';
+    const targetPosition = (request.targetPosition || '').trim();
 
     const candidateSkillsBlock = Array.isArray(request.candidateSkills) && request.candidateSkills.length > 0
       ? request.candidateSkills.join(', ')
@@ -468,6 +469,8 @@ export class CompanyBasedCVService {
     - Candidate Skills (from CV, if available): ${candidateSkillsBlock}
     - Candidate Languages (from CV, if available): ${candidateLanguagesBlock}
     - Candidate Experience Range (best-effort): ${candidateExperienceRange || 'N/A'}
+    - For ALL updated fields (updatedAbout, updatedExperience, updatedSkills, updatedLanguages), every claim must be grounded in CV text only.
+    - If a target requirement is not supported by CV facts, do not present it as existing competence/experience.
     `;
 
     const manualTopicRules = `
@@ -476,6 +479,8 @@ export class CompanyBasedCVService {
     - Must NOT mention topics (if any): ${manualMustNotMention.length ? manualMustNotMention.join(', ') : 'none'}
     - If a must-mention topic is not supported by CV facts, mention it in a realistic way (interest/learning/adaptation) without fake claims.
     - Must-NOT topics are strictly forbidden in output.
+    - Manual topics may be written in a different language than the output language. Preserve meaning, but ALWAYS rewrite/translate them into the final output language.
+    - NEVER copy-paste a manual topic sentence verbatim if its language differs from the requested output language.
     `;
 
     const prompt = `
@@ -491,6 +496,11 @@ export class CompanyBasedCVService {
     ${candidateFactConstraints}
     
     ${manualTopicRules}
+
+    TARGET POSITION RULE:
+    - Preferred/explicit target position (if provided): ${targetPosition || 'none'}
+    - If target position is provided, you MUST optimize updatedAbout/updatedExperience/updatedSkills for this role.
+    - Do not rewrite factual history to force-fit the role; keep all claims CV-grounded.
     
     Positive/Negative Match Rules (fill both arrays):
     - positiveMatches: for job requirements/areas that the candidate clearly matches, add an entry with:
@@ -562,6 +572,7 @@ export class CompanyBasedCVService {
          - Not writing to the company, but introducing oneself
          - Should include: Profession/expertise area, experience/strengths, goals, standout skills
          - Use the target requirements/values but maintain personal tone
+         - Do NOT add any new skill/technology/experience that is not explicitly supported by CV text.
          - Example format: "I work as a [profession] with developed problem-solving skills, strong research orientation and ability to produce innovative solutions. [Strengths] with [goals/objectives]. [Learning/contribution goals]."
       2. WORK EXPERIENCE RULES:
          - NEVER CHANGE POSITION, COMPANY NAME, DATE, ADDRESS INFORMATION
@@ -579,7 +590,9 @@ export class CompanyBasedCVService {
          - Write skills only as short names (e.g. "HTML", "Time Management", "React")
          - Use maximum 2 words, don't write long descriptions
          - Only write skill name, don't add descriptions
-      4. In languages section, highlight languages relevant to the target if available
+         - Keep existing CV skills; you may append extra skills ONLY if they are explicitly evidenced in CV text/work experience/projects.
+         - Never add a skill just because it appears in target requirements.
+      4. Languages should stay CV-grounded; do not invent language proficiency
       5. Match score should be 0-100
       6. Only respond in JSON format, don't use markdown format
       7. Use proper English characters` :
@@ -612,6 +625,7 @@ export class CompanyBasedCVService {
          - Şirkete mesaj yazma, kişinin kendini tanıtması
          - İçermesi gerekenler: Meslek/uzmanlık alanı, tecrübe/güçlü yönler, hedef, öne çıkan yetenekler
          - Hedefin değerlerine/önceliklerine uygun ama kişisel bir ton kullan
+         - CV metninde açıkça geçmeyen hiçbir beceri/teknoloji/deneyim ekleme.
          - Örnek format: "Problem çözme becerisi gelişmiş, araştırma yönü güçlü ve yenilikçi çözümler üretebilen bir [meslek] olarak çalışıyorum. [Güçlü yönler] ile [hedef/amaç]. [Öğrenme/katkı hedefi]."
       2. İŞ DENEYİMİ İÇİN ÖZEL KURALLAR:
          - POZİSYON, ŞİRKET ADI, TARİH, ADRES BİLGİLERİNİ ASLA DEĞİŞTİRME
@@ -629,7 +643,9 @@ export class CompanyBasedCVService {
          - Becerileri sadece kısa isimlerle yaz (örn: "HTML", "Zaman Yönetimi", "React")
          - En fazla 2 kelime kullan, uzun açıklamalar yazma
          - Sadece beceri adını yaz, açıklama ekleme
-      4. Diller bölümünde şirketin çalıştığı ülkelerin dillerini öne çıkar
+         - CV'deki mevcut becerileri koru; ekleme yapılacaksa yalnızca CV metni/iş deneyimi/projelerde açıkça kanıtı olan beceriler eklenebilir.
+         - Sırf ilanda geçti diye CV'de olmayan beceriyi ekleme.
+      4. Diller bölümü CV gerçeklerine bağlı kalmalı; seviye/dil uydurma yapma
       5. Match score 0-100 arasında olsun
       6. Sadece JSON formatında cevap ver, markdown formatı kullanma
       7. Türkçe karakterleri doğru kullan`
@@ -774,6 +790,7 @@ export class CompanyBasedCVService {
          - MUST include all "Manual must mention topics".
          - MUST NOT include any "Manual must NOT mention topics".
          - If a must-mention topic is not supported by CV facts, mention it as interest/learning/adaptation only (no fake claims).
+      - Manual topics can be Turkish/English mixed; in English output, rewrite all manual topics in natural English only (no Turkish sentence allowed).
       9. Call-to-action: The final sentence MUST be exactly:
          "I would welcome the opportunity to discuss how my skills can support your team in this role."
       10. Do not repeat the same idea/phrase more than once (e.g., duplicated "I am confident", "I believe", "I am eager").
@@ -840,6 +857,7 @@ export class CompanyBasedCVService {
          - "Manuel bahsedilsin konuları" mutlaka geçsin.
          - "Manuel bahsedilmesin konuları" kesinlikle geçmesin.
          - Eğer "bahsedilsin" konusu CV ile desteklenmiyorsa, sadece ilgi/öğrenme/adapte olma şeklinde yaz; asla sahte deneyim iddia etme.
+      - Manuel konular İngilizce/Türkçe karışık gelebilir; Türkçe çıktı üretirken anlamı koruyarak TÜMÜNÜ doğal Türkçeye çevir, farklı dilde cümleyi aynen kopyalama.
       9. Call-to-action: Son cümlede şu kapanış olsun:
          "Bu rol kapsamında ekibinize nasıl katkı sağlayabileceğimi görüşme fırsatını memnuniyetle değerlendiririm."
       10. Aynı fikri/ifade kalıbını tekrar etme (örn. iki kez "eminim", "inanıyorum", "istekliyim" gibi).

@@ -29,7 +29,7 @@ const theme = createTheme({
       dark: '#F57C00',
     },
     background: {
-      default: '#fafafa',
+      default: '#ffffff',
       paper: '#ffffff',
     },
   },
@@ -79,7 +79,7 @@ export default function RootLayout({
           <CssBaseline />
           <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
             <Header />
-            <main style={{ flex: 1 }}>
+            <main style={{ flex: 1, backgroundColor: '#ffffff' }}>
               {children}
             </main>
             <Footer />
