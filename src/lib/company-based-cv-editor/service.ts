@@ -9,10 +9,9 @@ import {
 } from './types';
 
 // Gemini API Keys - Environment only (no hardcoded fallback)
-const GEMINI_API_KEYS = [
-  process.env.NEXT_PUBLIC_GEMINI_API_KEY_1,
-  process.env.NEXT_PUBLIC_GEMINI_API_KEY_2
-].filter((key): key is string => Boolean(key && key.trim()));
+const GEMINI_API_KEYS = [process.env.NEXT_PUBLIC_GEMINI_API_KEY_1].filter((key): key is string =>
+  Boolean(key && key.trim())
+);
 const GEMINI_API_URL = process.env.NEXT_PUBLIC_GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 // API Key rotation system
