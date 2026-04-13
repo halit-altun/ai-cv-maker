@@ -1,4 +1,4 @@
-import { getPdfJsWorkerSrcHref } from '@/lib/server/installPdfNodeGlobals';
+import { extractPdfTextFromBuffer } from '@/lib/server/extractPdfText';
 
 export const runtime = 'nodejs';
 
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Missing file field (multipart/form-data)' }, { status: 400 });
     }
 
-    const anyFile = fileEntry as Blob & { arrayBuffer(): Promise<ArrayBuffer> };
+    const anyFile = fileEntry as Blob & { arrayBuffer?: () => Promise<ArrayBuffer> };
     if (typeof anyFile.arrayBuffer !== 'function') {
       return Response.json({ error: 'Invalid file entry: arrayBuffer not found' }, { status: 400 });
     }
@@ -27,17 +27,7 @@ export async function POST(req: Request) {
     const arrayBuffer = await anyFile.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const { PDFParse } = await import('pdf-parse');
-    if (typeof PDFParse !== 'function') {
-      return Response.json({ error: 'pdf-parse: PDFParse export missing' }, { status: 500 });
-    }
-    // pdfjs Node: fake worker `import(workerSrc)` — göreli yol Netlify'da kırılır; `file:` + min worker.
-    PDFParse.setWorker(getPdfJsWorkerSrcHref());
-    const parser = new PDFParse({ data: buffer });
-    const parsed = await parser.getText({
-      pageJoiner: 'page_number:page_number/total_number:total_number'
-    });
-    const text = (parsed && parsed.text ? parsed.text : '').toString();
+    const text = await extractPdfTextFromBuffer(buffer);
 
     return Response.json({ text }, { status: 200 });
   } catch (err) {

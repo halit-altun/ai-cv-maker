@@ -1324,11 +1324,11 @@ export class CompanyBasedCVService {
     // Legacy build; tarayıcı tarafında worker/DOMMatrix tarafındaki tutarsızlıklarda daha stabil olur.
     const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
-    // WorkerSrc: CDN yerine node_modules içinden Next tarafından servis edilen yol.
-    const workerSrc = new URL(
-      'pdfjs-dist/build/pdf.worker.min.mjs',
-      import.meta.url
-    ).toString();
+    const pdfjsVersion =
+      typeof (pdfjsLib as { version?: string }).version === 'string'
+        ? (pdfjsLib as { version: string }).version
+        : '5.5.207';
+    const workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
 
     const buildTextFromDocument = async (pdfDocument: any) => {
       let fullText = '';
@@ -1379,10 +1379,11 @@ export class CompanyBasedCVService {
       throw new Error('React-PDF pdfjs not found');
     }
     
-    const workerSrc = new URL(
-      'pdfjs-dist/build/pdf.worker.min.mjs',
-      import.meta.url
-    ).toString();
+    const pdfjsVersion =
+      typeof (pdfjs as { version?: string }).version === 'string'
+        ? (pdfjs as { version: string }).version
+        : '5.4.296';
+    const workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
 
     // WorkerSrc zorunludur.
     if (pdfjs.GlobalWorkerOptions) {
