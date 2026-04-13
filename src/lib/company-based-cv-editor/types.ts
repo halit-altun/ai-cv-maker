@@ -115,6 +115,8 @@ export interface CompanyBasedCVData {
   companyInfo?: CompanyInfo;
   analysisResult?: CVAnalysisResponse;
   coverLetter?: string;
+  /** LinkedIn mesajı: gövde + cover letter ile aynı uygulama imza/iletişim bloğu. */
+  linkedinMessage?: string;
   analysisPreferences?: {
     targetPosition?: string;
     manualMustMentionTopics?: string[];

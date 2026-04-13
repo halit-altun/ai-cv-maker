@@ -38,13 +38,18 @@ import {
   Upload as UploadIcon,
   Link as LinkIcon,
   AutoAwesome as AutoAwesomeIcon,
-  Preview as PreviewIcon,
   ExpandMore as ExpandMoreIcon,
   Settings as SettingsIcon,
-  ContentCopy as ContentCopyIcon
+  ContentCopy as ContentCopyIcon,
+  Autorenew as AutorenewIcon
 } from '@mui/icons-material';
 import CompanyBasedCVPreview from '@/components/company-based-cv-editor/CompanyBasedCVPreview';
 import { CompanyBasedCVService } from '@/lib/company-based-cv-editor/service';
+import {
+  clearCachedCompanyCvPdf,
+  loadCachedCompanyCvPdf,
+  saveCachedCompanyCvPdf
+} from '@/lib/company-based-cv-editor/cachedCvFile';
 import { CompanyBasedCVData, CompanyInfo, CVAnalysisResponse, CompanyLink } from '@/lib/company-based-cv-editor/types';
 
 const steps = [
@@ -82,6 +87,10 @@ export default function CompanyBasedCVEditor() {
   const [coverLetterSource, setCoverLetterSource] = useState<'company' | 'text'>('company');
   const [coverLetterRecipientName, setCoverLetterRecipientName] = useState<string>('');
   const [coverLetterCompanyName, setCoverLetterCompanyName] = useState<string>('');
+  const [linkedinMessage, setLinkedinMessage] = useState('');
+  const [linkedinMessageLanguage, setLinkedinMessageLanguage] = useState<'turkish' | 'english'>('turkish');
+  const [shouldGenerateLinkedInMessage, setShouldGenerateLinkedInMessage] = useState(false);
+  const [linkedinMessageSource, setLinkedinMessageSource] = useState<'company' | 'text'>('company');
   const [targetPosition, setTargetPosition] = useState<string>('');
   const [manualMustMentionTopicsText, setManualMustMentionTopicsText] = useState<string>('');
   const [manualMustNotMentionTopicsText, setManualMustNotMentionTopicsText] = useState<string>('');
@@ -92,7 +101,34 @@ export default function CompanyBasedCVEditor() {
   const [isEditing, setIsEditing] = useState(false);
   const [editableCVData, setEditableCVData] = useState<CompanyBasedCVData | null>(null);
   const [cvLanguage, setCvLanguage] = useState<'turkish' | 'english'>('turkish');
+  const [cvRestoredFromCache, setCvRestoredFromCache] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sayfa yenilense bile son yüklenen PDF (IndexedDB)
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cached = await loadCachedCompanyCvPdf();
+        if (cancelled || !cached) return;
+        setCvFile(cached.file);
+        setCvLanguage(cached.cvLanguage);
+        setCvRestoredFromCache(true);
+      } catch (err) {
+        console.warn('Kayıtlı CV yüklenemedi:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!cvFile) return;
+    void saveCachedCompanyCvPdf(cvFile, cvLanguage).catch((err) => {
+      console.warn('CV tarayıcı önbelleğine yazılamadı:', err);
+    });
+  }, [cvFile, cvLanguage]);
 
   // Geçici DB (localStorage): analiz tercihlerini her yeni analizde hazır tutar.
   useEffect(() => {
@@ -158,6 +194,13 @@ export default function CompanyBasedCVEditor() {
     // "Founding" çoğu zaman rolün çekirdeği değil, stage bilgisidir.
     role = role.replace(/^founding\s+/i, '');
     return role.trim();
+  };
+
+  /** Cover letter açıksa onun kaynağı; değilse yalnızca LinkedIn mesajı kaynağı. */
+  const resolveOutreachSource = (): 'company' | 'text' | null => {
+    if (shouldGenerateCoverLetter) return coverLetterSource;
+    if (shouldGenerateLinkedInMessage) return linkedinMessageSource;
+    return null;
   };
 
   const extractTargetPositionFromJobText = (jobText: string) => {
@@ -405,11 +448,34 @@ export default function CompanyBasedCVEditor() {
     const file = event.target.files?.[0];
     if (file && file.type === 'application/pdf') {
       setCvFile(file);
+      setCvRestoredFromCache(false);
       setError(null);
       setActiveStep(1);
     } else {
       setError('Lütfen geçerli bir PDF dosyası seçin.');
     }
+    event.target.value = '';
+  };
+
+  const handleClearStoredCv = async () => {
+    await clearCachedCompanyCvPdf();
+    setCvFile(null);
+    setCvRestoredFromCache(false);
+    setActiveStep(0);
+    setError(null);
+  };
+
+  /** Aynı PDF ile ilan/şirket hedefini değiştirip yeniden analiz (sonuçları sıfırlar, CV kalır). */
+  const handlePrepareNewAnalysisSameCv = () => {
+    setAnalysisResult(null);
+    setCvData(null);
+    setEditableCVData(null);
+    setCoverLetter('');
+    setLinkedinMessage('');
+    setCompanyInfo(null);
+    setIsEditing(false);
+    setError(null);
+    setActiveStep(1);
   };
 
   // Company link ekleme fonksiyonları
@@ -433,10 +499,11 @@ export default function CompanyBasedCVEditor() {
   };
 
   const handleCompanyLinksSubmit = async () => {
+    const outreachSource = resolveOutreachSource();
     const needsCompanyInfo =
-      cvAdaptationSource === 'company' || (shouldGenerateCoverLetter && coverLetterSource === 'company');
+      cvAdaptationSource === 'company' || outreachSource === 'company';
     const needsJobText =
-      cvAdaptationSource === 'text' || (shouldGenerateCoverLetter && coverLetterSource === 'text');
+      cvAdaptationSource === 'text' || outreachSource === 'text';
 
     // Validation - Job description text
     if (needsJobText && jobDescriptionText.trim().length < 30) {
@@ -487,17 +554,18 @@ export default function CompanyBasedCVEditor() {
   const handleAnalyzeCV = async () => {
     if (!cvFile) return;
 
+    const outreachSource = resolveOutreachSource();
     const needsCompanyInfoForCV = cvAdaptationSource === 'company';
-    const needsCompanyInfoForCoverLetter = shouldGenerateCoverLetter && coverLetterSource === 'company';
+    const needsCompanyForOutreach = outreachSource === 'company';
     const needsJobTextForCV = cvAdaptationSource === 'text';
-    const needsJobTextForCoverLetter = shouldGenerateCoverLetter && coverLetterSource === 'text';
+    const needsJobTextForOutreach = outreachSource === 'text';
 
-    if ((needsCompanyInfoForCV || needsCompanyInfoForCoverLetter) && !companyInfo) {
+    if ((needsCompanyInfoForCV || needsCompanyForOutreach) && !companyInfo) {
       setError('Şirket bilgileri gereken bir seçenek seçildi. Lütfen önce şirket linklerini analiz edin.');
       return;
     }
 
-    if ((needsJobTextForCV || needsJobTextForCoverLetter) && jobDescriptionText.trim().length < 30) {
+    if ((needsJobTextForCV || needsJobTextForOutreach) && jobDescriptionText.trim().length < 30) {
       setError('İlan metni gereken bir seçenek seçildi. Lütfen Job Description metnini doldurun.');
       return;
     }
@@ -579,9 +647,37 @@ export default function CompanyBasedCVEditor() {
           })
         : '';
 
+      const outreachSourceForLinkedIn = shouldGenerateCoverLetter ? coverLetterSource : linkedinMessageSource;
+
+      const generatedLinkedInMessage = shouldGenerateLinkedInMessage
+        ? await CompanyBasedCVService.generateCompanyLinkedInMessage({
+            source: outreachSourceForLinkedIn,
+            companyInfo: outreachSourceForLinkedIn === 'company' ? companyInfo || undefined : undefined,
+            jobDescriptionText: outreachSourceForLinkedIn === 'text' ? jobDescriptionText : undefined,
+            personalInfo: parsedCVData.personalInfo,
+            about: aboutForCoverLetter,
+            cvLanguage,
+            candidateExperienceYears: experienceMeta.years,
+            candidateSkills: parsedCVData.skills || [],
+            candidateHighlights: selectedHighlights,
+            recipientName: coverLetterRecipientName.trim() ? coverLetterRecipientName.trim() : undefined,
+            recipientCompanyName: coverLetterCompanyName.trim() ? coverLetterCompanyName.trim() : undefined,
+            targetPosition: sanitizeRoleTitle(
+              targetPosition ||
+              (outreachSourceForLinkedIn === 'text' ? extractTargetPositionFromJobText(jobDescriptionText) : '') ||
+              parsedCVData.personalInfo?.title ||
+              'Full Stack Web Developer'
+            ),
+            manualMustMentionTopics,
+            manualMustNotMentionTopics
+          })
+        : '';
+
       setAnalysisResult(analysis);
       setCoverLetter(shouldGenerateCoverLetter ? generatedCoverLetter : '');
       setCoverLetterLanguage(cvLanguage);
+      setLinkedinMessage(shouldGenerateLinkedInMessage ? generatedLinkedInMessage : '');
+      setLinkedinMessageLanguage(cvLanguage);
 
       // AI ayarlarına göre CV data oluştur
       const adaptedCVData: CompanyBasedCVData = {
@@ -609,6 +705,7 @@ export default function CompanyBasedCVEditor() {
         companyInfo: companyInfo || undefined,
         analysisResult: analysis,
         coverLetter: shouldGenerateCoverLetter ? generatedCoverLetter : undefined,
+        linkedinMessage: shouldGenerateLinkedInMessage ? generatedLinkedInMessage : undefined,
         analysisPreferences: {
           targetPosition: sanitizeRoleTitle(targetPosition) || undefined,
           manualMustMentionTopics,
@@ -637,14 +734,22 @@ export default function CompanyBasedCVEditor() {
     }
   };
 
-  const getCoverLetterWordCount = (value: string) => {
-    // Total word count should include full cover letter text (including signature/contact block).
+  const handleCopyLinkedinMessage = async () => {
+    if (!linkedinMessage) return;
+    try {
+      await navigator.clipboard.writeText(linkedinMessage);
+    } catch (copyError) {
+      console.error('LinkedIn mesajı kopyalama hatası:', copyError);
+    }
+  };
+
+  const getWordCount = (value: string) => {
     const trimmed = (value || '').trim();
     if (!trimmed) return 0;
     return trimmed.split(/\s+/).filter(Boolean).length;
   };
 
-  const coverLetterWordCount = coverLetter ? getCoverLetterWordCount(coverLetter) : 0;
+  const coverLetterWordCount = coverLetter ? getWordCount(coverLetter) : 0;
 
   // Editör fonksiyonları
   const handleStartEditing = () => {
@@ -760,8 +865,14 @@ export default function CompanyBasedCVEditor() {
               CV Dosyanızı Yükleyin
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              PDF formatında CV dosyanızı seçin
+              PDF formatında CV dosyanızı seçin. Tarayıcıda kayıtlı son PDF otomatik gelir; sayfa yenilense bile aynı dosyayla devam edebilirsiniz.
             </Typography>
+
+            {cvRestoredFromCache && cvFile && (
+              <Alert severity="info" sx={{ maxWidth: 560, mx: 'auto', mb: 2, textAlign: 'left' }}>
+                Önceki oturumdan kayıtlı CV yüklendi: <strong>{cvFile.name}</strong>. Dil seçip hedef adımına geçebilir veya yeni PDF seçebilirsiniz.
+              </Alert>
+            )}
             
             {/* CV Dil Seçimi */}
             <Box sx={{ mb: 3, maxWidth: 400, mx: 'auto' }}>
@@ -793,22 +904,32 @@ export default function CompanyBasedCVEditor() {
               onChange={handleFileUpload}
               style={{ display: 'none' }}
             />
-            <Button
-              variant="contained"
-              size="large"
-              onClick={() => fileInputRef.current?.click()}
-              startIcon={<UploadIcon />}
-            >
-              PDF Seç
-            </Button>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="center" alignItems="center" sx={{ mb: 2 }}>
+              <Button
+                variant="contained"
+                size="large"
+                onClick={() => fileInputRef.current?.click()}
+                startIcon={<UploadIcon />}
+              >
+                {cvFile ? 'Başka PDF seç' : 'PDF Seç'}
+              </Button>
+              {cvFile && (
+                <Button variant="outlined" size="large" onClick={() => setActiveStep(1)}>
+                  Bu CV ile devam et
+                </Button>
+              )}
+            </Stack>
             {cvFile && (
-              <Box sx={{ mt: 2 }}>
+              <Box sx={{ mt: 1 }}>
                 <Chip label={cvFile.name} color="primary" />
                 <Chip 
                   label={cvLanguage === 'turkish' ? 'Türkçe CV' : 'English CV'} 
                   color="secondary" 
                   sx={{ ml: 1 }} 
                 />
+                <Button size="small" color="inherit" sx={{ ml: 1 }} onClick={handleClearStoredCv}>
+                  Kayıtlı CV&apos;yi kaldır
+                </Button>
               </Box>
             )}
           </Box>
@@ -825,6 +946,14 @@ export default function CompanyBasedCVEditor() {
               <Typography variant="body2" color="text.secondary">
                 Hedef şirketin web sitesi linklerini girin (maksimum 3 link)
               </Typography>
+              {cvFile && (
+                <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Chip size="small" label={cvFile.name} />
+                  <Button size="small" variant="text" onClick={() => setActiveStep(0)}>
+                    CV değiştir
+                  </Button>
+                </Box>
+              )}
             </Box>
             
             {/* Company Links */}
@@ -887,7 +1016,7 @@ export default function CompanyBasedCVEditor() {
                   Hedef Kaynağı Seçimi
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  CV düzenleme ve cover letter için şirket web sitelerinden mi yoksa ilan metninden mi ilerleyeceğimizi seçin.
+                  CV düzenleme, cover letter ve isteğe bağlı LinkedIn mesajı için şirket web sitelerinden mi yoksa ilan metninden mi ilerleyeceğimizi seçin.
                 </Typography>
 
                 <Box sx={{ mb: 2 }}>
@@ -916,6 +1045,21 @@ export default function CompanyBasedCVEditor() {
                   />
                 </Box>
 
+                <Box sx={{ mb: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={shouldGenerateLinkedInMessage}
+                        onChange={(e) => setShouldGenerateLinkedInMessage(e.target.checked)}
+                      />
+                    }
+                    label="LinkedIn mesajı üret (opsiyonel)"
+                  />
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ pl: 4, mt: -0.5 }}>
+                    Cover letter ile aynı kanıt kuralları; iletişim/imza cover letter gibi eklenir. 50-70 kelime hedefi yalnızca gövde içindir.
+                  </Typography>
+                </Box>
+
                 {shouldGenerateCoverLetter && (
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
@@ -929,6 +1073,27 @@ export default function CompanyBasedCVEditor() {
                       <FormControlLabel value="company" control={<Radio />} label="Şirket Web Siteleri" />
                       <FormControlLabel value="text" control={<Radio />} label="İlan Metni" />
                     </RadioGroup>
+                    {shouldGenerateLinkedInMessage && (
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                        LinkedIn mesajı da bu kaynağı kullanır.
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+
+                {!shouldGenerateCoverLetter && shouldGenerateLinkedInMessage && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                      LinkedIn mesajı kaynağı
+                    </Typography>
+                    <RadioGroup
+                      row
+                      value={linkedinMessageSource}
+                      onChange={(e) => setLinkedinMessageSource(e.target.value as 'company' | 'text')}
+                    >
+                      <FormControlLabel value="company" control={<Radio />} label="Şirket Web Siteleri" />
+                      <FormControlLabel value="text" control={<Radio />} label="İlan Metni" />
+                    </RadioGroup>
                   </Box>
                 )}
 
@@ -938,11 +1103,11 @@ export default function CompanyBasedCVEditor() {
                   placeholder="Örn: React Developer"
                   value={targetPosition}
                   onChange={(e) => setTargetPosition(e.target.value)}
-                  helperText="Doldurursan AI analizinde ve cover letter'da bu pozisyonu hedef alır."
+                  helperText="Doldurursan AI analizinde, cover letter ve LinkedIn mesajında bu pozisyonu hedef alır."
                   sx={{ mb: 1 }}
                 />
 
-                {shouldGenerateCoverLetter && (
+                {(shouldGenerateCoverLetter || shouldGenerateLinkedInMessage) && (
                   <TextField
                     fullWidth
                     label="Kime yazılacak? (opsiyonel)"
@@ -953,7 +1118,7 @@ export default function CompanyBasedCVEditor() {
                   />
                 )}
 
-                {shouldGenerateCoverLetter && (
+                {(shouldGenerateCoverLetter || shouldGenerateLinkedInMessage) && (
                   <TextField
                     fullWidth
                     label="Firma adı (opsiyonel)"
@@ -988,7 +1153,9 @@ export default function CompanyBasedCVEditor() {
                   sx={{ mb: 1 }}
                 />
 
-                {(cvAdaptationSource === 'text' || (shouldGenerateCoverLetter && coverLetterSource === 'text')) && (
+                {(cvAdaptationSource === 'text' ||
+                  (shouldGenerateCoverLetter && coverLetterSource === 'text') ||
+                  (!shouldGenerateCoverLetter && shouldGenerateLinkedInMessage && linkedinMessageSource === 'text')) && (
                   <TextField
                     fullWidth
                     label="Job Description / İlan Metni"
@@ -1060,7 +1227,9 @@ export default function CompanyBasedCVEditor() {
               >
                 {loading
                   ? 'Analiz Ediliyor...'
-                  : (cvAdaptationSource === 'company' || (shouldGenerateCoverLetter && coverLetterSource === 'company'))
+                  : (cvAdaptationSource === 'company' ||
+                      (shouldGenerateCoverLetter && coverLetterSource === 'company') ||
+                      (!shouldGenerateCoverLetter && shouldGenerateLinkedInMessage && linkedinMessageSource === 'company'))
                     ? 'Şirketleri Analiz Et'
                     : 'Devam Et'}
               </Button>
@@ -1135,8 +1304,8 @@ export default function CompanyBasedCVEditor() {
               <Typography variant="h5" gutterBottom>
                 CV Analizi
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                CV'niz şirket bilgilerine göre analiz edilecek ve seçili bölümler uyarlanacak
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                CV'niz şirket bilgilerine göre analiz edilecek ve seçili bölümler uyarlanacak. Aynı PDF ile farklı ilan için üst adımda metni/linkleri güncelleyip burada tekrar analiz edebilirsiniz.
               </Typography>
               <Button
                 variant="contained"
@@ -1151,9 +1320,34 @@ export default function CompanyBasedCVEditor() {
           </Box>
         );
 
-      case 3:
+      case 3: {
+        const linkedinBodyForCount = linkedinMessage
+          ? CompanyBasedCVService.stripAppendedOutreachSignature(linkedinMessage)
+          : '';
+        const linkedinBodyWordCount = linkedinBodyForCount ? getWordCount(linkedinBodyForCount) : 0;
+        const linkedinTotalWordCount = linkedinMessage ? getWordCount(linkedinMessage) : 0;
+
         return (
           <Box>
+            <Card variant="outlined" sx={{ mb: 3, backgroundColor: '#f8fafc' }}>
+              <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} justifyContent="space-between">
+                  <Typography variant="body2" color="text.secondary">
+                    Aynı CV dosyası korunur. Yeni ilan veya şirket için linkleri / ilan metnini güncelleyip yeniden analiz alın.
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    startIcon={<AutorenewIcon />}
+                    onClick={handlePrepareNewAnalysisSameCv}
+                    sx={{ flexShrink: 0 }}
+                  >
+                    Aynı CV ile yeni analiz
+                  </Button>
+                </Stack>
+              </CardContent>
+            </Card>
+
             {coverLetter && (
               <Card sx={{ mb: 3 }}>
                 <CardContent>
@@ -1194,6 +1388,56 @@ export default function CompanyBasedCVEditor() {
                     sx={{ mt: 1, display: 'block' }}
                   >
                     Toplam kelime (imza dahil): {coverLetterWordCount} / hedef: 250-350
+                  </Typography>
+                </CardContent>
+              </Card>
+            )}
+
+            {linkedinMessage && (
+              <Card sx={{ mb: 3 }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="h6">
+                        LinkedIn mesajı
+                      </Typography>
+                      <Chip
+                        size="small"
+                        color="primary"
+                        label={linkedinMessageLanguage === 'english' ? 'English' : 'Türkçe'}
+                      />
+                    </Box>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<ContentCopyIcon />}
+                      onClick={handleCopyLinkedinMessage}
+                    >
+                      Kopyala
+                    </Button>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                    Aynı hedef ve CV kanıt kurallarıyla üretildi. Cover letter ile aynı iletişim bloğu altta eklenir; 50-70 kelime hedefi yalnızca mesaj gövdesi içindir.
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={4}
+                    value={linkedinMessage}
+                    onChange={(e) => setLinkedinMessage(e.target.value)}
+                  />
+
+                  <Typography
+                    variant="caption"
+                    color={
+                      linkedinBodyWordCount >= 50 && linkedinBodyWordCount <= 70
+                        ? 'success.main'
+                        : 'text.secondary'
+                    }
+                    sx={{ mt: 1, display: 'block' }}
+                  >
+                    Gövde kelimesi (iletişim hariç): {linkedinBodyWordCount} / hedef: 50-70 — toplam (iletişim dahil):{' '}
+                    {linkedinTotalWordCount}
                   </Typography>
                 </CardContent>
               </Card>
@@ -1314,6 +1558,7 @@ export default function CompanyBasedCVEditor() {
             )}
           </Box>
         );
+      }
 
       default:
         return null;
