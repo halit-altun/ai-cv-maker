@@ -1,5 +1,4 @@
-import { getPdfParseChildGlobalsIife } from '@/lib/server/installPdfNodeGlobals';
-import { spawnSync } from 'child_process';
+import '@/lib/server/installPdfNodeGlobals';
 
 export const runtime = 'nodejs';
 
@@ -20,7 +19,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Missing file field (multipart/form-data)' }, { status: 400 });
     }
 
-    const anyFile = fileEntry as any;
+    const anyFile = fileEntry as Blob & { arrayBuffer(): Promise<ArrayBuffer> };
     if (typeof anyFile.arrayBuffer !== 'function') {
       return Response.json({ error: 'Invalid file entry: arrayBuffer not found' }, { status: 400 });
     }
@@ -28,55 +27,15 @@ export async function POST(req: Request) {
     const arrayBuffer = await anyFile.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const b64 = buffer.toString('base64');
-
-    // `pdf-parse`/`pdfjs-dist` Next dev bundling sırasında patlayabildiği için,
-    // child-process içinde “gerçek Node” ortamında require ederek çalıştırıyoruz.
-    const childScript = `
-      ${getPdfParseChildGlobalsIife()}
-      const fs = require('fs');
-      const { PDFParse } = require('pdf-parse');
-      const b64 = fs.readFileSync(0, 'utf8').trim();
-      const buf = Buffer.from(b64, 'base64');
-      (async () => {
-        const parser = new PDFParse({ data: buf });
-        const parsed = await parser.getText({
-          pageJoiner: 'page_number:page_number/total_number:total_number'
-        });
-        const text = (parsed && parsed.text ? parsed.text : '').toString();
-        process.stdout.write(JSON.stringify({ text }));
-      })().catch((err) => {
-        process.stderr.write((err && err.stack) ? err.stack : String(err));
-        process.exit(1);
-      });
-    `;
-
-    const result = spawnSync(process.execPath, ['-e', childScript], {
-      input: b64,
-      encoding: 'utf8',
-      maxBuffer: 10 * 1024 * 1024
+    const { PDFParse } = await import('pdf-parse');
+    if (typeof PDFParse !== 'function') {
+      return Response.json({ error: 'pdf-parse: PDFParse export missing' }, { status: 500 });
+    }
+    const parser = new PDFParse({ data: buffer });
+    const parsed = await parser.getText({
+      pageJoiner: 'page_number:page_number/total_number:total_number'
     });
-
-    if (result.error) {
-      throw result.error;
-    }
-    if (result.status !== 0) {
-      const stderr =
-        typeof result.stderr === 'string'
-          ? result.stderr
-          : String((result as any).stderr ?? '');
-      throw new Error(`pdf-parse child failed: ${stderr}`);
-    }
-
-    const json = (() => {
-      try {
-        return JSON.parse(result.stdout || '{}');
-      } catch {
-        return {};
-      }
-    })();
-
-    const text = typeof json?.text === 'string' ? json.text : '';
+    const text = (parsed && parsed.text ? parsed.text : '').toString();
 
     return Response.json({ text }, { status: 200 });
   } catch (err) {
@@ -86,4 +45,3 @@ export async function POST(req: Request) {
     return Response.json({ error: message, stack }, { status: 500 });
   }
 }
-
