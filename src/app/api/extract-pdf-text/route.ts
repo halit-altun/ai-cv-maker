@@ -1,4 +1,4 @@
-import { PDF_PARSE_CHILD_GLOBALS_IIFE } from '@/lib/server/installPdfNodeGlobals';
+import { getPdfParseChildGlobalsIife } from '@/lib/server/installPdfNodeGlobals';
 import { spawnSync } from 'child_process';
 
 export const runtime = 'nodejs';
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     // `pdf-parse`/`pdfjs-dist` Next dev bundling sırasında patlayabildiği için,
     // child-process içinde “gerçek Node” ortamında require ederek çalıştırıyoruz.
     const childScript = `
-      ${PDF_PARSE_CHILD_GLOBALS_IIFE}
+      ${getPdfParseChildGlobalsIife()}
       const fs = require('fs');
       const { PDFParse } = require('pdf-parse');
       const b64 = fs.readFileSync(0, 'utf8').trim();
