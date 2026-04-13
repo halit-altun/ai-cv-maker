@@ -1,46 +1,83 @@
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
 
 let cachedPdfWorkerSrcHref: string | undefined;
 
-/**
- * pdfjs Node fake-worker `import(workerSrc)` için mutlak `file:` URL.
- * Göreli `./pdf.worker.mjs` Netlify trace'inde kırılır; `pdf.worker.min.mjs` yolunu sabitliyoruz.
- */
-export function getPdfJsWorkerSrcHref(): string {
-  if (cachedPdfWorkerSrcHref) return cachedPdfWorkerSrcHref;
+const workerBasenames = ['pdf.worker.min.mjs', 'pdf.worker.mjs'] as const;
 
-  const cwd = process.cwd();
-  const relPaths = [
-    ['node_modules', 'pdf-parse', 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.min.mjs'],
-    ['node_modules', 'pdf-parse', 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'],
-    ['node_modules', 'pdfjs-dist', 'build', 'pdf.worker.min.mjs'],
-    ['node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.min.mjs']
-  ];
+function workerCandidatesFromDir(baseDir: string): string[] {
+  const out: string[] = [];
+  for (const name of workerBasenames) {
+    out.push(
+      path.join(baseDir, 'node_modules', 'pdf-parse', 'node_modules', 'pdfjs-dist', 'legacy', 'build', name),
+      path.join(baseDir, 'node_modules', 'pdfjs-dist', 'legacy', 'build', name),
+      path.join(baseDir, 'node_modules', 'pdfjs-dist', 'build', name)
+    );
+  }
+  return out;
+}
 
-  for (const segs of relPaths) {
-    const file = path.join(cwd, ...segs);
-    if (existsSync(file)) {
-      cachedPdfWorkerSrcHref = pathToFileURL(file).href;
-      return cachedPdfWorkerSrcHref;
+function findExistingWorkerFile(): string | undefined {
+  const tried = new Set<string>();
+
+  const consider = (file: string) => {
+    const n = path.normalize(file);
+    if (tried.has(n)) return undefined;
+    tried.add(n);
+    return existsSync(n) ? n : undefined;
+  };
+
+  for (const file of workerCandidatesFromDir(process.cwd())) {
+    const hit = consider(file);
+    if (hit) return hit;
+  }
+
+  // Derlenmiş chunk konumundan (/var/task/.next/server/...) köke doğru çık
+  try {
+    let dir = path.dirname(fileURLToPath(import.meta.url));
+    for (let i = 0; i < 16; i++) {
+      for (const file of workerCandidatesFromDir(dir)) {
+        const hit = consider(file);
+        if (hit) return hit;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
     }
+  } catch {
+    // import.meta.url yoksa atla
   }
 
   try {
     const resolved = require.resolve('pdfjs-dist/build/pdf.worker.min.mjs');
-    cachedPdfWorkerSrcHref = pathToFileURL(resolved).href;
-    return cachedPdfWorkerSrcHref;
+    return consider(resolved);
   } catch {
     // yok
   }
 
-  throw new Error(
-    'pdf.worker.min.mjs bulunamadı (pdf-parse/pdfjs-dist). Netlify deploy kökünde node_modules kontrol edin.'
-  );
+  return undefined;
+}
+
+/**
+ * pdfjs Node fake-worker `import(workerSrc)` için mutlak `file:` URL.
+ * Göreli `./pdf.worker.mjs` Netlify trace'inde kırılır; gerçek dosya yolunu buluruz.
+ */
+export function getPdfJsWorkerSrcHref(): string {
+  if (cachedPdfWorkerSrcHref) return cachedPdfWorkerSrcHref;
+
+  const found = findExistingWorkerFile();
+  if (!found) {
+    throw new Error(
+      'pdf.worker*.mjs bulunamadı. next.config.ts içinde outputFileTracingIncludes ile worker dosyalarını ekleyin ve yeniden deploy edin.'
+    );
+  }
+
+  cachedPdfWorkerSrcHref = pathToFileURL(found).href;
+  return cachedPdfWorkerSrcHref;
 }
 
 /**
