@@ -31,7 +31,13 @@ export async function POST(req: Request) {
     if (typeof PDFParse !== 'function') {
       return Response.json({ error: 'pdf-parse: PDFParse export missing' }, { status: 500 });
     }
-    const parser = new PDFParse({ data: buffer });
+    // Netlify: pdf.worker*.mjs pakete/trace'e girmeyebilir; pdfjs `getDocument` için worker kapat.
+    // pdf-parse tipleri `disableWorker` içermiyor; çalışma anında pdfjs'e iletilir.
+    const parser = new PDFParse(
+      { data: buffer, disableWorker: true } as ConstructorParameters<typeof PDFParse>[0] & {
+        disableWorker?: boolean;
+      }
+    );
     const parsed = await parser.getText({
       pageJoiner: 'page_number:page_number/total_number:total_number'
     });
