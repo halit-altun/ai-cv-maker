@@ -1323,12 +1323,12 @@ export class CompanyBasedCVService {
     return {
       originalAbout: String(raw?.originalAbout ?? ''),
       updatedAbout: String(raw?.updatedAbout ?? ''),
-      originalExperience: String(raw?.originalExperience ?? ''),
-      updatedExperience: String(raw?.updatedExperience ?? ''),
-      originalSkills: String(raw?.originalSkills ?? ''),
-      updatedSkills: String(raw?.updatedSkills ?? ''),
-      originalLanguages: String(raw?.originalLanguages ?? ''),
-      updatedLanguages: String(raw?.updatedLanguages ?? ''),
+      originalExperience: CompanyBasedCVService.stringifyAnalysisField(raw?.originalExperience),
+      updatedExperience: CompanyBasedCVService.stringifyAnalysisField(raw?.updatedExperience),
+      originalSkills: CompanyBasedCVService.stringifyAnalysisField(raw?.originalSkills),
+      updatedSkills: CompanyBasedCVService.stringifyAnalysisField(raw?.updatedSkills),
+      originalLanguages: CompanyBasedCVService.stringifyAnalysisField(raw?.originalLanguages),
+      updatedLanguages: CompanyBasedCVService.stringifyAnalysisField(raw?.updatedLanguages),
       recommendations: Array.isArray(raw?.recommendations)
         ? raw.recommendations.map((x: any) => String(x ?? '')).filter(Boolean)
         : [],
@@ -2055,43 +2055,220 @@ Arapça (C1) - Native or Bilingual Proficiency
     });
   }
 
+  /** Tekil "Ad Soyad" → firstName / lastName (birleşik AI yanıtları için). */
+  private static splitFullNameFromString(fullName: string): { firstName: string; lastName: string } {
+    const t = fullName.trim().replace(/\s+/g, ' ');
+    if (!t) return { firstName: '', lastName: '' };
+    const parts = t.split(' ');
+    if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+    return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+  }
+
+  /** "Istanbul, Turkey" veya benzeri → city / country. */
+  private static parseCityCountryFromLocationString(location: string): { city: string; country: string } {
+    const t = location.trim();
+    if (!t) return { city: '', country: '' };
+    const parts = t.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length >= 2) return { city: parts[0], country: parts[parts.length - 1] };
+    return { city: parts[0] || '', country: '' };
+  }
+
+  /** AI'nın `urls` dizisinden linkedin / github / portfolio çıkarır. */
+  private static extractSocialUrlsFromAiPersonal(urls: unknown): { linkedin: string; github: string; portfolio: string } {
+    const out = { linkedin: '', github: '', portfolio: '' };
+    const candidates: string[] = [];
+    if (Array.isArray(urls)) {
+      for (const u of urls) candidates.push(String(u ?? '').trim());
+    } else if (typeof urls === 'string' && urls.trim()) {
+      candidates.push(urls.trim());
+    }
+    for (let raw of candidates) {
+      if (!raw) continue;
+      if (!/^https?:\/\//i.test(raw)) {
+        raw = `https://${raw.replace(/^\/+/, '')}`;
+      }
+      const lower = raw.toLowerCase();
+      if (lower.includes('linkedin.com')) {
+        if (!out.linkedin) out.linkedin = raw;
+      } else if (lower.includes('github.com')) {
+        if (!out.github) out.github = raw;
+      } else if (!out.portfolio) {
+        out.portfolio = raw;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * "2025-01 - Present", "2023-08 - 2023-10" gibi aralıkları ayırır (tire/en tire).
+   */
+  private static splitCvDateRange(raw: string): { start: string; end: string } {
+    const s = raw.replace(/\u2013|\u2014/g, '-').trim();
+    if (!s) return { start: '', end: '' };
+    const rangeRe = /^(\d{4}-\d{1,2})\s*-\s*(Present|Current|Devam|Şu\s*an|\d{4}-\d{1,2})/i;
+    const m = s.match(rangeRe);
+    if (m) {
+      const startNorm = CompanyBasedCVService.normalizeDateToYYYYMM(m[1]);
+      const endToken = m[2];
+      if (/present|current|devam|şu\s*an/i.test(endToken)) {
+        return { start: startNorm, end: 'Present' };
+      }
+      return { start: startNorm, end: CompanyBasedCVService.normalizeDateToYYYYMM(endToken) };
+    }
+    const single = s.match(/^(\d{4}-\d{1,2})$/);
+    if (single) {
+      return { start: CompanyBasedCVService.normalizeDateToYYYYMM(single[1]), end: '' };
+    }
+    return { start: '', end: '' };
+  }
+
+  /** `page.tsx` içindeki `parseWorkExperienceFromText` ile uyumlu metin üretir. */
+  private static formatWorkExperienceArrayAsAdaptationText(items: any[]): string {
+    if (!Array.isArray(items) || items.length === 0) return '';
+    return items
+      .map((item) => {
+        const position = String(item?.position ?? item?.title ?? '').trim();
+        const company = String(item?.company ?? '').trim();
+        const dates = String(item?.dates ?? '').trim();
+        const startRaw = String(item?.startDate ?? '').trim();
+        const endRaw = String(item?.endDate ?? '').trim();
+        const dateLine =
+          dates || (startRaw && endRaw ? `${startRaw} - ${endRaw}` : startRaw || endRaw || '');
+        const details = Array.isArray(item?.details)
+          ? item.details
+          : Array.isArray(item?.bulletPoints)
+            ? item.bulletPoints
+            : [];
+        const bullets = details
+          .map((d: any) => `• ${String(d ?? '').trim()}`)
+          .filter((b: string) => b.length > 2);
+        const header = [position, company].filter(Boolean).join('\n');
+        const parts = [header, dateLine, ...bullets].filter((p) => typeof p === 'string' && p.length > 0);
+        return parts.join('\n');
+      })
+      .filter((block) => block.length > 0)
+      .join('\n\n');
+  }
+
+  /** analysis alanlarında dizi / nesne geldiğinde UI metnine çevirir. */
+  private static stringifyAnalysisField(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) {
+      if (value.length === 0) return '';
+      const first = value[0];
+      if (first !== null && typeof first === 'object') {
+        const keys = Object.keys(first as object);
+        if (
+          keys.includes('company') &&
+          (keys.includes('title') || keys.includes('position') || keys.includes('details') || keys.includes('bulletPoints'))
+        ) {
+          return CompanyBasedCVService.formatWorkExperienceArrayAsAdaptationText(value as any[]);
+        }
+        if (keys.includes('language')) {
+          return (value as any[])
+            .map((l) => `${String(l?.language ?? '').trim()}${l?.level ? ` (${String(l.level).trim()})` : ''}`)
+            .filter(Boolean)
+            .join(', ');
+        }
+      }
+      return value
+        .map((x) => (typeof x === 'string' ? x : JSON.stringify(x)))
+        .join(', ');
+    }
+    return String(value);
+  }
+
   // AI cevabını şemaya zorla ve eksikleri metinden tamamla
   private static normalizeParsedCVData(parsedData: any, cvText: string): Partial<CompanyBasedCVData> {
     const fallback = this.parseCVDataSimple(cvText);
     const parsedPersonal = parsedData?.personalInfo || {};
     const fallbackPersonal = fallback.personalInfo || ({} as any);
 
-    const linkedin = parsedPersonal.linkedin || fallbackPersonal.linkedin || '';
-    const github = parsedPersonal.github || fallbackPersonal.github || '';
-    const portfolio = parsedPersonal.portfolio || fallbackPersonal.portfolio || '';
+    const fromUrls = CompanyBasedCVService.extractSocialUrlsFromAiPersonal(
+      parsedPersonal.urls ?? parsedPersonal.links
+    );
+
+    let linkedin = String(parsedPersonal.linkedin || fromUrls.linkedin || fallbackPersonal.linkedin || '').trim();
+    let github = String(parsedPersonal.github || fromUrls.github || fallbackPersonal.github || '').trim();
+    let portfolio = String(
+      parsedPersonal.portfolio || fromUrls.portfolio || fallbackPersonal.portfolio || ''
+    ).trim();
+
+    const fullNameRaw = String(parsedPersonal.name ?? '').trim();
+    const fromFullName = fullNameRaw ? CompanyBasedCVService.splitFullNameFromString(fullNameRaw) : { firstName: '', lastName: '' };
+
+    let city = String(parsedPersonal.city ?? '').trim();
+    let country = String(parsedPersonal.country ?? '').trim();
+    const locationRaw = String(parsedPersonal.location ?? '').trim();
+    if ((!city || !country) && locationRaw) {
+      const loc = CompanyBasedCVService.parseCityCountryFromLocationString(locationRaw);
+      if (!city) city = loc.city;
+      if (!country) country = loc.country;
+    }
 
     const workExperience = Array.isArray(parsedData?.workExperience)
       ? parsedData.workExperience
           .filter((item: any) => item)
-          .map((item: any, index: number) => ({
-            id: String(item.id ?? index + 1),
-            position: String(item.position ?? ''),
-            company: String(item.company ?? ''),
-            city: String(item.city ?? ''),
-            country: String(item.country ?? ''),
-            startDate: this.normalizeDateToYYYYMM(String(item.startDate ?? '')),
-            endDate: this.normalizeDateToYYYYMM(String(item.endDate ?? '')),
-            bulletPoints: Array.isArray(item.bulletPoints)
+          .map((item: any, index: number) => {
+            const position = String(item.position ?? item.title ?? '').trim();
+            const company = String(item.company ?? '').trim();
+            let wCity = String(item.city ?? '').trim();
+            let wCountry = String(item.country ?? '').trim();
+            const loc = String(item.location ?? '').trim();
+            if ((!wCity || !wCountry) && loc) {
+              const parsedLoc = CompanyBasedCVService.parseCityCountryFromLocationString(loc);
+              if (!wCity) wCity = parsedLoc.city;
+              if (!wCountry) wCountry = parsedLoc.country;
+            }
+            let startDate = String(item.startDate ?? '').trim();
+            let endDate = String(item.endDate ?? '').trim();
+            const datesStr = String(item.dates ?? '').trim();
+            if (datesStr && (!startDate || !endDate)) {
+              const dr = CompanyBasedCVService.splitCvDateRange(datesStr);
+              if (!startDate) startDate = dr.start;
+              if (!endDate) endDate = dr.end;
+            }
+            const bulletPoints = Array.isArray(item.bulletPoints)
               ? item.bulletPoints.map((bp: any) => String(bp ?? '')).filter((bp: string) => bp.trim().length > 0)
-              : []
-          }))
+              : Array.isArray(item.details)
+                ? item.details.map((bp: any) => String(bp ?? '')).filter((bp: string) => bp.trim().length > 0)
+                : [];
+            return {
+              id: String(item.id ?? index + 1),
+              position,
+              company,
+              city: wCity,
+              country: wCountry,
+              startDate: this.normalizeDateToYYYYMM(startDate),
+              endDate: this.normalizeDateToYYYYMM(endDate),
+              bulletPoints
+            };
+          })
       : [];
 
     const educationRaw = Array.isArray(parsedData?.education)
       ? parsedData.education
           .filter((item: any) => item)
-          .map((item: any, index: number) => ({
-            id: String(item.id ?? index + 1),
-            university: String(item.university ?? ''),
-            department: String(item.department ?? ''),
-            startDate: this.normalizeDateToYYYYMM(String(item.startDate ?? '')),
-            endDate: this.normalizeDateToYYYYMM(String(item.endDate ?? ''))
-          }))
+          .map((item: any, index: number) => {
+            const university = String(item.university ?? item.institution ?? item.school ?? '').trim();
+            const department = String(item.department ?? item.degree ?? item.field ?? '').trim();
+            let startDate = String(item.startDate ?? '').trim();
+            let endDate = String(item.endDate ?? '').trim();
+            const datesStr = String(item.dates ?? '').trim();
+            if (datesStr && (!startDate || !endDate)) {
+              const dr = CompanyBasedCVService.splitCvDateRange(datesStr);
+              if (!startDate) startDate = dr.start;
+              if (!endDate) endDate = dr.end;
+            }
+            return {
+              id: String(item.id ?? index + 1),
+              university,
+              department,
+              startDate: this.normalizeDateToYYYYMM(startDate),
+              endDate: this.normalizeDateToYYYYMM(endDate)
+            };
+          })
       : [];
 
     const education = CompanyBasedCVService.repairEducationUniversitiesFromCvText(educationRaw, cvText);
@@ -2101,11 +2278,11 @@ Arapça (C1) - Native or Bilingual Proficiency
 
     return {
       personalInfo: {
-        firstName: String(parsedPersonal.firstName ?? fallbackPersonal.firstName ?? ''),
-        lastName: String(parsedPersonal.lastName ?? fallbackPersonal.lastName ?? ''),
+        firstName: String(parsedPersonal.firstName ?? fromFullName.firstName ?? fallbackPersonal.firstName ?? ''),
+        lastName: String(parsedPersonal.lastName ?? fromFullName.lastName ?? fallbackPersonal.lastName ?? ''),
         title: String(parsedPersonal.title ?? fallbackPersonal.title ?? ''),
-        country: String(parsedPersonal.country ?? fallbackPersonal.country ?? ''),
-        city: String(parsedPersonal.city ?? fallbackPersonal.city ?? ''),
+        country,
+        city,
         phone: String(parsedPersonal.phone ?? fallbackPersonal.phone ?? ''),
         email: String(parsedPersonal.email ?? fallbackPersonal.email ?? ''),
         portfolio: String(portfolio),
