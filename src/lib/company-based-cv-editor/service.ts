@@ -17,6 +17,12 @@ const GEMINI_API_URL = process.env.NEXT_PUBLIC_GEMINI_API_URL || 'https://genera
 /** Başarılı Gemini çağrısı bittikten sonra bir sonraki isteğe geçmeden önce sabit bekleme (429 riskini azaltır). */
 const GEMINI_POST_SUCCESS_DELAY_MS = 10000;
 
+/** Aynı istek için yeniden deneme sayısı (ilk deneme + bu kadar = toplam GEMINI_MAX_RETRIES + 1 çağrı). */
+const GEMINI_MAX_RETRIES = 3;
+
+/** Yeniden denemeden önce bekleme (ms). */
+const GEMINI_RETRY_DELAY_MS = 15_000;
+
 // API Key rotation system
 let currentApiKeyIndex = 0;
 
@@ -1138,8 +1144,12 @@ export class CompanyBasedCVService {
     return `${message}\n\n${signatureBlock}`.trim();
   }
 
-  // Gemini API'yi çağır - Fallback sistemi ile
-  private static async callGeminiAPI(prompt: string, retryCount: number = 0): Promise<string> {
+  private static isRetriableGeminiHttpStatus(status: number): boolean {
+    return status === 429 || status === 502 || status === 503 || status === 504;
+  }
+
+  // Gemini API'yi çağır; geçici hatalarda aynı istek için en fazla GEMINI_MAX_RETRIES kez 15 sn bekleyip yeniden dener
+  private static async callGeminiAPI(prompt: string): Promise<string> {
     const requestBody: GeminiAPIRequest = {
       contents: [
         {
@@ -1152,73 +1162,83 @@ export class CompanyBasedCVService {
       ]
     };
 
-    // API key kontrolü
     if (GEMINI_API_KEYS.length === 0) {
       throw new Error('No valid API keys found. Please check your environment variables.');
     }
 
-    const currentApiKey = GEMINI_API_KEYS[currentApiKeyIndex];
-    
-    if (!currentApiKey) {
-      throw new Error(`API key at index ${currentApiKeyIndex} is undefined.`);
-    }
-    
-    try {
-      console.log(`Using API key ${currentApiKeyIndex + 1}/${GEMINI_API_KEYS.length}: ${currentApiKey.substring(0, 10)}...`);
-      
-      const response = await fetch(GEMINI_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-goog-api-key': currentApiKey
-        },
-        body: JSON.stringify(requestBody)
-      });
+    let lastError: unknown = new Error('Gemini API çağrısı başarısız');
 
-      if (!response.ok) {
-        // Rate limit hatası (429) veya diğer hatalar
-        if (response.status === 429) {
-          console.warn(`Rate limit hit with API key ${currentApiKeyIndex + 1}, trying next key...`);
-          
-          // Sonraki API key'e geç
-          currentApiKeyIndex = (currentApiKeyIndex + 1) % GEMINI_API_KEYS.length;
-          
-          // Eğer tüm API key'ler denendiyse ve hala hata varsa
-          if (retryCount >= GEMINI_API_KEYS.length - 1) {
-            throw new Error(`All API keys exhausted. Last error: ${response.status} ${response.statusText}`);
+    for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+      const currentApiKey = GEMINI_API_KEYS[currentApiKeyIndex];
+
+      if (!currentApiKey) {
+        throw new Error(`API key at index ${currentApiKeyIndex} is undefined.`);
+      }
+
+      const logPrefix = `[Gemini deneme ${attempt + 1}/${GEMINI_MAX_RETRIES + 1}]`;
+
+      try {
+        console.log(`${logPrefix} API key ${currentApiKeyIndex + 1}/${GEMINI_API_KEYS.length}: ${currentApiKey.substring(0, 10)}...`);
+
+        const response = await fetch(GEMINI_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-goog-api-key': currentApiKey
+          },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+          lastError = new Error(`Gemini API error: ${response.status} ${response.statusText}`);
+          if (this.isRetriableGeminiHttpStatus(response.status) && attempt < GEMINI_MAX_RETRIES) {
+            console.warn(
+              `${logPrefix} ${response.status} — ${GEMINI_RETRY_DELAY_MS / 1000} sn sonra aynı istek tekrarlanacak.`
+            );
+            await new Promise((resolve) => setTimeout(resolve, GEMINI_RETRY_DELAY_MS));
+            continue;
           }
-          
-          // Kısa bir bekleme sonrası tekrar dene
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          return this.callGeminiAPI(prompt, retryCount + 1);
+          throw lastError;
         }
-        
-        throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
-      }
 
-      const data: GeminiAPIResponse = await response.json();
-      
-      if (data.candidates && data.candidates.length > 0) {
-        console.log(`API call successful with key ${currentApiKeyIndex + 1}`);
-        const text = data.candidates[0].content.parts[0].text;
-        await new Promise((resolve) => setTimeout(resolve, GEMINI_POST_SUCCESS_DELAY_MS));
-        return text;
-      } else {
-        throw new Error('Gemini API did not return valid response');
-      }
-    } catch (error) {
-      console.error(`Gemini API call failed with key ${currentApiKeyIndex + 1}:`, error);
-      
-      // Eğer rate limit hatası değilse veya tüm key'ler denendiyse hatayı fırlat
-      if (!(error as Error).message.includes('429') || retryCount >= GEMINI_API_KEYS.length - 1) {
+        const data: GeminiAPIResponse = await response.json();
+
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (typeof text === 'string' && text.length > 0) {
+          console.log(`${logPrefix} başarılı (key ${currentApiKeyIndex + 1})`);
+          await new Promise((resolve) => setTimeout(resolve, GEMINI_POST_SUCCESS_DELAY_MS));
+          return text;
+        }
+
+        lastError = new Error('Gemini API did not return valid response');
+        if (attempt < GEMINI_MAX_RETRIES) {
+          console.warn(`${logPrefix} geçersiz/boş yanıt — ${GEMINI_RETRY_DELAY_MS / 1000} sn sonra tekrarlanacak.`);
+          await new Promise((resolve) => setTimeout(resolve, GEMINI_RETRY_DELAY_MS));
+          continue;
+        }
+        throw lastError;
+      } catch (error) {
+        lastError = error;
+        const msg = error instanceof Error ? error.message : String(error);
+        const isNetwork =
+          error instanceof TypeError ||
+          /failed to fetch|networkerror|load failed|fetch/i.test(msg);
+        const isJsonParse = error instanceof SyntaxError;
+
+        if ((isNetwork || isJsonParse) && attempt < GEMINI_MAX_RETRIES) {
+          console.warn(
+            `${logPrefix} ağ/parse hatası — ${GEMINI_RETRY_DELAY_MS / 1000} sn sonra tekrarlanacak:`,
+            error
+          );
+          await new Promise((resolve) => setTimeout(resolve, GEMINI_RETRY_DELAY_MS));
+          continue;
+        }
+
         throw error;
       }
-      
-      // Sonraki API key'e geç ve tekrar dene
-      currentApiKeyIndex = (currentApiKeyIndex + 1) % GEMINI_API_KEYS.length;
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return this.callGeminiAPI(prompt, retryCount + 1);
     }
+
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   // JSON response'u parse et
