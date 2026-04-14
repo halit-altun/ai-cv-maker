@@ -41,7 +41,8 @@ import {
   ExpandMore as ExpandMoreIcon,
   Settings as SettingsIcon,
   ContentCopy as ContentCopyIcon,
-  Autorenew as AutorenewIcon
+  Autorenew as AutorenewIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import CompanyBasedCVPreview from '@/components/company-based-cv-editor/CompanyBasedCVPreview';
 import { CompanyBasedCVService } from '@/lib/company-based-cv-editor/service';
@@ -1333,17 +1334,32 @@ export default function CompanyBasedCVEditor() {
               <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} justifyContent="space-between">
                   <Typography variant="body2" color="text.secondary">
-                    Aynı CV dosyası korunur. Yeni ilan veya şirket için linkleri / ilan metnini güncelleyip yeniden analiz alın.
+                    Aynı CV dosyası korunur. AI çıktısı hoşunuza gitmediyse aynı ayarlarla yeniden üretebilirsiniz; farklı şirket veya ilan için linkleri veya ilan metnini güncelleyip alttaki «Aynı CV ile yeni analiz» akışına dönün.
                   </Typography>
-                  <Button
-                    variant="contained"
-                    color="secondary"
-                    startIcon={<AutorenewIcon />}
-                    onClick={handlePrepareNewAnalysisSameCv}
-                    sx={{ flexShrink: 0 }}
-                  >
-                    Aynı CV ile yeni analiz
-                  </Button>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ flexShrink: 0, width: { xs: '100%', sm: 'auto' } }}>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <RefreshIcon />}
+                      onClick={() => void handleAnalyzeCV()}
+                      disabled={loading || !cvFile}
+                      fullWidth
+                      sx={{ minWidth: { sm: 200 } }}
+                    >
+                      {loading ? 'Yeniden üretiliyor...' : 'Yeniden üret'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      startIcon={<AutorenewIcon />}
+                      onClick={handlePrepareNewAnalysisSameCv}
+                      disabled={loading}
+                      fullWidth
+                      sx={{ minWidth: { sm: 200 } }}
+                    >
+                      Aynı CV ile yeni analiz
+                    </Button>
+                  </Stack>
                 </Stack>
               </CardContent>
             </Card>
