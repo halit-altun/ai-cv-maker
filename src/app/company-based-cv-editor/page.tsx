@@ -32,7 +32,8 @@ import {
   TableBody,
   TableCell,
   TableHead,
-  TableRow
+  TableRow,
+  Switch
 } from '@mui/material';
 import {
   Upload as UploadIcon,
@@ -72,6 +73,24 @@ const defaultAISettings: AIAdaptationSettings = {
 };
 
 const ANALYSIS_PREFS_STORAGE_KEY = 'company_based_cv_editor_analysis_preferences_v1';
+const GEMINI_MODE_STORAGE_KEY = 'company_based_cv_editor_gemini_mode_v1';
+
+const readGeminiModeFromStorage = (): { single: boolean; staggerSec: number } => {
+  if (typeof window === 'undefined') return { single: true, staggerSec: 3 };
+  try {
+    const raw = localStorage.getItem(GEMINI_MODE_STORAGE_KEY);
+    if (!raw) return { single: true, staggerSec: 3 };
+    const p = JSON.parse(raw) as { useSingleGeminiRequest?: boolean; staggerDelaySeconds?: number };
+    const single = typeof p.useSingleGeminiRequest === 'boolean' ? p.useSingleGeminiRequest : true;
+    const sec =
+      typeof p.staggerDelaySeconds === 'number' && Number.isFinite(p.staggerDelaySeconds)
+        ? Math.min(30, Math.max(0.5, p.staggerDelaySeconds))
+        : 3;
+    return { single, staggerSec: sec };
+  } catch {
+    return { single: true, staggerSec: 3 };
+  }
+};
 
 export default function CompanyBasedCVEditor() {
   const [activeStep, setActiveStep] = useState(0);
@@ -102,6 +121,12 @@ export default function CompanyBasedCVEditor() {
   const [editableCVData, setEditableCVData] = useState<CompanyBasedCVData | null>(null);
   const [cvLanguage, setCvLanguage] = useState<'turkish' | 'english'>('turkish');
   const [cvRestoredFromCache, setCvRestoredFromCache] = useState(false);
+  const [useSingleGeminiRequest, setUseSingleGeminiRequest] = useState(
+    () => readGeminiModeFromStorage().single
+  );
+  const [staggerDelaySeconds, setStaggerDelaySeconds] = useState(
+    () => readGeminiModeFromStorage().staggerSec
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sayfa yenilense bile son yüklenen PDF (IndexedDB)
@@ -163,6 +188,20 @@ export default function CompanyBasedCVEditor() {
       console.warn('Analiz tercihleri localStorage yüklenemedi:', err);
     }
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        GEMINI_MODE_STORAGE_KEY,
+        JSON.stringify({
+          useSingleGeminiRequest,
+          staggerDelaySeconds
+        })
+      );
+    } catch (err) {
+      console.warn('Gemini istek modu kaydedilemedi:', err);
+    }
+  }, [useSingleGeminiRequest, staggerDelaySeconds]);
 
   useEffect(() => {
     try {
@@ -538,11 +577,10 @@ export default function CompanyBasedCVEditor() {
 
       const linkedinTargetSource = shouldGenerateCoverLetter ? coverLetterSource : linkedinMessageSource;
 
-      const unified = await CompanyBasedCVService.analyzeCompanyBasedCvUnified({
+      const sharedParams = {
         cvText,
         cvLanguage,
         adaptationSource: cvAdaptationSource,
-        // CV şirket / ilan metni; cover veya LinkedIn farklı kaynak kullanınca ikisi de promptta bulunsun
         companyInfo: companyInfo ?? undefined,
         jobDescriptionText: jobDescriptionText.trim() ? jobDescriptionText : undefined,
         companyUrl: cvAdaptationSource === 'company' ? companyLinks[0]?.url || '' : undefined,
@@ -556,7 +594,14 @@ export default function CompanyBasedCVEditor() {
         linkedinTargetSource,
         coverLetterRecipientName: coverLetterRecipientName.trim() ? coverLetterRecipientName.trim() : undefined,
         coverLetterCompanyName: coverLetterCompanyName.trim() ? coverLetterCompanyName.trim() : undefined
-      });
+      };
+
+      const unified = useSingleGeminiRequest
+        ? await CompanyBasedCVService.analyzeCompanyBasedCvUnified(sharedParams)
+        : await CompanyBasedCVService.analyzeCompanyBasedCvLegacyStaggered({
+            ...sharedParams,
+            staggerDelayMs: Math.round(Math.min(30, Math.max(0.5, staggerDelaySeconds)) * 1000)
+          });
 
       const parsedCVData = unified.parsedCVData;
       const analysis = unified.analysis;
@@ -1188,6 +1233,43 @@ export default function CompanyBasedCVEditor() {
                     <Chip label="Hiçbir bölüm uyarlanmayacak" color="warning" size="small" />
                   )}
                 </Stack>
+              </CardContent>
+            </Card>
+
+            <Card sx={{ mb: 3 }} variant="outlined">
+              <CardContent>
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+                  AI istek modu
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Varsayılan tek istek daha hızlıdır ve kotayı az kullanır. Çoklu mod, eski adım adım akışı kullanır; her Gemini çağrısı arasında bekleme eklenerek 429 riski azaltılır.
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={useSingleGeminiRequest}
+                      onChange={(_, checked) => setUseSingleGeminiRequest(checked)}
+                      color="primary"
+                    />
+                  }
+                  label={useSingleGeminiRequest ? 'Tek istek (önerilen)' : 'Çoklu istek + arada bekleme'}
+                />
+                {!useSingleGeminiRequest && (
+                  <TextField
+                    label="İstekler arası bekleme (saniye)"
+                    type="number"
+                    size="small"
+                    sx={{ mt: 2, maxWidth: 280, display: 'block' }}
+                    inputProps={{ min: 0.5, max: 30, step: 0.5 }}
+                    value={staggerDelaySeconds}
+                    onChange={(e) => {
+                      const n = parseFloat(e.target.value);
+                      if (!Number.isFinite(n)) return;
+                      setStaggerDelaySeconds(Math.min(30, Math.max(0.5, n)));
+                    }}
+                    helperText="Örn. 3: her API çağrısından önce en az 3 sn beklenir (0,5–30 sn)."
+                  />
+                )}
               </CardContent>
             </Card>
             

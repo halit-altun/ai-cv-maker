@@ -7,7 +7,8 @@ import {
   GeminiAPIResponse,
   CompanyBasedCVData,
   CompanyBasedUnifiedAnalysisParams,
-  CompanyBasedUnifiedAnalysisResult
+  CompanyBasedUnifiedAnalysisResult,
+  CompanyBasedLegacyStaggerParams
 } from './types';
 import { buildCompanyBasedUnifiedPrompt } from './unifiedCompanyAnalysisPrompt';
 
@@ -1434,6 +1435,185 @@ export class CompanyBasedCVService {
         companyForPolish,
         recipientCompanyNameClean
       );
+    }
+
+    return { parsedCVData, analysis, coverLetter, linkedinMessage };
+  }
+
+  private static sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private static sanitizeOutreachRoleTitle(value: string | undefined): string {
+    let role = (value || '').trim();
+    role = role.replace(/^[\-\s:]+|[\-\s:]+$/g, '');
+    role = role.replace(/\s+/g, ' ');
+    role = role.replace(/^founding\s+/i, '');
+    return role.trim();
+  }
+
+  private static computeCandidateExperienceMeta(
+    workExperience: CompanyBasedCVData['workExperience'] | undefined
+  ): { years: number | null; range: { start: string; end: string } | null } {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    const parseYYYYMM = (value: string) => {
+      const m = value.match(/^(\d{4})-(\d{2})$/);
+      if (!m) return null;
+      return { year: parseInt(m[1], 10), month: parseInt(m[2], 10) };
+    };
+
+    const validItems = Array.isArray(workExperience) ? workExperience : [];
+    const hasPresentEnd = validItems.some(
+      (item) => typeof item?.endDate === 'string' && /present|devam|current/i.test(item.endDate)
+    );
+    const starts = validItems
+      .map((i) => (i?.startDate ? parseYYYYMM(i.startDate) : null))
+      .filter(Boolean) as Array<{ year: number; month: number }>;
+
+    if (starts.length === 0) {
+      return { years: null, range: null };
+    }
+
+    const earliest = starts.reduce((acc, cur) => {
+      if (cur.year < acc.year) return cur;
+      if (cur.year === acc.year && cur.month < acc.month) return cur;
+      return acc;
+    }, starts[0]);
+
+    let latestEnd: { year: number; month: number } | null = null;
+    for (const item of validItems) {
+      if (!item?.endDate) continue;
+      if (/present|devam|current/i.test(item.endDate)) {
+        latestEnd = { year: currentYear, month: currentMonth };
+        break;
+      }
+      const parsed = parseYYYYMM(item.endDate);
+      if (!parsed) continue;
+      if (!latestEnd) {
+        latestEnd = parsed;
+      } else if (parsed.year > latestEnd.year || (parsed.year === latestEnd.year && parsed.month > latestEnd.month)) {
+        latestEnd = parsed;
+      }
+    }
+
+    if (!latestEnd) {
+      return { years: null, range: null };
+    }
+
+    const months = (latestEnd.year * 12 + latestEnd.month) - (earliest.year * 12 + earliest.month) + 1;
+    const years = Math.max(0, Math.floor(months / 12));
+
+    return {
+      years,
+      range: {
+        start: `${earliest.year}-${String(earliest.month).padStart(2, '0')}`,
+        end: hasPresentEnd ? 'Present' : [latestEnd.year, String(latestEnd.month).padStart(2, '0')].join('-')
+      }
+    };
+  }
+
+  /**
+   * Eski çoklu istek akışı: parse → (bekle) → uyarlama → (bekle) → cover → (bekle) → LinkedIn.
+   * Rate limit riskini azaltmak için çağrılar arası staggerDelayMs kullanılır.
+   */
+  static async analyzeCompanyBasedCvLegacyStaggered(
+    params: CompanyBasedLegacyStaggerParams
+  ): Promise<CompanyBasedUnifiedAnalysisResult> {
+    const delay = Math.min(30_000, Math.max(500, Math.floor(params.staggerDelayMs)));
+
+    const parsedCVData = await CompanyBasedCVService.parseCVDataWithAI(params.cvText, params.cvLanguage);
+    await CompanyBasedCVService.sleep(delay);
+
+    const experienceMeta = CompanyBasedCVService.computeCandidateExperienceMeta(parsedCVData.workExperience);
+
+    const analysis = await CompanyBasedCVService.analyzeAndAdaptCV({
+      cvText: params.cvText,
+      companyUrl: params.adaptationSource === 'company' ? params.companyUrl : undefined,
+      companyInfo: params.adaptationSource === 'company' ? params.companyInfo : undefined,
+      jobDescriptionText: params.adaptationSource === 'text' ? params.jobDescriptionText : undefined,
+      targetPosition: CompanyBasedCVService.sanitizeOutreachRoleTitle(params.targetPositionHint) || undefined,
+      adaptationSource: params.adaptationSource,
+      cvLanguage: params.cvLanguage,
+      candidateExperienceYears: experienceMeta.years,
+      candidateExperienceRange: experienceMeta.range ?? undefined,
+      candidateSkills: parsedCVData.skills || [],
+      candidateLanguages: parsedCVData.languages || [],
+      manualMustMentionTopics: params.manualMustMentionTopics,
+      manualMustNotMentionTopics: params.manualMustNotMentionTopics
+    });
+
+    const aboutForCoverLetter = params.aiAdaptation.about
+      ? analysis.updatedAbout
+      : parsedCVData.about || '';
+
+    const cvWorkHighlights = (parsedCVData.workExperience || [])
+      .flatMap((w) => (Array.isArray(w?.bulletPoints) ? w.bulletPoints : []))
+      .map((s) => String(s || '').trim())
+      .filter(Boolean);
+    const numericHighlights = cvWorkHighlights.filter((b) => /\d/.test(b) || /%/.test(b));
+    const selectedHighlights = (numericHighlights.length >= 3 ? numericHighlights : cvWorkHighlights).slice(0, 8);
+
+    const targetPositionForOutreach =
+      CompanyBasedCVService.sanitizeOutreachRoleTitle(params.targetPositionHint) ||
+      CompanyBasedCVService.sanitizeOutreachRoleTitle(parsedCVData.personalInfo?.title) ||
+      'Full Stack Web Developer';
+
+    const outreachRecipientName = params.coverLetterRecipientName?.trim()
+      ? params.coverLetterRecipientName.trim()
+      : undefined;
+    const outreachRecipientCompany = params.coverLetterCompanyName?.trim()
+      ? params.coverLetterCompanyName.trim()
+      : undefined;
+
+    const hasOutreach = params.generateCoverLetter || params.generateLinkedInMessage;
+    if (hasOutreach) {
+      await CompanyBasedCVService.sleep(delay);
+    }
+
+    let coverLetter = '';
+    if (params.generateCoverLetter) {
+      coverLetter = await CompanyBasedCVService.generateCompanyCoverLetter({
+        source: params.coverLetterSource,
+        companyInfo: params.coverLetterSource === 'company' ? params.companyInfo : undefined,
+        jobDescriptionText: params.coverLetterSource === 'text' ? params.jobDescriptionText : undefined,
+        personalInfo: parsedCVData.personalInfo,
+        about: aboutForCoverLetter,
+        cvLanguage: params.cvLanguage,
+        candidateExperienceYears: experienceMeta.years,
+        candidateSkills: parsedCVData.skills || [],
+        candidateHighlights: selectedHighlights,
+        recipientName: outreachRecipientName,
+        recipientCompanyName: outreachRecipientCompany,
+        targetPosition: targetPositionForOutreach,
+        manualMustMentionTopics: params.manualMustMentionTopics,
+        manualMustNotMentionTopics: params.manualMustNotMentionTopics
+      });
+      if (params.generateLinkedInMessage) {
+        await CompanyBasedCVService.sleep(delay);
+      }
+    }
+
+    let linkedinMessage = '';
+    if (params.generateLinkedInMessage) {
+      linkedinMessage = await CompanyBasedCVService.generateCompanyLinkedInMessage({
+        source: params.linkedinTargetSource,
+        companyInfo: params.linkedinTargetSource === 'company' ? params.companyInfo : undefined,
+        jobDescriptionText: params.linkedinTargetSource === 'text' ? params.jobDescriptionText : undefined,
+        personalInfo: parsedCVData.personalInfo,
+        about: aboutForCoverLetter,
+        cvLanguage: params.cvLanguage,
+        candidateExperienceYears: experienceMeta.years,
+        candidateSkills: parsedCVData.skills || [],
+        candidateHighlights: selectedHighlights,
+        recipientName: outreachRecipientName,
+        recipientCompanyName: outreachRecipientCompany,
+        targetPosition: targetPositionForOutreach,
+        manualMustMentionTopics: params.manualMustMentionTopics,
+        manualMustNotMentionTopics: params.manualMustNotMentionTopics
+      });
     }
 
     return { parsedCVData, analysis, coverLetter, linkedinMessage };
