@@ -104,10 +104,6 @@ export interface CompanyBasedUnifiedAnalysisResult {
   linkedinMessage: string;
 }
 
-/** Çoklu istek modu: her Gemini çağrısı arasında bekleme (ms) */
-export type CompanyBasedLegacyStaggerParams = CompanyBasedUnifiedAnalysisParams & {
-  staggerDelayMs: number;
-};
 
 export interface CompanyBasedCVData {
   personalInfo: {

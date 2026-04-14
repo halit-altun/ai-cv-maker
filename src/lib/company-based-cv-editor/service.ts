@@ -7,8 +7,7 @@ import {
   GeminiAPIResponse,
   CompanyBasedCVData,
   CompanyBasedUnifiedAnalysisParams,
-  CompanyBasedUnifiedAnalysisResult,
-  CompanyBasedLegacyStaggerParams
+  CompanyBasedUnifiedAnalysisResult
 } from './types';
 import { buildCompanyBasedUnifiedPrompt } from './unifiedCompanyAnalysisPrompt';
 
@@ -20,6 +19,9 @@ const GEMINI_API_URL = process.env.NEXT_PUBLIC_GEMINI_API_URL || 'https://genera
 
 // API Key rotation system
 let currentApiKeyIndex = 0;
+
+/** Çoklu Gemini modunda ardışık istekler arası sabit bekleme (rate limit için) */
+const LEGACY_GEMINI_STAGGER_MS = 7000;
 
 export class CompanyBasedCVService {
   
@@ -1517,12 +1519,12 @@ export class CompanyBasedCVService {
 
   /**
    * Eski çoklu istek akışı: parse → (bekle) → uyarlama → (bekle) → cover → (bekle) → LinkedIn.
-   * Rate limit riskini azaltmak için çağrılar arası staggerDelayMs kullanılır.
+   * Rate limit riskini azaltmak için ardışık çağrılar arasında sabit 7 sn beklenir ({@link LEGACY_GEMINI_STAGGER_MS}).
    */
   static async analyzeCompanyBasedCvLegacyStaggered(
-    params: CompanyBasedLegacyStaggerParams
+    params: CompanyBasedUnifiedAnalysisParams
   ): Promise<CompanyBasedUnifiedAnalysisResult> {
-    const delay = Math.min(30_000, Math.max(500, Math.floor(params.staggerDelayMs)));
+    const delay = LEGACY_GEMINI_STAGGER_MS;
 
     const parsedCVData = await CompanyBasedCVService.parseCVDataWithAI(params.cvText, params.cvLanguage);
     await CompanyBasedCVService.sleep(delay);
