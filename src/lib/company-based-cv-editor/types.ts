@@ -75,6 +75,35 @@ export interface GeminiAPIResponse {
   }>;
 }
 
+/** Şirket bazlı editör: tek Gemini çağrısında parse + uyarlama + (isteğe bağlı) outreach gövdeleri */
+export interface CompanyBasedUnifiedAnalysisParams {
+  cvText: string;
+  cvLanguage: 'turkish' | 'english';
+  adaptationSource: CVAdaptationSource;
+  companyInfo?: CompanyInfo;
+  jobDescriptionText?: string;
+  companyUrl?: string;
+  targetPositionHint?: string;
+  manualMustMentionTopics?: string[];
+  manualMustNotMentionTopics?: string[];
+  /** Cover letter metninde about için: true ise analysis.updatedAbout, değilse parsedCV.about */
+  aiAdaptation: { about: boolean; workExperience: boolean; skills: boolean };
+  generateCoverLetter: boolean;
+  generateLinkedInMessage: boolean;
+  coverLetterSource: 'company' | 'text';
+  /** LinkedIn hedefi: cover letter açıksa UI ile aynı şekilde coverLetterSource; değilse linkedinMessageSource */
+  linkedinTargetSource: 'company' | 'text';
+  coverLetterRecipientName?: string;
+  coverLetterCompanyName?: string;
+}
+
+export interface CompanyBasedUnifiedAnalysisResult {
+  parsedCVData: Partial<CompanyBasedCVData>;
+  analysis: CVAnalysisResponse;
+  coverLetter: string;
+  linkedinMessage: string;
+}
+
 export interface CompanyBasedCVData {
   personalInfo: {
     firstName: string;

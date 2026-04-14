@@ -5,8 +5,11 @@ import {
   CVAnalysisResponse, 
   GeminiAPIRequest, 
   GeminiAPIResponse,
-  CompanyBasedCVData
+  CompanyBasedCVData,
+  CompanyBasedUnifiedAnalysisParams,
+  CompanyBasedUnifiedAnalysisResult
 } from './types';
+import { buildCompanyBasedUnifiedPrompt } from './unifiedCompanyAnalysisPrompt';
 
 // Gemini API Keys - Environment only (no hardcoded fallback)
 const GEMINI_API_KEYS = [process.env.NEXT_PUBLIC_GEMINI_API_KEY_1].filter((key): key is string =>
@@ -1284,6 +1287,156 @@ export class CompanyBasedCVService {
         culture: "Dinamik ve yenilikçi çalışma ortamı"
       };
     }
+  }
+
+  /** Birleşik analiz yanıtı için: şirket fallback'i olmadan JSON zorunlu */
+  private static parseJSONResponseStrict(response: string): any {
+    let cleanResponse = response.trim();
+    cleanResponse = cleanResponse.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    cleanResponse = cleanResponse.replace(/```/g, '');
+    cleanResponse = cleanResponse.replace(/^[^{]*/, '').replace(/[^}]*$/, '');
+    try {
+      return JSON.parse(cleanResponse);
+    } catch (firstError) {
+      let aggressiveClean = response;
+      aggressiveClean = aggressiveClean.replace(/```json\s*/g, '').replace(/```\s*/g, '').replace(/```/g, '');
+      aggressiveClean = aggressiveClean.replace(/^[^{]*/, '').replace(/[^}]*$/, '');
+      const jsonMatch = aggressiveClean.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        let jsonStr = jsonMatch[0];
+        jsonStr = jsonStr.replace(/,\s*}/g, '}');
+        jsonStr = jsonStr.replace(/,\s*]/g, ']');
+        return JSON.parse(jsonStr);
+      }
+      throw firstError instanceof Error ? firstError : new Error('JSON parse failed');
+    }
+  }
+
+  private static coerceCvAnalysisResponse(raw: any): CVAnalysisResponse {
+    const score = typeof raw?.matchScore === 'number' ? raw.matchScore : Number(raw?.matchScore);
+    const matchScore = Number.isFinite(score) ? Math.min(100, Math.max(0, Math.round(score))) : 0;
+    const pm = Array.isArray(raw?.positiveMatches) ? raw.positiveMatches : [];
+    const nm = Array.isArray(raw?.negativeMismatches) ? raw.negativeMismatches : [];
+    return {
+      originalAbout: String(raw?.originalAbout ?? ''),
+      updatedAbout: String(raw?.updatedAbout ?? ''),
+      originalExperience: String(raw?.originalExperience ?? ''),
+      updatedExperience: String(raw?.updatedExperience ?? ''),
+      originalSkills: String(raw?.originalSkills ?? ''),
+      updatedSkills: String(raw?.updatedSkills ?? ''),
+      originalLanguages: String(raw?.originalLanguages ?? ''),
+      updatedLanguages: String(raw?.updatedLanguages ?? ''),
+      recommendations: Array.isArray(raw?.recommendations)
+        ? raw.recommendations.map((x: any) => String(x ?? '')).filter(Boolean)
+        : [],
+      matchScore,
+      positiveMatches: pm
+        .map((x: any) => ({
+          label: String(x?.label ?? ''),
+          evidence: String(x?.evidence ?? '')
+        }))
+        .filter((x: { label: string }) => x.label.trim().length > 0),
+      negativeMismatches: nm
+        .map((x: any) => ({
+          label: String(x?.label ?? ''),
+          gap: String(x?.gap ?? ''),
+          evidence: x?.evidence !== undefined ? String(x.evidence) : undefined
+        }))
+        .filter((x: { label: string }) => x.label.trim().length > 0)
+    };
+  }
+
+  private static finalizeCoverLetterFromAiBody(
+    letter: string,
+    personalInfo: Partial<CompanyBasedCVData['personalInfo']> | undefined,
+    companyInfo: CompanyInfo | undefined,
+    recipientCompanyNameClean: string | undefined
+  ): string {
+    let out = letter.trim().replace(/^```[\s\S]*?\n/, '').replace(/```$/, '').trim();
+    out = CompanyBasedCVService.normalizeOutreachLetterFormatting(out.replace(/\[company\]/gi, ''));
+    if (recipientCompanyNameClean) {
+      const lines = out.split('\n');
+      if (lines.length > 0 && !lines[0].includes(recipientCompanyNameClean)) {
+        lines[0] = `${lines[0].replace(/\s*-\s*$/, '').trim()} - ${recipientCompanyNameClean}`;
+        out = lines.join('\n');
+      }
+    } else {
+      if (companyInfo?.name) {
+        const escaped = companyInfo.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        out = CompanyBasedCVService.normalizeOutreachLetterFormatting(out.replace(new RegExp(escaped, 'gi'), ''));
+      }
+      out = out.replace(/-\s*\n/, '\n');
+    }
+    const signatureBlock = CompanyBasedCVService.buildOutreachSignatureBlock(personalInfo);
+    return `${out}\n\n${signatureBlock}`.trim();
+  }
+
+  private static finalizeLinkedInFromAiBody(
+    message: string,
+    personalInfo: Partial<CompanyBasedCVData['personalInfo']> | undefined,
+    companyInfo: CompanyInfo | undefined,
+    recipientCompanyNameClean: string | undefined
+  ): string {
+    let out = message.trim().replace(/^```[\s\S]*?\n/, '').replace(/```$/, '').trim();
+    out = CompanyBasedCVService.normalizeOutreachLetterFormatting(out.replace(/\[company\]/gi, ''));
+    if (!recipientCompanyNameClean && companyInfo?.name) {
+      const escaped = companyInfo.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      out = CompanyBasedCVService.normalizeOutreachLetterFormatting(out.replace(new RegExp(escaped, 'gi'), ''));
+    }
+    const signatureBlock = CompanyBasedCVService.buildOutreachSignatureBlock(personalInfo);
+    return `${out}\n\n${signatureBlock}`.trim();
+  }
+
+  /**
+   * Şirket/ilan bazlı tam analiz: PDF sonrası tek Gemini isteği (parse + uyarlama + isteğe bağlı cover/LinkedIn gövdesi).
+   */
+  static async analyzeCompanyBasedCvUnified(
+    params: CompanyBasedUnifiedAnalysisParams
+  ): Promise<CompanyBasedUnifiedAnalysisResult> {
+    const prompt = buildCompanyBasedUnifiedPrompt(params);
+    const raw = await this.callGeminiAPI(prompt);
+    let data: any;
+    try {
+      data = CompanyBasedCVService.parseJSONResponseStrict(raw);
+    } catch (e) {
+      console.error('Unified analysis JSON parse failed:', e);
+      throw new Error('Tek seferlik AI analizi JSON olarak çözülemedi. Lütfen tekrar deneyin.');
+    }
+
+    const parsedCVData = CompanyBasedCVService.normalizeParsedCVData(data?.parsedCV ?? {}, params.cvText);
+    const analysis = CompanyBasedCVService.coerceCvAnalysisResponse(data?.analysis ?? {});
+
+    const recipientCompanyNameClean = params.coverLetterCompanyName?.trim()
+      ? params.coverLetterCompanyName.trim()
+      : undefined;
+
+    let coverLetter = '';
+    if (params.generateCoverLetter) {
+      const body = String(data?.coverLetterBody ?? '').trim();
+      const companyForPolish =
+        params.coverLetterSource === 'company' ? params.companyInfo : undefined;
+      coverLetter = CompanyBasedCVService.finalizeCoverLetterFromAiBody(
+        body,
+        parsedCVData.personalInfo,
+        companyForPolish,
+        recipientCompanyNameClean
+      );
+    }
+
+    let linkedinMessage = '';
+    if (params.generateLinkedInMessage) {
+      const body = String(data?.linkedinMessageBody ?? '').trim();
+      const companyForPolish =
+        params.linkedinTargetSource === 'company' ? params.companyInfo : undefined;
+      linkedinMessage = CompanyBasedCVService.finalizeLinkedInFromAiBody(
+        body,
+        parsedCVData.personalInfo,
+        companyForPolish,
+        recipientCompanyNameClean
+      );
+    }
+
+    return { parsedCVData, analysis, coverLetter, linkedinMessage };
   }
 
   // PDF'den metin çıkar

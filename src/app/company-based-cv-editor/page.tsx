@@ -383,67 +383,6 @@ export default function CompanyBasedCVEditor() {
     return mergedSkills;
   };
 
-  const computeCandidateExperienceFromWorkItems = (workExperience: CompanyBasedCVData['workExperience']) => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
-
-    const parseYYYYMM = (value: string) => {
-      const m = value.match(/^(\d{4})-(\d{2})$/);
-      if (!m) return null;
-      return { year: parseInt(m[1], 10), month: parseInt(m[2], 10) };
-    };
-
-    const validItems = Array.isArray(workExperience) ? workExperience : [];
-    const hasPresentEnd = validItems.some(
-      (item) => typeof item?.endDate === 'string' && /present|devam|current/i.test(item.endDate)
-    );
-    const starts = validItems
-      .map((i) => (i?.startDate ? parseYYYYMM(i.startDate) : null))
-      .filter(Boolean) as Array<{ year: number; month: number }>;
-
-    if (starts.length === 0) {
-      return { years: null as number | null, range: null as { start: string; end: string } | null };
-    }
-
-    const earliest = starts.reduce((acc, cur) => {
-      if (cur.year < acc.year) return cur;
-      if (cur.year === acc.year && cur.month < acc.month) return cur;
-      return acc;
-    }, starts[0]);
-
-    let latestEnd: { year: number; month: number } | null = null;
-    for (const item of validItems) {
-      if (!item?.endDate) continue;
-      if (/present|devam|current/i.test(item.endDate)) {
-        latestEnd = { year: currentYear, month: currentMonth };
-        break;
-      }
-      const parsed = parseYYYYMM(item.endDate);
-      if (!parsed) continue;
-      if (!latestEnd) {
-        latestEnd = parsed;
-      } else if (parsed.year > latestEnd.year || (parsed.year === latestEnd.year && parsed.month > latestEnd.month)) {
-        latestEnd = parsed;
-      }
-    }
-
-    if (!latestEnd) {
-      return { years: null as number | null, range: null as { start: string; end: string } | null };
-    }
-
-    const months = (latestEnd.year * 12 + latestEnd.month) - (earliest.year * 12 + earliest.month) + 1;
-    const years = Math.max(0, Math.floor(months / 12));
-
-    return {
-      years,
-      range: {
-        start: `${earliest.year}-${String(earliest.month).padStart(2, '0')}`,
-        end: hasPresentEnd ? 'Present' : [latestEnd.year, String(latestEnd.month).padStart(2, '0')].join('-')
-      }
-    };
-  };
-
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type === 'application/pdf') {
@@ -584,94 +523,47 @@ export default function CompanyBasedCVEditor() {
       const manualMustMentionTopics = toTopicArray(manualMustMentionTopicsText);
       const manualMustNotMentionTopics = toTopicArray(manualMustNotMentionTopicsText);
 
-      // PDF'den metin çıkar
+      // PDF'den metin çıkar, ardından tek Gemini isteği: parse + uyarlama + (isteğe bağlı) cover / LinkedIn gövdesi
       const cvText = await CompanyBasedCVService.extractTextFromPDF(cvFile);
       console.log('Extracted CV text:', cvText);
-      
-      // AI ile CV'yi analiz et ve proje formatına dönüştür
-      const parsedCVData = await CompanyBasedCVService.parseCVDataWithAI(cvText, cvLanguage);
-      console.log('AI parsed CV data:', parsedCVData);
 
-      const experienceMeta = computeCandidateExperienceFromWorkItems(parsedCVData.workExperience || []);
-      
-      
-      // CV'yi analiz et ve uyarla
-      const analysis = await CompanyBasedCVService.analyzeAndAdaptCV({
+      const jobTextForPositionExtract =
+        (shouldGenerateCoverLetter && coverLetterSource === 'text') ||
+        (!shouldGenerateCoverLetter && shouldGenerateLinkedInMessage && linkedinMessageSource === 'text');
+
+      const targetPositionHint =
+        sanitizeRoleTitle(targetPosition) ||
+        (jobTextForPositionExtract ? extractTargetPositionFromJobText(jobDescriptionText) : '') ||
+        '';
+
+      const linkedinTargetSource = shouldGenerateCoverLetter ? coverLetterSource : linkedinMessageSource;
+
+      const unified = await CompanyBasedCVService.analyzeCompanyBasedCvUnified({
         cvText,
-        companyUrl: cvAdaptationSource === 'company' ? (companyLinks[0]?.url || '') : undefined,
-        companyInfo: cvAdaptationSource === 'company' ? companyInfo || undefined : undefined,
-        jobDescriptionText: cvAdaptationSource === 'text' ? jobDescriptionText : undefined,
-        targetPosition: sanitizeRoleTitle(targetPosition) || undefined,
-        adaptationSource: cvAdaptationSource,
         cvLanguage,
-        candidateExperienceYears: experienceMeta.years,
-        candidateExperienceRange: experienceMeta.range ?? undefined,
-        candidateSkills: parsedCVData.skills || [],
-        candidateLanguages: parsedCVData.languages || [],
+        adaptationSource: cvAdaptationSource,
+        // CV şirket / ilan metni; cover veya LinkedIn farklı kaynak kullanınca ikisi de promptta bulunsun
+        companyInfo: companyInfo ?? undefined,
+        jobDescriptionText: jobDescriptionText.trim() ? jobDescriptionText : undefined,
+        companyUrl: cvAdaptationSource === 'company' ? companyLinks[0]?.url || '' : undefined,
+        targetPositionHint,
         manualMustMentionTopics,
-        manualMustNotMentionTopics
+        manualMustNotMentionTopics,
+        aiAdaptation: aiSettings,
+        generateCoverLetter: shouldGenerateCoverLetter,
+        generateLinkedInMessage: shouldGenerateLinkedInMessage,
+        coverLetterSource,
+        linkedinTargetSource,
+        coverLetterRecipientName: coverLetterRecipientName.trim() ? coverLetterRecipientName.trim() : undefined,
+        coverLetterCompanyName: coverLetterCompanyName.trim() ? coverLetterCompanyName.trim() : undefined
       });
 
-      const aboutForCoverLetter = aiSettings.about ? analysis.updatedAbout : (parsedCVData.about || '');
+      const parsedCVData = unified.parsedCVData;
+      const analysis = unified.analysis;
+      console.log('AI unified parsed + analysis:', { parsedCVData, analysis });
 
-      // Cover letter'da sayı/başarı uydurmamak için yalnızca CV'den gelen highlight cümlelerini gönderiyoruz.
-      const cvWorkHighlights = (parsedCVData.workExperience || [])
-        .flatMap((w: any) => Array.isArray(w?.bulletPoints) ? w.bulletPoints : [])
-        .map((s: any) => String(s || '').trim())
-        .filter(Boolean);
-
-      const numericHighlights = cvWorkHighlights.filter((b) => /\d/.test(b) || /%/.test(b));
-      const selectedHighlights = (numericHighlights.length >= 3 ? numericHighlights : cvWorkHighlights).slice(0, 8);
-
-      const generatedCoverLetter = shouldGenerateCoverLetter
-        ? await CompanyBasedCVService.generateCompanyCoverLetter({
-            source: coverLetterSource,
-            companyInfo: coverLetterSource === 'company' ? companyInfo || undefined : undefined,
-            jobDescriptionText: coverLetterSource === 'text' ? jobDescriptionText : undefined,
-            personalInfo: parsedCVData.personalInfo,
-            about: aboutForCoverLetter,
-            cvLanguage,
-            candidateExperienceYears: experienceMeta.years,
-            candidateSkills: parsedCVData.skills || [],
-            candidateHighlights: selectedHighlights,
-            recipientName: coverLetterRecipientName.trim() ? coverLetterRecipientName.trim() : undefined,
-            recipientCompanyName: coverLetterCompanyName.trim() ? coverLetterCompanyName.trim() : undefined,
-            targetPosition: sanitizeRoleTitle(
-              targetPosition ||
-              (coverLetterSource === 'text' ? extractTargetPositionFromJobText(jobDescriptionText) : '') ||
-              parsedCVData.personalInfo?.title ||
-              'Full Stack Web Developer'
-            ),
-            manualMustMentionTopics,
-            manualMustNotMentionTopics
-          })
-        : '';
-
-      const outreachSourceForLinkedIn = shouldGenerateCoverLetter ? coverLetterSource : linkedinMessageSource;
-
-      const generatedLinkedInMessage = shouldGenerateLinkedInMessage
-        ? await CompanyBasedCVService.generateCompanyLinkedInMessage({
-            source: outreachSourceForLinkedIn,
-            companyInfo: outreachSourceForLinkedIn === 'company' ? companyInfo || undefined : undefined,
-            jobDescriptionText: outreachSourceForLinkedIn === 'text' ? jobDescriptionText : undefined,
-            personalInfo: parsedCVData.personalInfo,
-            about: aboutForCoverLetter,
-            cvLanguage,
-            candidateExperienceYears: experienceMeta.years,
-            candidateSkills: parsedCVData.skills || [],
-            candidateHighlights: selectedHighlights,
-            recipientName: coverLetterRecipientName.trim() ? coverLetterRecipientName.trim() : undefined,
-            recipientCompanyName: coverLetterCompanyName.trim() ? coverLetterCompanyName.trim() : undefined,
-            targetPosition: sanitizeRoleTitle(
-              targetPosition ||
-              (outreachSourceForLinkedIn === 'text' ? extractTargetPositionFromJobText(jobDescriptionText) : '') ||
-              parsedCVData.personalInfo?.title ||
-              'Full Stack Web Developer'
-            ),
-            manualMustMentionTopics,
-            manualMustNotMentionTopics
-          })
-        : '';
+      const generatedCoverLetter = shouldGenerateCoverLetter ? unified.coverLetter : '';
+      const generatedLinkedInMessage = shouldGenerateLinkedInMessage ? unified.linkedinMessage : '';
 
       setAnalysisResult(analysis);
       setCoverLetter(shouldGenerateCoverLetter ? generatedCoverLetter : '');
