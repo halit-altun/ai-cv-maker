@@ -32,8 +32,7 @@ import {
   TableBody,
   TableCell,
   TableHead,
-  TableRow,
-  Switch
+  TableRow
 } from '@mui/material';
 import {
   Upload as UploadIcon,
@@ -42,8 +41,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   Settings as SettingsIcon,
   ContentCopy as ContentCopyIcon,
-  Autorenew as AutorenewIcon,
-  Refresh as RefreshIcon
+  Autorenew as AutorenewIcon
 } from '@mui/icons-material';
 import CompanyBasedCVPreview from '@/components/company-based-cv-editor/CompanyBasedCVPreview';
 import { CompanyBasedCVService } from '@/lib/company-based-cv-editor/service';
@@ -74,20 +72,6 @@ const defaultAISettings: AIAdaptationSettings = {
 };
 
 const ANALYSIS_PREFS_STORAGE_KEY = 'company_based_cv_editor_analysis_preferences_v1';
-const GEMINI_MODE_STORAGE_KEY = 'company_based_cv_editor_gemini_mode_v1';
-
-const readGeminiModeFromStorage = (): { single: boolean } => {
-  if (typeof window === 'undefined') return { single: true };
-  try {
-    const raw = localStorage.getItem(GEMINI_MODE_STORAGE_KEY);
-    if (!raw) return { single: true };
-    const p = JSON.parse(raw) as { useSingleGeminiRequest?: boolean };
-    const single = typeof p.useSingleGeminiRequest === 'boolean' ? p.useSingleGeminiRequest : true;
-    return { single };
-  } catch {
-    return { single: true };
-  }
-};
 
 export default function CompanyBasedCVEditor() {
   const [activeStep, setActiveStep] = useState(0);
@@ -118,9 +102,6 @@ export default function CompanyBasedCVEditor() {
   const [editableCVData, setEditableCVData] = useState<CompanyBasedCVData | null>(null);
   const [cvLanguage, setCvLanguage] = useState<'turkish' | 'english'>('turkish');
   const [cvRestoredFromCache, setCvRestoredFromCache] = useState(false);
-  const [useSingleGeminiRequest, setUseSingleGeminiRequest] = useState(
-    () => readGeminiModeFromStorage().single
-  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sayfa yenilense bile son yüklenen PDF (IndexedDB)
@@ -182,19 +163,6 @@ export default function CompanyBasedCVEditor() {
       console.warn('Analiz tercihleri localStorage yüklenemedi:', err);
     }
   }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        GEMINI_MODE_STORAGE_KEY,
-        JSON.stringify({
-          useSingleGeminiRequest
-        })
-      );
-    } catch (err) {
-      console.warn('Gemini istek modu kaydedilemedi:', err);
-    }
-  }, [useSingleGeminiRequest]);
 
   useEffect(() => {
     try {
@@ -415,6 +383,67 @@ export default function CompanyBasedCVEditor() {
     return mergedSkills;
   };
 
+  const computeCandidateExperienceFromWorkItems = (workExperience: CompanyBasedCVData['workExperience']) => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    const parseYYYYMM = (value: string) => {
+      const m = value.match(/^(\d{4})-(\d{2})$/);
+      if (!m) return null;
+      return { year: parseInt(m[1], 10), month: parseInt(m[2], 10) };
+    };
+
+    const validItems = Array.isArray(workExperience) ? workExperience : [];
+    const hasPresentEnd = validItems.some(
+      (item) => typeof item?.endDate === 'string' && /present|devam|current/i.test(item.endDate)
+    );
+    const starts = validItems
+      .map((i) => (i?.startDate ? parseYYYYMM(i.startDate) : null))
+      .filter(Boolean) as Array<{ year: number; month: number }>;
+
+    if (starts.length === 0) {
+      return { years: null as number | null, range: null as { start: string; end: string } | null };
+    }
+
+    const earliest = starts.reduce((acc, cur) => {
+      if (cur.year < acc.year) return cur;
+      if (cur.year === acc.year && cur.month < acc.month) return cur;
+      return acc;
+    }, starts[0]);
+
+    let latestEnd: { year: number; month: number } | null = null;
+    for (const item of validItems) {
+      if (!item?.endDate) continue;
+      if (/present|devam|current/i.test(item.endDate)) {
+        latestEnd = { year: currentYear, month: currentMonth };
+        break;
+      }
+      const parsed = parseYYYYMM(item.endDate);
+      if (!parsed) continue;
+      if (!latestEnd) {
+        latestEnd = parsed;
+      } else if (parsed.year > latestEnd.year || (parsed.year === latestEnd.year && parsed.month > latestEnd.month)) {
+        latestEnd = parsed;
+      }
+    }
+
+    if (!latestEnd) {
+      return { years: null as number | null, range: null as { start: string; end: string } | null };
+    }
+
+    const months = (latestEnd.year * 12 + latestEnd.month) - (earliest.year * 12 + earliest.month) + 1;
+    const years = Math.max(0, Math.floor(months / 12));
+
+    return {
+      years,
+      range: {
+        start: `${earliest.year}-${String(earliest.month).padStart(2, '0')}`,
+        end: hasPresentEnd ? 'Present' : [latestEnd.year, String(latestEnd.month).padStart(2, '0')].join('-')
+      }
+    };
+  };
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type === 'application/pdf') {
@@ -522,7 +551,9 @@ export default function CompanyBasedCVEditor() {
     }
   };
 
-  const getAnalysisPrerequisiteError = (): string | null => {
+  const handleAnalyzeCV = async () => {
+    if (!cvFile) return;
+
     const outreachSource = resolveOutreachSource();
     const needsCompanyInfoForCV = cvAdaptationSource === 'company';
     const needsCompanyForOutreach = outreachSource === 'company';
@@ -530,121 +561,12 @@ export default function CompanyBasedCVEditor() {
     const needsJobTextForOutreach = outreachSource === 'text';
 
     if ((needsCompanyInfoForCV || needsCompanyForOutreach) && !companyInfo) {
-      return 'Şirket bilgileri gereken bir seçenek seçildi. Lütfen önce şirket linklerini analiz edin.';
+      setError('Şirket bilgileri gereken bir seçenek seçildi. Lütfen önce şirket linklerini analiz edin.');
+      return;
     }
 
     if ((needsJobTextForCV || needsJobTextForOutreach) && jobDescriptionText.trim().length < 30) {
-      return 'İlan metni gereken bir seçenek seçildi. Lütfen Job Description metnini doldurun.';
-    }
-
-    return null;
-  };
-
-  const executeCvAnalysisCore = async () => {
-    if (!cvFile) throw new Error('CV dosyası yok');
-
-    const toTopicArray = (value: string) =>
-      value
-        .split(/\n|;/g)
-        .map((t) => t.trim())
-        .filter(Boolean);
-
-    const manualMustMentionTopics = toTopicArray(manualMustMentionTopicsText);
-    const manualMustNotMentionTopics = toTopicArray(manualMustNotMentionTopicsText);
-
-    const cvText = await CompanyBasedCVService.extractTextFromPDF(cvFile);
-    console.log('Extracted CV text:', cvText);
-
-    const jobTextForPositionExtract =
-      (shouldGenerateCoverLetter && coverLetterSource === 'text') ||
-      (!shouldGenerateCoverLetter && shouldGenerateLinkedInMessage && linkedinMessageSource === 'text');
-
-    const targetPositionHint =
-      sanitizeRoleTitle(targetPosition) ||
-      (jobTextForPositionExtract ? extractTargetPositionFromJobText(jobDescriptionText) : '') ||
-      '';
-
-    const linkedinTargetSource = shouldGenerateCoverLetter ? coverLetterSource : linkedinMessageSource;
-
-    const sharedParams = {
-      cvText,
-      cvLanguage,
-      adaptationSource: cvAdaptationSource,
-      companyInfo: companyInfo ?? undefined,
-      jobDescriptionText: jobDescriptionText.trim() ? jobDescriptionText : undefined,
-      companyUrl: cvAdaptationSource === 'company' ? companyLinks[0]?.url || '' : undefined,
-      targetPositionHint,
-      manualMustMentionTopics,
-      manualMustNotMentionTopics,
-      aiAdaptation: aiSettings,
-      generateCoverLetter: shouldGenerateCoverLetter,
-      generateLinkedInMessage: shouldGenerateLinkedInMessage,
-      coverLetterSource,
-      linkedinTargetSource,
-      coverLetterRecipientName: coverLetterRecipientName.trim() ? coverLetterRecipientName.trim() : undefined,
-      coverLetterCompanyName: coverLetterCompanyName.trim() ? coverLetterCompanyName.trim() : undefined
-    };
-
-    const unified = useSingleGeminiRequest
-      ? await CompanyBasedCVService.analyzeCompanyBasedCvUnified(sharedParams)
-      : await CompanyBasedCVService.analyzeCompanyBasedCvLegacyStaggered(sharedParams);
-
-    const parsedCVData = unified.parsedCVData;
-    const analysis = unified.analysis;
-    console.log('AI CV analiz sonucu:', { parsedCVData, analysis });
-
-    const generatedCoverLetter = shouldGenerateCoverLetter ? unified.coverLetter : '';
-    const generatedLinkedInMessage = shouldGenerateLinkedInMessage ? unified.linkedinMessage : '';
-
-    setAnalysisResult(analysis);
-    setCoverLetter(shouldGenerateCoverLetter ? generatedCoverLetter : '');
-    setCoverLetterLanguage(cvLanguage);
-    setLinkedinMessage(shouldGenerateLinkedInMessage ? generatedLinkedInMessage : '');
-    setLinkedinMessageLanguage(cvLanguage);
-
-    const adaptedCVData: CompanyBasedCVData = {
-      personalInfo: {
-        firstName: parsedCVData.personalInfo?.firstName || 'Ad',
-        lastName: parsedCVData.personalInfo?.lastName || 'Soyad',
-        title: parsedCVData.personalInfo?.title || 'Ünvan',
-        country: parsedCVData.personalInfo?.country || '',
-        city: parsedCVData.personalInfo?.city || '',
-        phone: parsedCVData.personalInfo?.phone || '',
-        email: parsedCVData.personalInfo?.email || '',
-        portfolio: parsedCVData.personalInfo?.portfolio || '',
-        github: parsedCVData.personalInfo?.github || '',
-        linkedin: parsedCVData.personalInfo?.linkedin || ''
-      },
-      about: aiSettings.about ? analysis.updatedAbout : parsedCVData.about || '',
-      workExperience: aiSettings.workExperience
-        ? parseWorkExperienceFromText(analysis.updatedExperience)
-        : parsedCVData.workExperience || [],
-      education: parsedCVData.education || [],
-      skills: aiSettings.skills
-        ? parseSkillsFromText(analysis.updatedSkills, parsedCVData.skills || [])
-        : parsedCVData.skills || [],
-      languages: parsedCVData.languages || [],
-      companyInfo: companyInfo || undefined,
-      analysisResult: analysis,
-      coverLetter: shouldGenerateCoverLetter ? generatedCoverLetter : undefined,
-      linkedinMessage: shouldGenerateLinkedInMessage ? generatedLinkedInMessage : undefined,
-      analysisPreferences: {
-        targetPosition: sanitizeRoleTitle(targetPosition) || undefined,
-        manualMustMentionTopics,
-        manualMustNotMentionTopics
-      }
-    };
-
-    setCvData(adaptedCVData);
-    setEditableCVData(adaptedCVData);
-  };
-
-  const handleAnalyzeCV = async () => {
-    if (!cvFile) return;
-
-    const pre = getAnalysisPrerequisiteError();
-    if (pre) {
-      setError(pre);
+      setError('İlan metni gereken bir seçenek seçildi. Lütfen Job Description metnini doldurun.');
       return;
     }
 
@@ -652,39 +574,152 @@ export default function CompanyBasedCVEditor() {
     setError(null);
 
     try {
-      await executeCvAnalysisCore();
+      const toTopicArray = (value: string) =>
+        value
+          // Kullanıcı artık doğal cümle yazabilir; satır/satır veya ; ile ayrım desteklenir.
+          .split(/\n|;/g)
+          .map((t) => t.trim())
+          .filter(Boolean);
+
+      const manualMustMentionTopics = toTopicArray(manualMustMentionTopicsText);
+      const manualMustNotMentionTopics = toTopicArray(manualMustNotMentionTopicsText);
+
+      // PDF'den metin çıkar
+      const cvText = await CompanyBasedCVService.extractTextFromPDF(cvFile);
+      console.log('Extracted CV text:', cvText);
+      
+      // AI ile CV'yi analiz et ve proje formatına dönüştür
+      const parsedCVData = await CompanyBasedCVService.parseCVDataWithAI(cvText, cvLanguage);
+      console.log('AI parsed CV data:', parsedCVData);
+
+      const experienceMeta = computeCandidateExperienceFromWorkItems(parsedCVData.workExperience || []);
+      
+      
+      // CV'yi analiz et ve uyarla
+      const analysis = await CompanyBasedCVService.analyzeAndAdaptCV({
+        cvText,
+        companyUrl: cvAdaptationSource === 'company' ? (companyLinks[0]?.url || '') : undefined,
+        companyInfo: cvAdaptationSource === 'company' ? companyInfo || undefined : undefined,
+        jobDescriptionText: cvAdaptationSource === 'text' ? jobDescriptionText : undefined,
+        targetPosition: sanitizeRoleTitle(targetPosition) || undefined,
+        adaptationSource: cvAdaptationSource,
+        cvLanguage,
+        candidateExperienceYears: experienceMeta.years,
+        candidateExperienceRange: experienceMeta.range ?? undefined,
+        candidateSkills: parsedCVData.skills || [],
+        candidateLanguages: parsedCVData.languages || [],
+        manualMustMentionTopics,
+        manualMustNotMentionTopics
+      });
+
+      const aboutForCoverLetter = aiSettings.about ? analysis.updatedAbout : (parsedCVData.about || '');
+
+      // Cover letter'da sayı/başarı uydurmamak için yalnızca CV'den gelen highlight cümlelerini gönderiyoruz.
+      const cvWorkHighlights = (parsedCVData.workExperience || [])
+        .flatMap((w: any) => Array.isArray(w?.bulletPoints) ? w.bulletPoints : [])
+        .map((s: any) => String(s || '').trim())
+        .filter(Boolean);
+
+      const numericHighlights = cvWorkHighlights.filter((b) => /\d/.test(b) || /%/.test(b));
+      const selectedHighlights = (numericHighlights.length >= 3 ? numericHighlights : cvWorkHighlights).slice(0, 8);
+
+      const generatedCoverLetter = shouldGenerateCoverLetter
+        ? await CompanyBasedCVService.generateCompanyCoverLetter({
+            source: coverLetterSource,
+            companyInfo: coverLetterSource === 'company' ? companyInfo || undefined : undefined,
+            jobDescriptionText: coverLetterSource === 'text' ? jobDescriptionText : undefined,
+            personalInfo: parsedCVData.personalInfo,
+            about: aboutForCoverLetter,
+            cvLanguage,
+            candidateExperienceYears: experienceMeta.years,
+            candidateSkills: parsedCVData.skills || [],
+            candidateHighlights: selectedHighlights,
+            recipientName: coverLetterRecipientName.trim() ? coverLetterRecipientName.trim() : undefined,
+            recipientCompanyName: coverLetterCompanyName.trim() ? coverLetterCompanyName.trim() : undefined,
+            targetPosition: sanitizeRoleTitle(
+              targetPosition ||
+              (coverLetterSource === 'text' ? extractTargetPositionFromJobText(jobDescriptionText) : '') ||
+              parsedCVData.personalInfo?.title ||
+              'Full Stack Web Developer'
+            ),
+            manualMustMentionTopics,
+            manualMustNotMentionTopics
+          })
+        : '';
+
+      const outreachSourceForLinkedIn = shouldGenerateCoverLetter ? coverLetterSource : linkedinMessageSource;
+
+      const generatedLinkedInMessage = shouldGenerateLinkedInMessage
+        ? await CompanyBasedCVService.generateCompanyLinkedInMessage({
+            source: outreachSourceForLinkedIn,
+            companyInfo: outreachSourceForLinkedIn === 'company' ? companyInfo || undefined : undefined,
+            jobDescriptionText: outreachSourceForLinkedIn === 'text' ? jobDescriptionText : undefined,
+            personalInfo: parsedCVData.personalInfo,
+            about: aboutForCoverLetter,
+            cvLanguage,
+            candidateExperienceYears: experienceMeta.years,
+            candidateSkills: parsedCVData.skills || [],
+            candidateHighlights: selectedHighlights,
+            recipientName: coverLetterRecipientName.trim() ? coverLetterRecipientName.trim() : undefined,
+            recipientCompanyName: coverLetterCompanyName.trim() ? coverLetterCompanyName.trim() : undefined,
+            targetPosition: sanitizeRoleTitle(
+              targetPosition ||
+              (outreachSourceForLinkedIn === 'text' ? extractTargetPositionFromJobText(jobDescriptionText) : '') ||
+              parsedCVData.personalInfo?.title ||
+              'Full Stack Web Developer'
+            ),
+            manualMustMentionTopics,
+            manualMustNotMentionTopics
+          })
+        : '';
+
+      setAnalysisResult(analysis);
+      setCoverLetter(shouldGenerateCoverLetter ? generatedCoverLetter : '');
+      setCoverLetterLanguage(cvLanguage);
+      setLinkedinMessage(shouldGenerateLinkedInMessage ? generatedLinkedInMessage : '');
+      setLinkedinMessageLanguage(cvLanguage);
+
+      // AI ayarlarına göre CV data oluştur
+      const adaptedCVData: CompanyBasedCVData = {
+        personalInfo: {
+          firstName: parsedCVData.personalInfo?.firstName || 'Ad',
+          lastName: parsedCVData.personalInfo?.lastName || 'Soyad',
+          title: parsedCVData.personalInfo?.title || 'Ünvan',
+          country: parsedCVData.personalInfo?.country || '',
+          city: parsedCVData.personalInfo?.city || '',
+          phone: parsedCVData.personalInfo?.phone || '',
+          email: parsedCVData.personalInfo?.email || '',
+          portfolio: parsedCVData.personalInfo?.portfolio || '',
+          github: parsedCVData.personalInfo?.github || '',
+          linkedin: parsedCVData.personalInfo?.linkedin || ''
+        },
+        about: aiSettings.about ? analysis.updatedAbout : parsedCVData.about || '',
+        workExperience: aiSettings.workExperience ? 
+          parseWorkExperienceFromText(analysis.updatedExperience) : 
+          parsedCVData.workExperience || [],
+        education: parsedCVData.education || [],
+        skills: aiSettings.skills ? 
+          parseSkillsFromText(analysis.updatedSkills, parsedCVData.skills || []) : 
+          parsedCVData.skills || [],
+        languages: parsedCVData.languages || [],
+        companyInfo: companyInfo || undefined,
+        analysisResult: analysis,
+        coverLetter: shouldGenerateCoverLetter ? generatedCoverLetter : undefined,
+        linkedinMessage: shouldGenerateLinkedInMessage ? generatedLinkedInMessage : undefined,
+        analysisPreferences: {
+          targetPosition: sanitizeRoleTitle(targetPosition) || undefined,
+          manualMustMentionTopics,
+          manualMustNotMentionTopics
+        }
+      };
+
+      setCvData(adaptedCVData);
+      setEditableCVData(adaptedCVData);
       setActiveStep(3);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message || 'CV analiz edilirken bir hata oluştu.');
       console.error('CV analysis error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRegenerateAnalysis = async () => {
-    if (!cvFile) {
-      setError('CV dosyası bulunamadı. Sayfayı yenileyip PDF’i tekrar yükleyin.');
-      return;
-    }
-
-    const pre = getAnalysisPrerequisiteError();
-    if (pre) {
-      setError(pre);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setIsEditing(false);
-
-    try {
-      await executeCvAnalysisCore();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message || 'Analiz yenilenirken bir hata oluştu.');
-      console.error('CV regenerate error:', err);
     } finally {
       setLoading(false);
     }
@@ -1263,28 +1298,6 @@ export default function CompanyBasedCVEditor() {
                 </Stack>
               </CardContent>
             </Card>
-
-            <Card sx={{ mb: 3 }} variant="outlined">
-              <CardContent>
-                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
-                  AI istek modu
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Varsayılan tek istek daha hızlıdır. Çoklu mod, eski adım adım akışı kullanır; ardışık her Gemini çağrısı arasında sabit{' '}
-                  <strong>7 saniye</strong> beklenir (429 / kota için).
-                </Typography>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={useSingleGeminiRequest}
-                      onChange={(_, checked) => setUseSingleGeminiRequest(checked)}
-                      color="primary"
-                    />
-                  }
-                  label={useSingleGeminiRequest ? 'Tek istek (önerilen)' : 'Çoklu istek (istekler arası 7 sn)'}
-                />
-              </CardContent>
-            </Card>
             
             <Box sx={{ textAlign: 'center' }}>
               <AutoAwesomeIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
@@ -1322,26 +1335,15 @@ export default function CompanyBasedCVEditor() {
                   <Typography variant="body2" color="text.secondary">
                     Aynı CV dosyası korunur. Yeni ilan veya şirket için linkleri / ilan metnini güncelleyip yeniden analiz alın.
                   </Typography>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexShrink: 0, width: { xs: '100%', sm: 'auto' } }}>
-                    <Button
-                      variant="outlined"
-                      color="primary"
-                      startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <RefreshIcon />}
-                      onClick={handleRegenerateAnalysis}
-                      disabled={loading}
-                    >
-                      AI analizini yeniden üret
-                    </Button>
-                    <Button
-                      variant="contained"
-                      color="secondary"
-                      startIcon={<AutorenewIcon />}
-                      onClick={handlePrepareNewAnalysisSameCv}
-                      disabled={loading}
-                    >
-                      Aynı CV ile yeni analiz
-                    </Button>
-                  </Stack>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    startIcon={<AutorenewIcon />}
+                    onClick={handlePrepareNewAnalysisSameCv}
+                    sx={{ flexShrink: 0 }}
+                  >
+                    Aynı CV ile yeni analiz
+                  </Button>
                 </Stack>
               </CardContent>
             </Card>
