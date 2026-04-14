@@ -15,7 +15,7 @@ const GEMINI_API_KEYS = [process.env.NEXT_PUBLIC_GEMINI_API_KEY_1].filter((key):
 const GEMINI_API_URL = process.env.NEXT_PUBLIC_GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 /** Başarılı Gemini çağrısı bittikten sonra bir sonraki isteğe geçmeden önce sabit bekleme (429 riskini azaltır). */
-const GEMINI_POST_SUCCESS_DELAY_MS = 7000;
+const GEMINI_POST_SUCCESS_DELAY_MS = 10000;
 
 // API Key rotation system
 let currentApiKeyIndex = 0;
