@@ -385,7 +385,7 @@ const formatLinkedInDisplayUrl = (url: string) => {
       {/* İş Deneyimi */}
       {data.workExperience.length > 0 && (
         <>
-          <Box sx={{ mb: 3 }}>
+          <Box className="section-item" sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
               İş Deneyimi
             </Typography>
@@ -442,7 +442,7 @@ const formatLinkedInDisplayUrl = (url: string) => {
         {/* Eğitim */}
       {data.education.length > 0 && (
         <>
-          <Box sx={{ mb: 3 }}>
+          <Box className="section-item" sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
               Eğitim
             </Typography>

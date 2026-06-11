@@ -359,22 +359,30 @@ export default function CompanyBasedCVEditor() {
     return parsedExperiences;
   };
 
-  const parseSkillsFromText = (text: string, existingSkills: string[] = []) => {
+  const parseSkillsFromText = (text: string | string[] | unknown, existingSkills: string[] = []) => {
     const normalizedExisting = (existingSkills || [])
       .map((skill) => String(skill || '').trim())
       .filter(Boolean);
-    if (!text) return normalizedExisting;
+
+    const rawSkills: string[] = Array.isArray(text)
+      ? text.map((skill) => String(skill ?? '').trim()).filter(Boolean)
+      : typeof text === 'string'
+        ? text.split(',').map((skill) => skill.trim()).filter(Boolean)
+        : text
+          ? [String(text).trim()].filter(Boolean)
+          : [];
+
+    if (rawSkills.length === 0) return normalizedExisting;
 
     // AI'dan gelen metni temizle ve kısa beceri isimlerine dönüştür
-    const aiSkills = text
-      .split(',')
+    const aiSkills = rawSkills
       .map((skill) => {
         // Uzun açıklamaları temizle, sadece ilk 2 kelimeyi al
-        const words = skill.trim().split(' ');
+        const words = skill.split(' ');
         if (words.length > 2) {
           return words.slice(0, 2).join(' ');
         }
-        return skill.trim();
+        return skill;
       })
       .filter((skill) => skill.length > 0 && skill.length < 50); // Çok uzun becerileri filtrele
 

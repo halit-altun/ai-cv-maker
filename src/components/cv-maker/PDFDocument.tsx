@@ -368,10 +368,29 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data, isEnglish = false }) =>
         {/* Work Experience */}
         {workExperience.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{getSectionTitle('İş Deneyimi')}</Text>
-            {workExperience.map((exp) => (
-              <View 
-                key={exp.id} 
+            <View wrap={false}>
+              <Text style={styles.sectionTitle}>{getSectionTitle('İş Deneyimi')}</Text>
+              <View style={styles.experienceItem} wrap={false}>
+                <View style={styles.experienceHeader}>
+                  <Text style={styles.experienceTitle}>{workExperience[0].position}</Text>
+                  <Text style={styles.experienceDate}>
+                    {formatDate(workExperience[0].startDate, isEnglish)} - {formatDate(workExperience[0].endDate, isEnglish)}
+                  </Text>
+                </View>
+                <Text style={styles.experienceCompany}>
+                  {workExperience[0].company}
+                  {(workExperience[0].city || workExperience[0].country) &&
+                    ` | ${workExperience[0].city && workExperience[0].country ? `${workExperience[0].city}, ${workExperience[0].country}` : workExperience[0].city || workExperience[0].country}`
+                  }
+                </Text>
+                {workExperience[0].bulletPoints.filter(bp => bp.trim()).map((bullet, idx) => (
+                  <Text key={idx} style={styles.bulletPoint}>• {bullet}</Text>
+                ))}
+              </View>
+            </View>
+            {workExperience.slice(1).map((exp) => (
+              <View
+                key={exp.id}
                 style={styles.experienceItem}
                 wrap={false}
               >
@@ -383,7 +402,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data, isEnglish = false }) =>
                 </View>
                 <Text style={styles.experienceCompany}>
                   {exp.company}
-                  {(exp.city || exp.country) && 
+                  {(exp.city || exp.country) &&
                     ` | ${exp.city && exp.country ? `${exp.city}, ${exp.country}` : exp.city || exp.country}`
                   }
                 </Text>
@@ -397,7 +416,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({ data, isEnglish = false }) =>
 
         {/* Education */}
         {education.length > 0 && (
-          <View style={styles.section}>
+          <View style={styles.section} wrap={false}>
             <Text style={styles.sectionTitle}>{getSectionTitle('Eğitim')}</Text>
             {education.map((edu) => (
               <View key={edu.id} style={styles.educationItem} wrap={false}>

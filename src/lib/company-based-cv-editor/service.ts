@@ -12,7 +12,18 @@ import {
 const GEMINI_API_KEYS = [process.env.NEXT_PUBLIC_GEMINI_API_KEY_1].filter((key): key is string =>
   Boolean(key && key.trim())
 );
-const GEMINI_API_URL = process.env.NEXT_PUBLIC_GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const DEFAULT_GEMINI_API_URL =
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+
+/** Kapatılan 2.0 modellerini otomatik olarak güncel modele yönlendirir. */
+function resolveGeminiApiUrl(): string {
+  const url = process.env.NEXT_PUBLIC_GEMINI_API_URL || DEFAULT_GEMINI_API_URL;
+  return url
+    .replace(/models\/gemini-2\.0-flash-lite(?:-001)?/g, 'models/gemini-2.5-flash-lite')
+    .replace(/models\/gemini-2\.0-flash(?:-001)?/g, 'models/gemini-2.5-flash');
+}
+
+const GEMINI_API_URL = resolveGeminiApiUrl();
 
 /** Başarılı Gemini çağrısı bittikten sonra bir sonraki isteğe geçmeden önce sabit bekleme (429 riskini azaltır). */
 const GEMINI_POST_SUCCESS_DELAY_MS = 10000;
@@ -69,7 +80,7 @@ export class CompanyBasedCVService {
         Sadece JSON formatında cevap ver, başka açıklama ekleme.
         `;
         
-        const linkResponse = await this.callGeminiAPI(linkPrompt);
+        const linkResponse = await this.callGeminiAPI(linkPrompt, { jsonMode: true });
         const linkData = this.parseJSONResponse(linkResponse);
         linkAnalysisResults.push({
           link: link,
@@ -123,7 +134,7 @@ export class CompanyBasedCVService {
     5. Sadece JSON formatında cevap ver
     `;
     
-    const combinedResponse = await this.callGeminiAPI(combinedPrompt);
+    const combinedResponse = await this.callGeminiAPI(combinedPrompt, { jsonMode: true });
     const finalResult = this.parseJSONResponse(combinedResponse);
     
     console.log('=== COMPANY ANALYSIS COMPLETED ===');
@@ -260,7 +271,7 @@ export class CompanyBasedCVService {
     }
     `;
 
-    const response = await this.callGeminiAPI(prompt);
+    const response = await this.callGeminiAPI(prompt, { jsonMode: true });
     const translatedData = this.parseJSONResponse(response);
     
     // Veri yapısını doğrula ve düzelt
@@ -395,7 +406,7 @@ export class CompanyBasedCVService {
     }
     `;
 
-    const response = await this.callGeminiAPI(prompt);
+    const response = await this.callGeminiAPI(prompt, { jsonMode: true });
     const translatedData = this.parseJSONResponse(response);
     
     // Veri yapısını doğrula ve düzelt
@@ -662,8 +673,43 @@ export class CompanyBasedCVService {
     }
     `;
 
-    const response = await this.callGeminiAPI(prompt);
-    return this.parseJSONResponse(response);
+    const response = await this.callGeminiAPI(prompt, { jsonMode: true });
+    return this.normalizeCVAnalysisResponse(this.parseJSONResponse(response, { useCompanyFallback: false }));
+  }
+
+  private static normalizeCVAnalysisResponse(parsed: Record<string, unknown>): CVAnalysisResponse {
+    const toText = (value: unknown): string => {
+      if (typeof value === 'string') return value;
+      if (Array.isArray(value)) {
+        return value.map((item) => String(item ?? '').trim()).filter(Boolean).join(', ');
+      }
+      return value != null ? String(value) : '';
+    };
+
+    const toStringArray = (value: unknown): string[] => {
+      if (Array.isArray(value)) {
+        return value.map((item) => String(item ?? '').trim()).filter(Boolean);
+      }
+      if (typeof value === 'string') {
+        return value.split(',').map((item) => item.trim()).filter(Boolean);
+      }
+      return [];
+    };
+
+    return {
+      originalAbout: toText(parsed.originalAbout),
+      updatedAbout: toText(parsed.updatedAbout),
+      originalExperience: toText(parsed.originalExperience),
+      updatedExperience: toText(parsed.updatedExperience),
+      originalSkills: toText(parsed.originalSkills),
+      updatedSkills: toText(parsed.updatedSkills),
+      originalLanguages: toText(parsed.originalLanguages),
+      updatedLanguages: toText(parsed.updatedLanguages),
+      recommendations: toStringArray(parsed.recommendations),
+      matchScore: typeof parsed.matchScore === 'number' ? parsed.matchScore : Number(parsed.matchScore) || 0,
+      positiveMatches: Array.isArray(parsed.positiveMatches) ? parsed.positiveMatches as CVAnalysisResponse['positiveMatches'] : [],
+      negativeMismatches: Array.isArray(parsed.negativeMismatches) ? parsed.negativeMismatches as CVAnalysisResponse['negativeMismatches'] : [],
+    };
   }
 
   private static normalizeOutreachLetterFormatting(text: string): string {
@@ -1149,7 +1195,10 @@ export class CompanyBasedCVService {
   }
 
   // Gemini API'yi çağır; geçici hatalarda aynı istek için en fazla GEMINI_MAX_RETRIES kez 15 sn bekleyip yeniden dener
-  private static async callGeminiAPI(prompt: string): Promise<string> {
+  private static async callGeminiAPI(
+    prompt: string,
+    options?: { jsonMode?: boolean }
+  ): Promise<string> {
     const requestBody: GeminiAPIRequest = {
       contents: [
         {
@@ -1159,7 +1208,10 @@ export class CompanyBasedCVService {
             }
           ]
         }
-      ]
+      ],
+      ...(options?.jsonMode
+        ? { generationConfig: { responseMimeType: 'application/json' } }
+        : {}),
     };
 
     if (GEMINI_API_KEYS.length === 0) {
@@ -1241,74 +1293,165 @@ export class CompanyBasedCVService {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
-  // JSON response'u parse et
-  private static parseJSONResponse(response: string): any {
-    console.log('Raw response:', response);
-    
-    try {
-      // Markdown code block'ları temizle
-      let cleanResponse = response.trim();
-      
-      // ```json ve ``` karakterlerini kaldır
-      cleanResponse = cleanResponse.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-      cleanResponse = cleanResponse.replace(/```\s*/g, '');
-      
-      // Başında ve sonunda gereksiz karakterler varsa temizle
-      cleanResponse = cleanResponse.replace(/^[^{]*/, '').replace(/[^}]*$/, '');
-      
-      // Eğer hala ``` karakterleri varsa, onları da temizle
-      cleanResponse = cleanResponse.replace(/```/g, '');
-      
-      console.log('Cleaned response:', cleanResponse);
-      
-      const parsed = JSON.parse(cleanResponse);
-      console.log('Parsed successfully:', parsed);
-      return parsed;
-    } catch (error) {
-      console.error('JSON parsing error:', error);
-      console.error('Original response:', response);
-      
-      // Daha agresif temizleme dene
-      try {
-        let aggressiveClean = response;
-        
-        // Tüm markdown karakterlerini kaldır
-        aggressiveClean = aggressiveClean.replace(/```json\s*/g, '');
-        aggressiveClean = aggressiveClean.replace(/```\s*/g, '');
-        aggressiveClean = aggressiveClean.replace(/```/g, '');
-        
-        // Başlangıç ve bitiş metinlerini kaldır
-        aggressiveClean = aggressiveClean.replace(/^[^{]*/, '');
-        aggressiveClean = aggressiveClean.replace(/[^}]*$/, '');
-        
-        // JSON objesini bul
-        const jsonMatch = aggressiveClean.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          let jsonStr = jsonMatch[0];
-          
-          // Son kalan karakterleri temizle
-          jsonStr = jsonStr.replace(/,\s*}/g, '}');
-          jsonStr = jsonStr.replace(/,\s*]/g, ']');
-          
-          console.log('Extracted JSON:', jsonStr);
-          return JSON.parse(jsonStr);
+  private static stripMarkdownCodeFences(text: string): string {
+    return text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .replace(/```json\s*/gi, '')
+      .replace(/```/g, '')
+      .trim();
+  }
+
+  private static extractJsonObject(text: string): string | null {
+    const start = text.indexOf('{');
+    if (start === -1) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = start; i < text.length; i++) {
+      const char = text[i];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === '\\') {
+          escaped = true;
+        } else if (char === '"') {
+          inString = false;
         }
-      } catch (secondError) {
-        console.error('Second parsing attempt failed:', secondError);
+        continue;
       }
-      
-      // Fallback: Varsayılan değerler döndür
-      console.log('Using fallback values');
+
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (char === '{') depth++;
+      if (char === '}') {
+        depth--;
+        if (depth === 0) return text.slice(start, i + 1);
+      }
+    }
+
+    return null;
+  }
+
+  private static sanitizeJsonString(jsonStr: string): string {
+    return jsonStr
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/,\s*([}\]])/g, '$1');
+  }
+
+  /** JSON string değerleri içindeki kaçışsız satır sonlarını düzeltir. */
+  private static escapeControlCharsInJsonStrings(jsonStr: string): string {
+    let result = '';
+    let inString = false;
+    let escaped = false;
+
+    for (let i = 0; i < jsonStr.length; i++) {
+      const char = jsonStr[i];
+
+      if (!inString) {
+        result += char;
+        if (char === '"') inString = true;
+        continue;
+      }
+
+      if (escaped) {
+        result += char;
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        result += char;
+        escaped = true;
+        continue;
+      }
+
+      if (char === '"') {
+        result += char;
+        inString = false;
+        continue;
+      }
+
+      if (char === '\n') {
+        result += '\\n';
+        continue;
+      }
+
+      if (char === '\r') continue;
+
+      if (char === '\t') {
+        result += '\\t';
+        continue;
+      }
+
+      result += char;
+    }
+
+    return result;
+  }
+
+  private static tryParseJsonCandidates(response: string): unknown | null {
+    const stripped = this.stripMarkdownCodeFences(response);
+    const extracted = this.extractJsonObject(stripped) ?? stripped;
+    const candidates = Array.from(
+      new Set([
+        stripped,
+        extracted,
+        this.sanitizeJsonString(stripped),
+        this.sanitizeJsonString(extracted),
+        this.escapeControlCharsInJsonStrings(this.sanitizeJsonString(extracted)),
+        this.escapeControlCharsInJsonStrings(this.sanitizeJsonString(stripped)),
+      ])
+    ).filter((candidate) => candidate.includes('{'));
+
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate);
+      } catch {
+        // Sonraki adayı dene
+      }
+    }
+
+    return null;
+  }
+
+  // JSON response'u parse et
+  private static parseJSONResponse(
+    response: string,
+    options?: { useCompanyFallback?: boolean }
+  ): any {
+    console.log('Raw response length:', response.length);
+
+    const parsed = this.tryParseJsonCandidates(response);
+    if (parsed != null) {
+      console.log('Parsed successfully');
+      return parsed;
+    }
+
+    console.error('JSON parsing failed. Preview:', response.substring(0, 500));
+
+    if (options?.useCompanyFallback !== false) {
+      console.log('Using company fallback values');
       return {
-        name: "Şirket Adı",
-        website: "https://example.com",
-        description: "Şirket açıklaması alınamadı",
-        industry: "Teknoloji",
-        values: ["İnovasyon", "Kalite", "Müşteri Odaklılık"],
-        requirements: ["Deneyim", "Ekip Çalışması", "Problem Çözme"],
-        culture: "Dinamik ve yenilikçi çalışma ortamı"
+        name: 'Şirket Adı',
+        website: 'https://example.com',
+        description: 'Şirket açıklaması alınamadı',
+        industry: 'Teknoloji',
+        values: ['İnovasyon', 'Kalite', 'Müşteri Odaklılık'],
+        requirements: ['Deneyim', 'Ekip Çalışması', 'Problem Çözme'],
+        culture: 'Dinamik ve yenilikçi çalışma ortamı',
       };
     }
+
+    throw new Error('AI yanıtı geçerli JSON formatında ayrıştırılamadı. Lütfen tekrar deneyin.');
   }
 
   // PDF'den metin çıkar
@@ -1631,7 +1774,7 @@ Arapça (C1) - Native or Bilingual Proficiency
 
     try {
       console.log('=== AI PARSING STARTED ===');
-      const response = await this.callGeminiAPI(prompt);
+      const response = await this.callGeminiAPI(prompt, { jsonMode: true });
       console.log('AI Response Length:', response.length);
       console.log('AI Response Preview:', response.substring(0, 500));
       

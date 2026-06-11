@@ -63,6 +63,9 @@ export interface GeminiAPIRequest {
       text: string;
     }>;
   }>;
+  generationConfig?: {
+    responseMimeType?: string;
+  };
 }
 
 export interface GeminiAPIResponse {
