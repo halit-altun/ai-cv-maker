@@ -65,6 +65,7 @@ export interface GeminiAPIRequest {
   }>;
   generationConfig?: {
     responseMimeType?: string;
+    maxOutputTokens?: number;
   };
 }
 
@@ -72,9 +73,11 @@ export interface GeminiAPIResponse {
   candidates: Array<{
     content: {
       parts: Array<{
-        text: string;
+        text?: string;
+        thought?: boolean;
       }>;
     };
+    finishReason?: string;
   }>;
 }
 

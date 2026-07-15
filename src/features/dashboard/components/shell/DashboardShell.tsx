@@ -1,89 +1,81 @@
 'use client';
 
 import { useState } from 'react';
-import { Box, Drawer, IconButton, Toolbar, Typography } from '@mui/material';
-import { Menu as MenuIcon, SpaceDashboardOutlined } from '@mui/icons-material';
+import { Box, Drawer } from '@mui/material';
+import { usePathname } from 'next/navigation';
 import { dashboardTokens } from '../../styles/dashboardTokens';
-import { dashboardCopy } from '../../constants/copy';
-import { SidebarNav } from './SidebarNav';
 import type { DashboardSidebarLink } from '../../types';
-
-const drawerWidth = dashboardTokens.sidebarWidth;
+import { SidebarNav } from './SidebarNav';
+import { DashboardTopBar } from './DashboardTopBar';
+import { DashboardFooter } from './DashboardFooter';
 
 interface DashboardShellProps {
-  sidebarItems: DashboardSidebarLink[];
+  primaryNav: DashboardSidebarLink[];
+  footerNav: DashboardSidebarLink[];
+  avatarUrl: string;
   children: React.ReactNode;
 }
 
-export function DashboardShell({ sidebarItems, children }: DashboardShellProps) {
+export function DashboardShell({
+  primaryNav,
+  footerNav,
+  avatarUrl,
+  children,
+}: DashboardShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname() ?? '';
+  const { colors, sidebarWidth, contentMaxWidth } = dashboardTokens;
+  const isCvEditor = pathname.includes('/ai-cv-builder/');
 
-  const drawer = (
-    <Box
-      sx={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        bgcolor: dashboardTokens.drawerPaperBg,
-      }}
-    >
-      <Toolbar
-        sx={{
-          minHeight: 72,
-          px: 2,
-          background: dashboardTokens.mobileDrawerHeaderBg,
-          color: 'text.primary',
-          borderBottom: dashboardTokens.mobileTopBarBorder,
-          flexDirection: 'column',
-          alignItems: 'flex-start',
-          justifyContent: 'center',
-          gap: 0.25,
-        }}
-      >
-        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, letterSpacing: 0.6 }}>
-          {dashboardCopy.appShortName}
-        </Typography>
-        <Typography variant="subtitle1" sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>
-          {dashboardCopy.pageTitle}
-        </Typography>
-        <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.7rem', lineHeight: 1.3 }}>
-          {dashboardCopy.drawerHeaderHint}
-        </Typography>
-      </Toolbar>
-      <Box sx={{ flex: 1, overflow: 'auto' }}>
-        <SidebarNav
-          items={sidebarItems}
-          onNavigate={() => setMobileOpen(false)}
-        />
-      </Box>
-    </Box>
-  );
+  const closeMobile = () => setMobileOpen(false);
 
   return (
     <Box
       sx={{
         display: 'flex',
-        minHeight: 'calc(100vh - 1px)',
-        bgcolor: dashboardTokens.shellBg,
+        minHeight: '100vh',
+        bgcolor: colors.surface,
+        color: colors.onSurface,
+        overflowX: 'hidden',
       }}
     >
-      {/* Sol menü yalnızca mobilde (temporary drawer) */}
+      <Box
+        component="aside"
+        sx={{
+          display: { xs: 'none', md: 'flex' },
+          width: sidebarWidth,
+          flexShrink: 0,
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          height: '100vh',
+          zIndex: 50,
+        }}
+      >
+        <Box sx={{ width: sidebarWidth, height: '100%' }}>
+          <SidebarNav primaryItems={primaryNav} footerItems={footerNav} />
+        </Box>
+      </Box>
+
       <Drawer
         variant="temporary"
         open={mobileOpen}
-        onClose={() => setMobileOpen(false)}
+        onClose={closeMobile}
         ModalProps={{ keepMounted: true }}
         sx={{
           display: { xs: 'block', md: 'none' },
           '& .MuiDrawer-paper': {
-            width: drawerWidth,
+            width: sidebarWidth,
             boxSizing: 'border-box',
             borderRight: 'none',
-            boxShadow: '4px 0 24px rgba(25, 118, 210, 0.08)',
           },
         }}
       >
-        {drawer}
+        <SidebarNav
+          primaryItems={primaryNav}
+          footerItems={footerNav}
+          onNavigate={closeMobile}
+        />
       </Drawer>
 
       <Box
@@ -92,53 +84,37 @@ export function DashboardShell({ sidebarItems, children }: DashboardShellProps) 
           flexGrow: 1,
           width: '100%',
           minWidth: 0,
+          ml: { xs: 0, md: `${sidebarWidth}px` },
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100vh',
         }}
       >
-        <Toolbar
-          sx={{
-            display: { xs: 'flex', md: 'none' },
-            gap: 1.5,
-            alignItems: 'center',
-            minHeight: 56,
-            px: 1.5,
-            bgcolor: '#ffffff',
-            borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
-            boxShadow: '0 1px 0 rgba(255, 255, 255, 1) inset',
-          }}
-        >
-          <IconButton
-            onClick={() => setMobileOpen(true)}
-            aria-label={dashboardCopy.mobileMenuAria}
-            sx={{
-              color: 'primary.main',
-              bgcolor: 'rgba(25, 118, 210, 0.08)',
-              '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.14)' },
-            }}
-          >
-            <MenuIcon />
-          </IconButton>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
-            <SpaceDashboardOutlined sx={{ fontSize: 22, color: 'primary.main', opacity: 0.85 }} />
-            <Box sx={{ minWidth: 0 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.2, letterSpacing: '-0.02em' }}>
-                {dashboardCopy.pageTitle}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.2 }}>
-                {dashboardCopy.mobileBarHint}
-              </Typography>
-            </Box>
-          </Box>
-        </Toolbar>
+        <DashboardTopBar avatarUrl={avatarUrl} onMenuClick={() => setMobileOpen(true)} />
 
         <Box
-          sx={{
-            maxWidth: dashboardTokens.contentMaxWidth,
-            mx: 'auto',
-            px: { xs: 2, sm: 3 },
-            py: { xs: 2, md: 3 },
-          }}
+          sx={
+            isCvEditor
+              ? {
+                  flex: 1,
+                  width: '100%',
+                  maxWidth: 'none',
+                  p: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                }
+              : {
+                  flex: 1,
+                  width: '100%',
+                  maxWidth: contentMaxWidth,
+                  mx: 'auto',
+                  px: 3,
+                  py: 5,
+                }
+          }
         >
           {children}
+          {!isCvEditor && <DashboardFooter />}
         </Box>
       </Box>
     </Box>

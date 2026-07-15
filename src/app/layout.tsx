@@ -1,10 +1,24 @@
 'use client';
 
-import "./globals.css";
+import './globals.css';
+import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
+import { AppChrome } from '@/components/layout/AppChrome';
+
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  weight: ['600', '700'],
+  variable: '--font-plus-jakarta',
+  display: 'swap',
+});
 
 const theme = createTheme({
   palette: {
@@ -34,7 +48,7 @@ const theme = createTheme({
     },
   },
   typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: 'var(--font-inter), "Inter", "Roboto", "Helvetica", "Arial", sans-serif',
     h1: { fontWeight: 700 },
     h2: { fontWeight: 600 },
     h3: { fontWeight: 600 },
@@ -73,17 +87,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="tr">
-      <body>
+    <html lang="tr" className={`${inter.variable} ${plusJakarta.variable}`}>
+      <body className={inter.className}>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-            <Header />
-            <main style={{ flex: 1, backgroundColor: '#ffffff' }}>
-              {children}
-            </main>
-            <Footer />
-          </div>
+          <AppChrome>{children}</AppChrome>
         </ThemeProvider>
       </body>
     </html>

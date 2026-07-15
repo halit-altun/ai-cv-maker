@@ -1,29 +1,26 @@
 'use client';
 
 import { useMemo } from 'react';
-import { getSidebarNavItems } from '../data/sidebarNav';
 import {
-  getDashboardMetrics,
-  getQuickActions,
+  getDashboardUser,
+  getWelcomeContent,
+  getAiInsight,
+  getProfileScore,
   getRecentActivity,
-  getTaskProgress,
-  getUsageBars,
 } from '../data/mockData';
 
 /**
- * İleride API / SWR ile değiştirilecek tek giriş noktası.
- * Şimdilik mock veriyi tek yerden toplar.
+ * Yalnızca dashboard sayfa içeriği.
+ * Shell (nav/user) için useAppShell kullanılır.
  */
 export function useDashboardContent() {
-  return useMemo(
-    () => ({
-      sidebarItems: getSidebarNavItems(),
-      metrics: getDashboardMetrics(),
-      quickActions: getQuickActions(),
+  return useMemo(() => {
+    const user = getDashboardUser();
+    return {
+      welcome: getWelcomeContent(user.name),
+      aiInsight: getAiInsight(),
+      profileScore: getProfileScore(),
       activity: getRecentActivity(),
-      tasks: getTaskProgress(),
-      usage: getUsageBars(),
-    }),
-    []
-  );
+    };
+  }, []);
 }

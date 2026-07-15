@@ -50,9 +50,11 @@ interface CVData {
 interface CVPreviewProps {
   data: CVData;
   isEnglish?: boolean;
+  /** AI CV Builder gibi gömülü panellerde üst indirme çubuğunu gizler */
+  hideChrome?: boolean;
 }
 
-const CVPreview: React.FC<CVPreviewProps> = ({ data, isEnglish = false }) => {
+const CVPreview: React.FC<CVPreviewProps> = ({ data, isEnglish = false, hideChrome = false }) => {
   const cvRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = React.useState(false);
 
@@ -134,6 +136,7 @@ const formatLinkedInDisplayUrl = (url: string) => {
 
   return (
     <Box>
+      {!hideChrome && (
       <Box
         sx={{
           position: 'sticky',
@@ -159,6 +162,7 @@ const formatLinkedInDisplayUrl = (url: string) => {
           </Button>
         </Box>
       </Box>
+      )}
 
       <Box
         ref={cvRef}

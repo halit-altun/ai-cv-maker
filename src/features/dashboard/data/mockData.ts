@@ -1,139 +1,90 @@
-import {
-  AutoAwesome,
-  Business,
-  Description,
-  Email,
-  Send,
-  Schedule,
-} from '@mui/icons-material';
+import { DescriptionOutlined, AutoAwesome } from '@mui/icons-material';
 import type {
   DashboardActivityItem,
-  DashboardMetric,
-  DashboardQuickAction,
-  DashboardTaskProgress,
-  DashboardUsageBar,
+  DashboardAiInsight,
+  DashboardProfileScore,
+  DashboardUser,
+  DashboardWelcome,
 } from '../types';
 import { appRoutes } from '../constants/routes';
 
-export function getDashboardMetrics(): DashboardMetric[] {
-  return [
-    {
-      id: 'cv-drafts',
-      label: 'CV taslakları',
-      value: '12',
-      hint: 'Son 30 gün',
-      tone: 'primary',
-      icon: Description,
-    },
-    {
-      id: 'company-versions',
-      label: 'Şirket uyumlu sürümler',
-      value: '5',
-      hint: 'Aktif projeler',
-      tone: 'secondary',
-      icon: Business,
-    },
-    {
-      id: 'cover-letters',
-      label: 'Hazırlanan başvuru mailleri',
-      value: '8',
-      hint: 'Bu ay',
-      tone: 'success',
-      icon: Email,
-    },
-    {
-      id: 'time-saved',
-      label: 'Tahmini süre tasarrufu',
-      value: '6.5 saat',
-      hint: 'AI ile otomasyon',
-      tone: 'warning',
-      icon: Schedule,
-    },
-  ];
+export function getDashboardUser(): DashboardUser {
+  return {
+    name: 'Alex',
+    accountLabel: 'Pro Account',
+    avatarUrl:
+      'https://lh3.googleusercontent.com/aida-public/AB6AXuDbyo4fpTxKrl9SQ8jpIKUEupRlKrOJyqJsMiSnxJek5TfvPE03PZmKJ2Nj1YRTVHG1JEpbS-vibju2pLHlUBOtShS7r2OnUjMWR4RtKUzdmOgpuwjVwGjBoIVaad9ME29X8jiNgUq-dHrBFxiWlpOL6XJVcb4RSRdEeeMS3mh43g8cMxpdycxQa8A7h0qm5h7Kw4B0gLAUREkGP6-Fml5mJTaotg9VBG24jmirLhA4kn6QHVWaAH5wfg',
+  };
 }
 
-export function getQuickActions(): DashboardQuickAction[] {
-  return [
-    {
-      id: 'new-cv',
-      title: 'Yeni CV (AI)',
-      description: 'PDF yükle veya sıfırdan doldur',
-      href: appRoutes.cvMakerAi,
-      icon: AutoAwesome,
-      tone: 'primary',
-    },
-    {
-      id: 'company',
-      title: 'Şirket bazlı düzenle',
-      description: 'İlana göre CV uyarla',
-      href: appRoutes.companyCvEditor,
-      icon: Business,
-      tone: 'secondary',
-    },
-    {
-      id: 'cover',
-      title: 'Başvuru maili',
-      description: 'AI ile ön yazı oluştur',
-      href: appRoutes.aiCoverLetter,
-      icon: Email,
-      tone: 'success',
-    },
-    {
-      id: 'bulk',
-      title: 'Toplu mail',
-      description: 'Çoklu başvuru gönderimi',
-      href: appRoutes.bulkEmail,
-      icon: Send,
-      tone: 'warning',
-    },
-  ];
+export function getWelcomeContent(userName: string): DashboardWelcome {
+  return {
+    greeting: `Welcome back, ${userName}!`,
+    subtitle: 'Your career progress is looking sharp today. Ready for the next leap?',
+    stats: [
+      {
+        id: 'cvs-created',
+        label: 'CVs Created',
+        value: '3 Active CVs',
+        icon: DescriptionOutlined,
+      },
+    ],
+  };
+}
+
+export function getAiInsight(): DashboardAiInsight {
+  return {
+    title: 'AI Insights',
+    body: 'Our AI analyzed your "Senior Product Manager" resume. You\'re hitting 85% of target keywords for high-end SaaS roles.',
+    suggestionLabel: 'Suggestion:',
+    suggestionText:
+      'Strengthen your "Impact" statements in the Stripe experience section to boost visibility.',
+    metrics: [
+      { id: 'strength', label: 'Strength', value: '85%', progressPercent: 85 },
+      { id: 'keywords', label: 'Keywords', value: '12/15' },
+      { id: 'top-match', label: 'Top Match', value: 'FinTech' },
+    ],
+    ctaLabel: 'Apply AI Optimization',
+    ctaHref: appRoutes.aiOptimizer,
+  };
+}
+
+export function getProfileScore(): DashboardProfileScore {
+  return {
+    score: 75,
+    maxScore: 100,
+    hint: 'Complete your certification section to reach 90%.',
+    ctaLabel: 'Update Profile',
+    ctaHref: appRoutes.settings,
+  };
 }
 
 export function getRecentActivity(): DashboardActivityItem[] {
   return [
     {
       id: 'a1',
-      title: 'CV güncellendi',
-      detail: 'Full Stack profili — CV Maker AI',
-      timeLabel: '2 saat önce',
+      title: 'Senior PM Resume (Tech Optimized)',
+      detail: 'Last edited 2 hours ago',
+      icon: DescriptionOutlined,
+      actions: ['edit', 'download'],
+      href: appRoutes.myCvs,
     },
     {
       id: 'a2',
-      title: 'Şirket şablonu uygulandı',
-      detail: 'Finans sektörü anahtar kelimeleri',
-      timeLabel: 'Dün',
+      title: 'UX Designer Portfolio CV',
+      detail: 'Downloaded 1 day ago',
+      icon: DescriptionOutlined,
+      actions: ['edit', 'download'],
+      href: appRoutes.myCvs,
     },
     {
       id: 'a3',
-      title: 'PDF dışa aktarıldı',
-      detail: 'Halit_Altun_CV.pdf',
-      timeLabel: '3 gün önce',
+      title: 'AI Optimization Report',
+      detail: 'Generated 3 days ago',
+      icon: AutoAwesome,
+      iconFilled: true,
+      actions: ['visibility'],
+      href: appRoutes.aiOptimizer,
     },
-    {
-      id: 'a4',
-      title: 'Başvuru maili kaydedildi',
-      detail: 'Yazılım mühendisi pozisyonu',
-      timeLabel: '5 gün önce',
-    },
-  ];
-}
-
-export function getTaskProgress(): DashboardTaskProgress[] {
-  return [
-    { id: 't1', label: 'Profil doluluk', percent: 88 },
-    { id: 't2', label: 'İş deneyimi detayı', percent: 72 },
-    { id: 't3', label: 'Beceri etiketleri', percent: 65 },
-  ];
-}
-
-export function getUsageBars(): DashboardUsageBar[] {
-  return [
-    { id: 'u1', label: 'Pzt', percent: 45 },
-    { id: 'u2', label: 'Sal', percent: 62 },
-    { id: 'u3', label: 'Çar', percent: 38 },
-    { id: 'u4', label: 'Per', percent: 80 },
-    { id: 'u5', label: 'Cum', percent: 55 },
-    { id: 'u6', label: 'Cmt', percent: 25 },
-    { id: 'u7', label: 'Paz', percent: 15 },
   ];
 }

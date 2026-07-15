@@ -674,7 +674,33 @@ export class CompanyBasedCVService {
     `;
 
     const response = await this.callGeminiAPI(prompt, { jsonMode: true });
-    return this.normalizeCVAnalysisResponse(this.parseJSONResponse(response, { useCompanyFallback: false }));
+    // Parse başarısızsa (kesik JSON vb.) aynı isteği yeniden dene
+    let lastParseError: unknown = null;
+    for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
+      try {
+        const raw =
+          attempt === 0
+            ? response
+            : await this.callGeminiAPI(prompt, { jsonMode: true });
+        return this.normalizeCVAnalysisResponse(
+          this.parseJSONResponse(raw, { useCompanyFallback: false })
+        );
+      } catch (error) {
+        lastParseError = error;
+        const msg = error instanceof Error ? error.message : String(error);
+        const isParseError = /JSON formatında ayrıştırılamadı|JSON/i.test(msg);
+        if (!isParseError || attempt >= GEMINI_MAX_RETRIES) {
+          throw error;
+        }
+        console.warn(
+          `[analyzeAndAdaptCV] JSON parse başarısız — deneme ${attempt + 1}/${GEMINI_MAX_RETRIES + 1}, yeniden çağrılıyor...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, GEMINI_RETRY_DELAY_MS));
+      }
+    }
+    throw lastParseError instanceof Error
+      ? lastParseError
+      : new Error('AI yanıtı geçerli JSON formatında ayrıştırılamadı. Lütfen tekrar deneyin.');
   }
 
   private static normalizeCVAnalysisResponse(parsed: Record<string, unknown>): CVAnalysisResponse {
@@ -1210,7 +1236,13 @@ export class CompanyBasedCVService {
         }
       ],
       ...(options?.jsonMode
-        ? { generationConfig: { responseMimeType: 'application/json' } }
+        ? {
+            generationConfig: {
+              responseMimeType: 'application/json',
+              // Büyük CV analiz JSON'larının kesilmesini engeller (eksik } → parse hatası)
+              maxOutputTokens: 8192,
+            },
+          }
         : {}),
     };
 
@@ -1255,14 +1287,19 @@ export class CompanyBasedCVService {
 
         const data: GeminiAPIResponse = await response.json();
 
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = this.extractTextFromGeminiResponse(data);
         if (typeof text === 'string' && text.length > 0) {
           console.log(`${logPrefix} başarılı (key ${currentApiKeyIndex + 1})`);
           await new Promise((resolve) => setTimeout(resolve, GEMINI_POST_SUCCESS_DELAY_MS));
           return text;
         }
 
-        lastError = new Error('Gemini API did not return valid response');
+        const finishReason = data.candidates?.[0]?.finishReason;
+        lastError = new Error(
+          finishReason
+            ? `Gemini API did not return valid response (finishReason=${finishReason})`
+            : 'Gemini API did not return valid response'
+        );
         if (attempt < GEMINI_MAX_RETRIES) {
           console.warn(`${logPrefix} geçersiz/boş yanıt — ${GEMINI_RETRY_DELAY_MS / 1000} sn sonra tekrarlanacak.`);
           await new Promise((resolve) => setTimeout(resolve, GEMINI_RETRY_DELAY_MS));
@@ -1291,6 +1328,29 @@ export class CompanyBasedCVService {
     }
 
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
+  /**
+   * Gemini 2.5+ yanıtlarında thought / çoklu part olabilir.
+   * Yalnızca parts[0] alınması JSON'un kaçırılmasına ve parse hatasına yol açar.
+   */
+  private static extractTextFromGeminiResponse(data: GeminiAPIResponse): string {
+    const parts = data.candidates?.[0]?.content?.parts ?? [];
+    if (parts.length === 0) return '';
+
+    const nonThought = parts
+      .filter((part) => !part.thought && typeof part.text === 'string' && part.text.length > 0)
+      .map((part) => part.text as string);
+
+    if (nonThought.length > 0) {
+      return nonThought.join('\n').trim();
+    }
+
+    return parts
+      .map((part) => (typeof part.text === 'string' ? part.text : ''))
+      .filter(Boolean)
+      .join('\n')
+      .trim();
   }
 
   private static stripMarkdownCodeFences(text: string): string {

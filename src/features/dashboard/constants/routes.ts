@@ -1,9 +1,20 @@
-/** Uygulama rotaları — sidebar ve hızlı işlemler için */
+/** Uygulama rotaları — sidebar, CTA ve footer için */
 export const appRoutes = {
   home: '/',
   dashboard: '/dashboard',
-  cvMakerAi: '/cv-maker-ai',
-  companyCvEditor: '/company-based-cv-editor',
-  aiCoverLetter: '/ai-cover-letter',
-  bulkEmail: '/bulk-email',
+  myCvs: '/my-cvs',
+  aiOptimizer: '/company-based-cv-editor',
+  settings: '/settings',
+  help: '/help',
+  /** Yeni CV — AI CV Builder */
+  createCv: '/my-cvs/ai-cv-builder/new',
+  privacy: '/privacy',
+  terms: '/terms',
+  cookies: '/cookies',
+  logout: '#',
 } as const;
+
+/** Mevcut CV düzenleme yolu */
+export function getEditCvPath(cvId: string): string {
+  return `/my-cvs/ai-cv-builder/edit/${cvId}`;
+}

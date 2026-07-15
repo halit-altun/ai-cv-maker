@@ -5,6 +5,7 @@
 
 body {
   background-color: #ffffff;
+  overflow-x: hidden;
 }
 
 * {
@@ -16,4 +17,14 @@ body {
 /* A4 Sayfa Ayarları */
 .cv-page {
   break-inside: avoid;
+}
+
+/* CareerAI — Optimize CTA shimmer */
+@keyframes career-ai-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
