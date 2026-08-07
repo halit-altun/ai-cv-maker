@@ -1,47 +1,99 @@
 require("dotenv").config();
 const dns = require("dns");
 const http = require("http");
-const mongoose = require("mongoose");
-const app = require("./src/app");
+const express = require("express");
 const bootState = require("./src/boot-state");
-const User = require("./src/models/user.model");
-const Cv = require("./src/models/cv.model");
-const RefreshToken = require("./src/models/refresh-token.model");
-const PasswordResetToken = require("./src/models/password-reset-token.model");
-const EmailVerificationToken = require("./src/models/email-verification-token.model");
-const EmailQueue = require("./src/models/email-queue.model");
-const MailTracking = require("./src/models/mail-tracking.model");
-const MailOpenEvent = require("./src/models/mail-open-event.model");
-const TodoApplicationItem = require("./src/models/todo-application-item.model");
-const TodoApplicationJob = require("./src/models/todo-application-job.model");
-const TodoProjectSettings = require("./src/models/todo-project-settings.model");
-const { processEmailQueue } = require("./src/services/email-queue.service");
-const { processTodoApplicationJobs } = require("./src/services/todo-application.service");
 
 // Windows/yerel DNS bazı ortamlarda mongodb+srv SRV kayıtlarını çözemez
 dns.setServers(["8.8.8.8", "1.1.1.1"]);
 
 const port = Number(process.env.PORT) || 3001;
-const uri = process.env.MONGODB_URI;
 
-async function syncIndexes() {
-  await Promise.all([
-    User.syncIndexes(),
-    Cv.syncIndexes(),
-    RefreshToken.syncIndexes(),
-    PasswordResetToken.syncIndexes(),
-    EmailVerificationToken.syncIndexes(),
-    EmailQueue.syncIndexes(),
-    MailTracking.syncIndexes(),
-    MailOpenEvent.syncIndexes(),
-    TodoApplicationItem.syncIndexes(),
-    TodoApplicationJob.syncIndexes(),
-    TodoProjectSettings.syncIndexes(),
-  ]);
+/**
+ * Önce minimal sunucu aç — ağır require / Mongo bitmeden Envoy Connection refused olmasın.
+ * Health check her zaman 200 dönmeli (liveness).
+ */
+const bootApp = express();
+bootApp.get("/health", (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    ready: bootState.ready,
+    error: bootState.error,
+    booting: !bootState.fullApp,
+    port,
+  });
+});
+bootApp.get("/ready", (_req, res) => {
+  res.status(bootState.ready ? 200 : 503).json({
+    ok: bootState.ready,
+    error: bootState.error,
+  });
+});
+bootApp.use((_req, res) => {
+  res.status(503).json({
+    ok: false,
+    error: bootState.error || "Backend henüz yükleniyor",
+  });
+});
+
+/** @type {import("http").RequestListener} */
+let activeApp = bootApp;
+
+const server = http.createServer((req, res) => activeApp(req, res));
+
+async function syncIndexes(models) {
+  await Promise.all(models.map((m) => m.syncIndexes()));
   console.log("Model indexleri senkronize edildi.");
 }
 
-function startBackgroundProcessors() {
+async function initAfterListen() {
+  const mongoose = require("mongoose");
+  const app = require("./src/app");
+  const User = require("./src/models/user.model");
+  const Cv = require("./src/models/cv.model");
+  const RefreshToken = require("./src/models/refresh-token.model");
+  const PasswordResetToken = require("./src/models/password-reset-token.model");
+  const EmailVerificationToken = require("./src/models/email-verification-token.model");
+  const EmailQueue = require("./src/models/email-queue.model");
+  const MailTracking = require("./src/models/mail-tracking.model");
+  const MailOpenEvent = require("./src/models/mail-open-event.model");
+  const TodoApplicationItem = require("./src/models/todo-application-item.model");
+  const TodoApplicationJob = require("./src/models/todo-application-job.model");
+  const TodoProjectSettings = require("./src/models/todo-project-settings.model");
+  const { processEmailQueue } = require("./src/services/email-queue.service");
+  const { processTodoApplicationJobs } = require("./src/services/todo-application.service");
+
+  activeApp = app;
+  bootState.fullApp = true;
+
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error("MONGODB_URI tanımlı değil (Northflank Environment).");
+  }
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET tanımlı değil (Northflank Environment).");
+  }
+
+  await mongoose.connect(uri, {
+    serverSelectionTimeoutMS: 15000,
+  });
+  console.log("MongoDB bağlantısı kuruldu.");
+  console.log(`Veritabanı: ${mongoose.connection.name}`);
+
+  await syncIndexes([
+    User,
+    Cv,
+    RefreshToken,
+    PasswordResetToken,
+    EmailVerificationToken,
+    EmailQueue,
+    MailTracking,
+    MailOpenEvent,
+    TodoApplicationItem,
+    TodoApplicationJob,
+    TodoProjectSettings,
+  ]);
+
   const EMAIL_QUEUE_INTERVAL_MS = 30_000;
   setInterval(async () => {
     try {
@@ -63,37 +115,9 @@ function startBackgroundProcessors() {
   console.log(
     `To Do application processor başlatıldı (interval: ${TODO_JOB_INTERVAL_MS / 1000}s).`
   );
-}
 
-async function initDatabase() {
-  if (!uri) {
-    throw new Error("MONGODB_URI tanımlı değil (Northflank Environment).");
-  }
-  if (!process.env.JWT_SECRET) {
-    throw new Error("JWT_SECRET tanımlı değil (Northflank Environment).");
-  }
-
-  await mongoose.connect(uri, {
-    serverSelectionTimeoutMS: 15000,
-  });
-  console.log("MongoDB bağlantısı kuruldu.");
-  console.log(`Veritabanı: ${mongoose.connection.name}`);
-  await syncIndexes();
-  startBackgroundProcessors();
   bootState.ready = true;
   bootState.error = null;
-}
-
-async function main() {
-  // Önce portu aç — yoksa Envoy "Connection refused" verir; /health gerçek hatayı gösterir
-  const server = http.createServer(app);
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(port, "0.0.0.0", () => {
-      console.log(`Sunucu 0.0.0.0:${port} adresinde dinliyor.`);
-      resolve();
-    });
-  });
 
   try {
     const {
@@ -103,7 +127,7 @@ async function main() {
     const base = getTrackingPublicBaseUrl();
     if (isLocalTrackingBase(base)) {
       console.warn(
-        "[MAIL_TRACKING] TRACKING_PUBLIC_BASE_URL tanımlı değil (localhost). Gmail açılışları kayda GEÇMEZ."
+        "[MAIL_TRACKING] TRACKING_PUBLIC_BASE_URL tanımlı değil (localhost)."
       );
     } else {
       console.log(`[MAIL_TRACKING] Public base: ${base}`);
@@ -111,13 +135,27 @@ async function main() {
   } catch {
     /* ignore */
   }
+}
+
+async function main() {
+  console.log(
+    `[BOOT] PORT=${port} (env PORT=${process.env.PORT || "unset"}) NODE_ENV=${process.env.NODE_ENV || "unset"}`
+  );
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "0.0.0.0", () => {
+      console.log(`Sunucu 0.0.0.0:${port} adresinde dinliyor.`);
+      resolve();
+    });
+  });
 
   try {
-    await initDatabase();
+    await initAfterListen();
   } catch (err) {
     bootState.ready = false;
     bootState.error = err.message || String(err);
-    console.error("Başlatma hatası (process ayakta, /health hata döner):", bootState.error);
+    console.error("Başlatma hatası (process ayakta):", bootState.error);
     console.error(
       "Kontrol: Environment MONGODB_URI + JWT_SECRET; Atlas Network Access 0.0.0.0/0"
     );

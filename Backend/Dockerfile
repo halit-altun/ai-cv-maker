@@ -22,7 +22,8 @@ COPY . .
 
 EXPOSE 3001
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
+# -f kullanma: /health liveness 200 döner; ready ayrı /ready
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
   CMD curl -fsS http://127.0.0.1:3001/health || exit 1
 
 CMD ["node", "index.js"]

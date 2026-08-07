@@ -64,6 +64,7 @@ app.use(
 app.set("trust proxy", 1);
 app.use(attachClientId);
 
+// Liveness: process dinliyorsa her zaman 200 (Northflank/Docker health 503 görünce endpoint'i düşürüp Connection refused yapar)
 app.get("/health", (_req, res) => {
   const bootState = require("./boot-state");
   const dbState = mongoose.connection.readyState;
@@ -73,13 +74,22 @@ app.get("/health", (_req, res) => {
     2: "connecting",
     3: "disconnecting",
   };
-  const ok = bootState.ready && dbState === 1;
-  res.status(ok ? 200 : 503).json({
-    ok,
-    ready: bootState.ready,
+  res.status(200).json({
+    ok: true,
+    ready: bootState.ready && dbState === 1,
     error: bootState.error,
     db: states[dbState] ?? "unknown",
     port: Number(process.env.PORT) || 3001,
+  });
+});
+
+app.get("/ready", (_req, res) => {
+  const bootState = require("./boot-state");
+  const dbOk = mongoose.connection.readyState === 1 && bootState.ready;
+  res.status(dbOk ? 200 : 503).json({
+    ok: dbOk,
+    ready: dbOk,
+    error: bootState.error,
   });
 });
 
