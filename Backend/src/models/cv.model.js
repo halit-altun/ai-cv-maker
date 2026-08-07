@@ -35,6 +35,16 @@ const cvSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    /**
+     * My Resumes kaynağı — yalnızca cv_create listelenir/kaydedilir.
+     * Eski company-based otomatik kayıtlar purge edilir.
+     */
+    source: {
+      type: String,
+      enum: ["cv_create"],
+      default: "cv_create",
+      index: true,
+    },
     /** CompanyBasedCVData uyumlu esnek payload */
     data: {
       type: mongoose.Schema.Types.Mixed,
@@ -48,6 +58,7 @@ const cvSchema = new mongoose.Schema(
   }
 );
 
+cvSchema.index({ clientId: 1, source: 1, updatedAt: -1 });
 cvSchema.index({ clientId: 1, updatedAt: -1 });
 
 const Cv = mongoose.model("Cv", cvSchema);

@@ -45,7 +45,6 @@ import {
   resolveOutreachEmailLanguage,
   resolvePageTypeLabel,
 } from '../constants/outreachConstants';
-import { createCvRequest } from '@/lib/cv/api';
 import {
   checkMailInfraRequest,
   createOutreachAiErrorLogRequest,
@@ -1115,22 +1114,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       setCvData(adaptedCVData);
       setEditableCVData(adaptedCVData);
 
-      // Optimizer sonucu otomatik CV kaydı (client_id + JWT)
-      try {
-        const companyLabel =
-          coverLetterCompanyName || resolvedCompany?.name || 'Company';
-        const saved = await createCvRequest({
-          data: adaptedCVData,
-          displayTitle: `${adaptedCVData.personalInfo.title || 'CV'} · ${companyLabel}`.slice(
-            0,
-            120
-          ),
-          strengthPercent: analysis.matchScore || 0,
-        });
-        console.log('Optimizer CV kaydedildi:', saved.id);
-      } catch (saveErr) {
-        console.warn('Optimizer CV kaydı başarısız (analiz devam):', saveErr);
-      }
+      // My Resumes yalnızca CV Create kaydından dolar; company-based buraya yazılmaz.
 
       // Alıcı adaylarını üret; varsayılan olarak ilk 3 (veya max limit) seç
       let recipientsForAutoSend: string[] = [];

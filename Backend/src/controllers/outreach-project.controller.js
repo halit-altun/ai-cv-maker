@@ -2,6 +2,7 @@ const {
   listProjects,
   createProject,
   selectProject,
+  deleteProject,
   getProjectDashboard,
 } = require("../services/outreach-project.service");
 const { isAppError } = require("../utils/app-error");
@@ -48,6 +49,16 @@ async function selectProjectHandler(req, res, next) {
   }
 }
 
+async function deleteProjectHandler(req, res, next) {
+  try {
+    const result = await deleteProject(req.clientId, req.params.id);
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    if (sendError(res, error)) return undefined;
+    return next(error);
+  }
+}
+
 async function projectDashboardHandler(req, res, next) {
   try {
     const result = await getProjectDashboard(req.clientId, req.params.id, {
@@ -66,5 +77,6 @@ module.exports = {
   listProjectsHandler,
   createProjectHandler,
   selectProjectHandler,
+  deleteProjectHandler,
   projectDashboardHandler,
 };

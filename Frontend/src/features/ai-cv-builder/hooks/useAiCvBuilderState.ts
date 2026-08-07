@@ -1,10 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { WorkExperienceItem } from '@/components/cv-maker/WorkExperience';
 import type { EducationItem } from '@/components/cv-maker/Education';
 import type { LanguageItem } from '@/components/cv-maker/Languages';
 import { CompanyBasedCVService } from '@/lib/company-based-cv-editor/service';
+import type { CompanyBasedCVData } from '@/lib/company-based-cv-editor/types';
+import { createCvRequest, updateCvRequest } from '@/lib/cv/api';
+import { getEditCvPath } from '@/features/dashboard/constants/routes';
 import { getCvById } from '../data/cvRepository';
 import {
   computeCvStrength,
@@ -38,6 +42,15 @@ import {
 } from '@/components/cv-maker/cvPhoto';
 import { authFetch } from '@/lib/auth/authFetch';
 import type { AuthUser } from '@/lib/auth/types';
+
+function deriveSaveTitle(data: {
+  personalInfo: PersonalInfoState;
+}): string {
+  const title = String(data.personalInfo.title || '').trim();
+  if (title) return title.slice(0, 120);
+  const full = `${data.personalInfo.firstName || ''} ${data.personalInfo.lastName || ''}`.trim();
+  return (full || 'Untitled CV').slice(0, 120);
+}
 
 function personalInfoFromProfile(user: AuthUser): PersonalInfoState {
   const fullParts = String(user.fullName || '')
@@ -83,6 +96,7 @@ function mergeEmptyPersonalInfo(
 }
 
 export function useAiCvBuilderState(cvId?: string) {
+  const router = useRouter();
   const isEditMode = Boolean(cvId);
 
   const [language, setLanguage] = useState<'tr' | 'en'>('tr');
@@ -107,6 +121,10 @@ export function useAiCvBuilderState(cvId?: string) {
   const [uploadMessage, setUploadMessage] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [loadError, setLoadError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [savedCvId, setSavedCvId] = useState<string | undefined>(cvId);
   const [personalInfo, setPersonalInfo] = useState<PersonalInfoState>(emptyPersonalInfo);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
   const [about, setAbout] = useState('');
@@ -184,6 +202,10 @@ export function useAiCvBuilderState(cvId?: string) {
     return () => {
       cancelled = true;
     };
+  }, [cvId]);
+
+  useEffect(() => {
+    setSavedCvId(cvId);
   }, [cvId]);
 
   const handlePersonalInfoChange = useCallback(
@@ -279,6 +301,37 @@ export function useAiCvBuilderState(cvId?: string) {
     [personalInfo, about, workExperience, education, skills, languages]
   );
 
+  const handleSaveCv = useCallback(async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    setSaveError('');
+    setSaveMessage('');
+    try {
+      const payload = {
+        data: cvData as CompanyBasedCVData,
+        displayTitle: deriveSaveTitle(cvData),
+        strengthPercent,
+      };
+      if (savedCvId) {
+        await updateCvRequest(savedCvId, payload);
+        setSaveMessage(aiCvBuilderCopy.saveSuccess);
+      } else {
+        const created = await createCvRequest(payload);
+        setSavedCvId(created.id);
+        setSaveMessage(aiCvBuilderCopy.saveSuccess);
+        router.replace(getEditCvPath(created.id));
+      }
+    } catch (err) {
+      setSaveError(
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : aiCvBuilderCopy.saveError
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }, [cvData, isSaving, router, savedCvId, strengthPercent]);
+
   return {
     isEditMode,
     language,
@@ -304,6 +357,10 @@ export function useAiCvBuilderState(cvId?: string) {
     uploadMessage,
     uploadError,
     loadError,
+    isSaving,
+    saveMessage,
+    saveError,
+    handleSaveCv,
     personalInfo,
     profilePhotoUrl,
     handlePersonalInfoChange,

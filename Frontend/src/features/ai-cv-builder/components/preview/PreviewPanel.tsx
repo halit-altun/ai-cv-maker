@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Box, Button, Divider, IconButton, Tooltip } from '@mui/material';
-import { ZoomIn, ZoomOut, Download, Share } from '@mui/icons-material';
+import { ZoomIn, ZoomOut, Download, Share, Save } from '@mui/icons-material';
 import { pdf } from '@react-pdf/renderer';
 import CVPreview from '@/components/cv-maker/CVPreview';
 import PDFDocument from '@/components/cv-maker/PDFDocument';
@@ -123,6 +123,25 @@ export function PreviewPanel({ state }: PreviewPanelProps) {
             sx={{ mx: 0.5, height: 24, alignSelf: 'center' }}
           />
           <Button
+            startIcon={<Save sx={{ fontSize: 18 }} />}
+            onClick={() => void state.handleSaveCv()}
+            disabled={state.isSaving}
+            sx={{
+              px: 2,
+              height: 40,
+              borderRadius: radius.full,
+              bgcolor: colors.secondary,
+              color: colors.onSecondary || '#fff',
+              fontFamily: fonts.body,
+              fontSize: 14,
+              fontWeight: 600,
+              textTransform: 'none',
+              '&:hover': { bgcolor: colors.secondary, opacity: 0.9 },
+            }}
+          >
+            {state.isSaving ? aiCvBuilderCopy.savingCv : aiCvBuilderCopy.saveCv}
+          </Button>
+          <Button
             startIcon={<Download sx={{ fontSize: 18 }} />}
             onClick={handleExportPdf}
             disabled={isExporting}
@@ -159,6 +178,24 @@ export function PreviewPanel({ state }: PreviewPanelProps) {
             {aiCvBuilderCopy.share}
           </Button>
         </Box>
+        {(state.saveMessage || state.saveError) && (
+          <Box
+            sx={{
+              width: '100%',
+              maxWidth: 480,
+              px: 2,
+              py: 1,
+              borderRadius: 2,
+              bgcolor: state.saveError ? '#FEF2F2' : '#ECFDF5',
+              color: state.saveError ? '#991B1B' : '#065F46',
+              fontFamily: fonts.body,
+              fontSize: 13,
+              textAlign: 'center',
+            }}
+          >
+            {state.saveError || state.saveMessage}
+          </Box>
+        )}
 
         <Box
           sx={{

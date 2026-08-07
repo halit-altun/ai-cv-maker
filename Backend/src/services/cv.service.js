@@ -1,6 +1,8 @@
 const Cv = require("../models/cv.model");
 const { AppError } = require("../utils/app-error");
 
+const CV_CREATE_SOURCE = "cv_create";
+
 function toPublicCv(doc) {
   if (!doc) return null;
 
@@ -11,6 +13,7 @@ function toPublicCv(doc) {
     strengthPercent: Number(doc.strengthPercent || 0),
     badge: doc.badge || null,
     previewImageUrl: doc.previewImageUrl || "",
+    source: doc.source || CV_CREATE_SOURCE,
     data: doc.data || {},
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -27,8 +30,20 @@ function deriveDisplayTitle(data = {}, fallback = "Untitled CV") {
   return full || fallback;
 }
 
+/** My Resumes dışı (company-based vb.) kayıtları siler */
+async function purgeNonCvCreateCvs(clientId) {
+  const filter = clientId
+    ? { clientId, source: { $ne: CV_CREATE_SOURCE } }
+    : { source: { $ne: CV_CREATE_SOURCE } };
+  const result = await Cv.deleteMany(filter);
+  return { deletedCount: result.deletedCount || 0 };
+}
+
 async function listCvsByClientId(clientId) {
-  const items = await Cv.find({ clientId })
+  // Eski company-based otomatik kayıtları bu client için temizle
+  await purgeNonCvCreateCvs(clientId);
+
+  const items = await Cv.find({ clientId, source: CV_CREATE_SOURCE })
     .sort({ updatedAt: -1 })
     .lean();
 
@@ -36,7 +51,11 @@ async function listCvsByClientId(clientId) {
 }
 
 async function getCvByIdForClient(cvId, clientId) {
-  const doc = await Cv.findOne({ _id: cvId, clientId }).lean();
+  const doc = await Cv.findOne({
+    _id: cvId,
+    clientId,
+    source: CV_CREATE_SOURCE,
+  }).lean();
   if (!doc) {
     throw new AppError("CV bulunamadı.", 404, "CV_NOT_FOUND");
   }
@@ -48,16 +67,27 @@ async function createCv({ clientId, userId, data, displayTitle, strengthPercent,
     throw new AppError("CV data zorunludur.", 400, "VALIDATION_ERROR");
   }
 
+  // Optimizer / company alanlarını My Resumes payload'undan ayıkla
+  const {
+    companyInfo: _c,
+    analysisResult: _a,
+    coverLetter: _cl,
+    linkedinMessage: _lm,
+    analysisPreferences: _ap,
+    ...cleanData
+  } = data;
+
   const created = await Cv.create({
     clientId,
     userId,
-    displayTitle: String(displayTitle || deriveDisplayTitle(data)).trim() || "Untitled CV",
+    source: CV_CREATE_SOURCE,
+    displayTitle: String(displayTitle || deriveDisplayTitle(cleanData)).trim() || "Untitled CV",
     strengthPercent: Number.isFinite(Number(strengthPercent))
       ? Math.max(0, Math.min(100, Number(strengthPercent)))
       : 0,
     badge: "recently-edited",
     previewImageUrl: String(previewImageUrl || "").trim(),
-    data,
+    data: cleanData,
   });
 
   return toPublicCv(created);
@@ -70,9 +100,17 @@ async function updateCv({ cvId, clientId, data, displayTitle, strengthPercent, p
     if (!data || typeof data !== "object") {
       throw new AppError("CV data geçersiz.", 400, "VALIDATION_ERROR");
     }
-    updates.data = data;
+    const {
+      companyInfo: _c,
+      analysisResult: _a,
+      coverLetter: _cl,
+      linkedinMessage: _lm,
+      analysisPreferences: _ap,
+      ...cleanData
+    } = data;
+    updates.data = cleanData;
     if (displayTitle === undefined) {
-      updates.displayTitle = deriveDisplayTitle(data);
+      updates.displayTitle = deriveDisplayTitle(cleanData);
     }
   }
 
@@ -89,7 +127,7 @@ async function updateCv({ cvId, clientId, data, displayTitle, strengthPercent, p
   }
 
   const updated = await Cv.findOneAndUpdate(
-    { _id: cvId, clientId },
+    { _id: cvId, clientId, source: CV_CREATE_SOURCE },
     { $set: updates },
     { new: true }
   ).lean();
@@ -102,7 +140,11 @@ async function updateCv({ cvId, clientId, data, displayTitle, strengthPercent, p
 }
 
 async function deleteCv(cvId, clientId) {
-  const deleted = await Cv.findOneAndDelete({ _id: cvId, clientId }).lean();
+  const deleted = await Cv.findOneAndDelete({
+    _id: cvId,
+    clientId,
+    source: CV_CREATE_SOURCE,
+  }).lean();
   if (!deleted) {
     throw new AppError("CV bulunamadı.", 404, "CV_NOT_FOUND");
   }
@@ -110,10 +152,12 @@ async function deleteCv(cvId, clientId) {
 }
 
 module.exports = {
+  CV_CREATE_SOURCE,
   listCvsByClientId,
   getCvByIdForClient,
   createCv,
   updateCv,
   deleteCv,
+  purgeNonCvCreateCvs,
   toPublicCv,
 };

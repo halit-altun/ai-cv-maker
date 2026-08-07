@@ -32,8 +32,10 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FolderSpecialIcon from '@mui/icons-material/FolderSpecial';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {
   createOutreachProjectRequest,
+  deleteOutreachProjectRequest,
   getOutreachProjectDashboardRequest,
   listOutreachProjectsRequest,
   selectOutreachProjectRequest,
@@ -107,6 +109,8 @@ export function OutreachProjectsView() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [rangePreset, setRangePreset] = useState<ProjectDashboardRange>('today');
   const todayYmd = useMemo(() => formatYmd(new Date()), []);
@@ -226,6 +230,30 @@ export function OutreachProjectsView() {
     }
   };
 
+  const handleDeleteProject = async () => {
+    if (!selectedId) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteOutreachProjectRequest(selectedId);
+      setDeleteOpen(false);
+      setDashboard(null);
+      const nextId = await loadProjects();
+      if (nextId) {
+        await handleSelectProject(nextId);
+      } else {
+        setSelectedId('');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Proje silinemedi.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const selectedProjectName =
+    projects.find((p) => p.id === selectedId)?.name || dashboard?.project?.name || '';
+
   const totals = dashboard?.totals;
   const activeRange = dashboard?.dateRange;
   const periodText = rangeLabel(
@@ -288,6 +316,16 @@ export function OutreachProjectsView() {
         </FormControl>
         <Button variant="outlined" onClick={() => setCreateOpen(true)} sx={{ textTransform: 'none' }}>
           Yeni proje
+        </Button>
+        <Button
+          color="error"
+          variant="outlined"
+          startIcon={deleting ? <CircularProgress size={14} /> : <DeleteOutlineIcon />}
+          disabled={!selectedId || deleting || loading}
+          onClick={() => setDeleteOpen(true)}
+          sx={{ textTransform: 'none' }}
+        >
+          Projeyi sil
         </Button>
         <Button
           startIcon={dashLoading ? <CircularProgress size={14} /> : <RefreshIcon />}
@@ -561,6 +599,30 @@ export function OutreachProjectsView() {
             onClick={() => void handleCreate()}
           >
             Oluştur
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteOpen} onClose={() => !deleting && setDeleteOpen(false)}>
+        <DialogTitle>Projeyi sil</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {selectedProjectName
+              ? `"${selectedProjectName}" projesini silmek istediğinize emin misiniz? Proje listeden kalkar; geçmiş mail logları saklanır.`
+              : 'Seçili projeyi silmek istediğinize emin misiniz?'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={deleting} onClick={() => setDeleteOpen(false)}>
+            İptal
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={deleting || !selectedId}
+            onClick={() => void handleDeleteProject()}
+          >
+            {deleting ? 'Siliniyor...' : 'Sil'}
           </Button>
         </DialogActions>
       </Dialog>

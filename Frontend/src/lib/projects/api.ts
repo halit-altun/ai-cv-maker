@@ -149,6 +149,17 @@ export async function selectOutreachProjectRequest(projectId: string): Promise<O
   return data.project as OutreachProject;
 }
 
+export async function deleteOutreachProjectRequest(projectId: string): Promise<void> {
+  const response = await authFetch(`/api/outreach-projects/${projectId}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const data = await parseJson(response);
+  if (!response.ok || data.ok === false) {
+    throwApiError(data, 'Proje silinemedi.');
+  }
+}
+
 export async function getOutreachProjectDashboardRequest(
   projectId: string,
   query: ProjectDashboardQuery = {}

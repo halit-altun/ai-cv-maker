@@ -86,6 +86,26 @@ async function selectProject(clientId, userId, projectId) {
   return mapProject(project);
 }
 
+/**
+ * Projeyi soft-delete (archived). Loglar korunur; listede görünmez.
+ * Son proje silinirse bir sonraki listede varsayılan DUBAI yeniden oluşabilir.
+ */
+async function deleteProject(clientId, projectId) {
+  const project = await OutreachProject.findOne({ _id: projectId, clientId });
+  if (!project || project.archived) {
+    throw new AppError("Proje bulunamadı.", 404, "PROJECT_NOT_FOUND");
+  }
+
+  project.archived = true;
+  await project.save();
+
+  return {
+    deleted: true,
+    id: String(project._id),
+    project: mapProject(project),
+  };
+}
+
 async function getProjectOrThrow(clientId, projectId) {
   if (!projectId) return null;
   const project = await OutreachProject.findOne({ _id: projectId, clientId, archived: { $ne: true } }).lean();
@@ -379,6 +399,7 @@ module.exports = {
   listProjects,
   createProject,
   selectProject,
+  deleteProject,
   getProjectOrThrow,
   getProjectDashboard,
   resolveDashboardDateRange,
