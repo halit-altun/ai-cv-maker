@@ -247,63 +247,65 @@ export function TodoCompanyResultsPanel({ projectId }: TodoCompanyResultsPanelPr
             görünür.
           </Typography>
         ) : (
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Firma</TableCell>
-                <TableCell>Durum</TableCell>
-                <TableCell>Mail</TableCell>
-                <TableCell>Açılma</TableCell>
-                <TableCell>Konu</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {pageItems.map((c) => (
-                <TableRow
-                  key={c.id}
-                  hover
-                  sx={{ cursor: 'pointer' }}
-                  onClick={() => setSelected(c)}
-                >
-                  <TableCell>
-                    <Typography fontSize={13} fontWeight={600}>
-                      {c.companyName || c.emailDomainInput}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" noWrap>
-                      {c.emailDomainInput}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      size="small"
-                      label={itemStatusLabel(c.status)}
-                      color={statusColor(c.status)}
-                    />
-                  </TableCell>
-                  <TableCell sx={{ fontSize: 12 }}>
-                    {(c.sentCount || 0) + (c.queuedCount || 0)} adet
-                  </TableCell>
-                  <TableCell sx={{ fontSize: 12 }}>
-                    {c.uniqueOpenedRecipients || 0}
-                  </TableCell>
-                  <TableCell
-                    sx={{
-                      fontSize: 12,
-                      maxWidth: 180,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {c.coldEmailSubject || '—'}
-                  </TableCell>
+          <>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Firma</TableCell>
+                  <TableCell>Durum</TableCell>
+                  <TableCell>Mail</TableCell>
+                  <TableCell>Açılma</TableCell>
+                  <TableCell>Konu</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {filtered.length > 0 ? (
-            <ListTablePagination {...tablePaginationProps} />
-          ) : null}
+              </TableHead>
+              <TableBody>
+                {pageItems.map((c) => (
+                  <TableRow
+                    key={c.id}
+                    hover
+                    sx={{ cursor: 'pointer' }}
+                    onClick={() => setSelected(c)}
+                  >
+                    <TableCell>
+                      <Typography fontSize={13} fontWeight={600}>
+                        {c.companyName || c.emailDomainInput}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap>
+                        {c.emailDomainInput}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={itemStatusLabel(c.status)}
+                        color={statusColor(c.status)}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ fontSize: 12 }}>
+                      {(c.sentCount || 0) + (c.queuedCount || 0)} adet
+                    </TableCell>
+                    <TableCell sx={{ fontSize: 12 }}>
+                      {c.uniqueOpenedRecipients || 0}
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        fontSize: 12,
+                        maxWidth: 180,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {c.coldEmailSubject || '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {filtered.length > 0 ? (
+              <ListTablePagination {...tablePaginationProps} />
+            ) : null}
+          </>
         )}
       </GlassCard>
 

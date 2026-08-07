@@ -3,12 +3,7 @@
 import { TablePagination, type TablePaginationProps } from '@mui/material';
 import { LIST_PAGE_SIZE_OPTIONS } from './constants';
 
-export type ListTablePaginationProps = Omit<
-  TablePaginationProps,
-  'component' | 'rowsPerPageOptions'
-> & {
-  rowsPerPageOptions?: number[];
-};
+export type ListTablePaginationProps = TablePaginationProps;
 
 /** Liste tabloları altında ortak sayfalama çubuğu */
 export function ListTablePagination({
