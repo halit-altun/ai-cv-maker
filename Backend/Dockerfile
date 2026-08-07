@@ -6,7 +6,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     REACHER_AUTO_START=false \
-    PORT=3001
+    PORT=3001 \
+    API_BASE_URL=https://portal--cv-ai-maker--6gvfdf2h8v7d.code.run \
+    TRACKING_PUBLIC_BASE_URL=https://portal--cv-ai-maker--6gvfdf2h8v7d.code.run
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev

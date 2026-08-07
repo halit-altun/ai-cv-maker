@@ -49,8 +49,9 @@ async function handlePixel(req, res) {
  * GET /api/track/pixel/:mailId.png
  * GET /api/track/pixel/:mailId
  * Auth yok — e-posta istemcisi / Gmail proxy çağırır.
+ *
+ * Not: Express'te `.png` bazen format olarak parse edilir; her iki path de desteklenir.
  */
-router.get("/pixel/:mailId.png", handlePixel);
-router.get("/pixel/:mailId", handlePixel);
+router.get(["/pixel/:mailId.png", "/pixel/:mailId"], handlePixel);
 
 module.exports = router;

@@ -128,6 +128,7 @@ async function sendCompanyOutreachEmails({
   rawDomainInput,
   trustedEmail,
   projectId,
+  trackingPublicBaseUrl,
 }) {
   const limits = getOutreachLimits();
   const candidates = Array.isArray(recipients)
@@ -407,7 +408,7 @@ async function sendCompanyOutreachEmails({
         
         mailId = trackingResult.mailId;
         if (mailId) mailIds.push(mailId);
-        pixelHtml = generateTrackingPixelHtml(mailId);
+        pixelHtml = generateTrackingPixelHtml(mailId, trackingPublicBaseUrl);
         htmlBody = createEmailHtmlTemplate(text, pixelHtml);
       }
 

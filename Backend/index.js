@@ -127,7 +127,7 @@ async function initAfterListen() {
     const base = getTrackingPublicBaseUrl();
     if (isLocalTrackingBase(base)) {
       console.warn(
-        "[MAIL_TRACKING] TRACKING_PUBLIC_BASE_URL tanımlı değil (localhost)."
+        "[MAIL_TRACKING] TRACKING_PUBLIC_BASE_URL tanımlı değil (localhost). Gmail açılışları kayda geçmez."
       );
     } else {
       console.log(`[MAIL_TRACKING] Public base: ${base}`);

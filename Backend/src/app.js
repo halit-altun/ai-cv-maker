@@ -67,6 +67,10 @@ app.use(attachClientId);
 // Liveness: process dinliyorsa her zaman 200 (Northflank/Docker health 503 görünce endpoint'i düşürüp Connection refused yapar)
 app.get("/health", (_req, res) => {
   const bootState = require("./boot-state");
+  const {
+    getTrackingPublicBaseUrl,
+    isLocalTrackingBase,
+  } = require("./services/mail-tracking.service");
   const dbState = mongoose.connection.readyState;
   const states = {
     0: "disconnected",
@@ -74,12 +78,17 @@ app.get("/health", (_req, res) => {
     2: "connecting",
     3: "disconnecting",
   };
+  const trackingBase = getTrackingPublicBaseUrl();
   res.status(200).json({
     ok: true,
     ready: bootState.ready && dbState === 1,
     error: bootState.error,
     db: states[dbState] ?? "unknown",
     port: Number(process.env.PORT) || 3001,
+    tracking: {
+      publicBase: trackingBase,
+      isLocal: isLocalTrackingBase(trackingBase),
+    },
   });
 });
 

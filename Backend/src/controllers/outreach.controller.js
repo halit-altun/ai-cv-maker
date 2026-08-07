@@ -68,6 +68,13 @@ async function sendCompanyEmailHandler(req, res, next) {
       );
     }
 
+    const {
+      resolveTrackingBaseFromRequest,
+      getTrackingPublicBaseUrl,
+    } = require("../services/mail-tracking.service");
+    const trackingPublicBaseUrl =
+      resolveTrackingBaseFromRequest(req) || getTrackingPublicBaseUrl();
+
     const result = await sendCompanyOutreachEmails({
       recipients,
       subject,
@@ -90,6 +97,7 @@ async function sendCompanyEmailHandler(req, res, next) {
       rawDomainInput,
       trustedEmail,
       projectId: projectId || null,
+      trackingPublicBaseUrl,
     });
 
     const selectedList = Array.isArray(result.selectedRecipients)

@@ -218,29 +218,84 @@ async function setDeliveryOutcome(mailId, userId, outcome) {
 }
 
 /**
- * Tracking pixel URL oluştur
- * Gmail görselleri Google proxy üzerinden çeker — localhost ASLA çalışmaz.
- * TRACKING_PUBLIC_BASE_URL (veya API_BASE_URL) mutlaka public HTTPS olmalı.
+ * Production Northflank public API (env yokken son çare).
+ * Gmail proxy localhost'a erişemez; pixel her zaman public HTTPS olmalı.
  */
-function getTrackingPublicBaseUrl() {
-  const raw =
-    process.env.TRACKING_PUBLIC_BASE_URL ||
-    process.env.API_BASE_URL ||
-    `http://localhost:${process.env.PORT || 3011}`;
-  return String(raw).trim().replace(/\/$/, "");
+const DEFAULT_PRODUCTION_API_BASE =
+  "https://portal--cv-ai-maker--6gvfdf2h8v7d.code.run";
+
+function normalizeBaseUrl(raw) {
+  const value = String(raw || "").trim().replace(/\/$/, "");
+  return value || "";
 }
 
 function isLocalTrackingBase(baseUrl) {
   try {
     const host = new URL(baseUrl).hostname;
-    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host.endsWith(".local")
+    );
   } catch {
     return true;
   }
 }
 
-function generateTrackingPixelUrl(mailId, baseUrl = getTrackingPublicBaseUrl()) {
-  const base = String(baseUrl || getTrackingPublicBaseUrl()).replace(/\/$/, "");
+/**
+ * Express req üzerinden public base (Northflank X-Forwarded-* ile).
+ */
+function resolveTrackingBaseFromRequest(req) {
+  if (!req || typeof req.get !== "function") return "";
+  const host = String(
+    req.get("x-forwarded-host") || req.get("host") || ""
+  )
+    .split(",")[0]
+    .trim();
+  if (!host || isLocalTrackingBase(`http://${host}`)) return "";
+
+  const proto = String(
+    req.get("x-forwarded-proto") || req.protocol || "https"
+  )
+    .split(",")[0]
+    .trim()
+    .replace(/:$/, "");
+
+  return normalizeBaseUrl(`${proto || "https"}://${host}`);
+}
+
+/**
+ * Tracking pixel URL tabanı.
+ * Öncelik: override → env → production default → localhost (yalnızca local).
+ */
+function getTrackingPublicBaseUrl(overrideBaseUrl) {
+  const candidates = [
+    overrideBaseUrl,
+    process.env.TRACKING_PUBLIC_BASE_URL,
+    process.env.API_BASE_URL,
+    process.env.PUBLIC_API_URL,
+    process.env.BACKEND_PUBLIC_URL,
+  ];
+
+  for (const candidate of candidates) {
+    const base = normalizeBaseUrl(candidate);
+    if (base && !isLocalTrackingBase(base)) {
+      return base;
+    }
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return DEFAULT_PRODUCTION_API_BASE;
+  }
+
+  return normalizeBaseUrl(
+    `http://localhost:${process.env.PORT || 3011}`
+  );
+}
+
+function generateTrackingPixelUrl(mailId, baseUrl) {
+  const base = getTrackingPublicBaseUrl(baseUrl);
   const id = String(mailId || "").replace(/\.png$/i, "");
   return `${base}/api/track/pixel/${id}.png`;
 }
@@ -252,7 +307,7 @@ function generateTrackingPixelHtml(mailId, baseUrl) {
   const pixelUrl = generateTrackingPixelUrl(mailId, baseUrl);
   if (isLocalTrackingBase(pixelUrl)) {
     console.warn(
-      `[MAIL_TRACKING] UYARI: Pixel URL localhost (${pixelUrl}). Gmail/Outlook bu adresi açamaz; OPENED kaydı düşmez. .env içine TRACKING_PUBLIC_BASE_URL=https://... (ngrok vb.) ekleyin.`
+      `[MAIL_TRACKING] UYARI: Pixel URL localhost (${pixelUrl}). Gmail/Outlook bu adresi açamaz; OPENED kaydı düşmez. TRACKING_PUBLIC_BASE_URL veya API_BASE_URL ayarlayın.`
     );
   } else {
     console.log(`[MAIL_TRACKING] Pixel URL: ${pixelUrl}`);
@@ -269,7 +324,9 @@ module.exports = {
   getMailTrackingDetails,
   setDeliveryOutcome,
   getTrackingPublicBaseUrl,
+  resolveTrackingBaseFromRequest,
   isLocalTrackingBase,
   generateTrackingPixelUrl,
   generateTrackingPixelHtml,
+  DEFAULT_PRODUCTION_API_BASE,
 };
