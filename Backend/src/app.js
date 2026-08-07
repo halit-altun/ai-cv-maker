@@ -15,13 +15,23 @@ const { isAppError } = require("./utils/app-error");
 const { isDatabaseUnavailableError } = require("./utils/db-error");
 
 const app = express();
-const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+
+/** Comma-separated origins, e.g. https://app.example.com,http://localhost:3010 */
+const frontendOrigins = String(process.env.FRONTEND_URL || "http://localhost:3010")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 
 app.use(express.json({ limit: "12mb" }));
 app.use(cookieParser());
 app.use(
   cors({
-    origin: frontendUrl,
+    origin(origin, callback) {
+      if (!origin || frontendOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true,
     exposedHeaders: ["X-Client-Id"],
     allowedHeaders: [

@@ -94,15 +94,16 @@ The API runs at `http://localhost:3001` by default. Health check: `GET /health`
 
 ```bash
 cd Frontend
-# Create .env.local:
-# NEXT_PUBLIC_API_URL=http://localhost:3001
 npm install
 npm run dev
 ```
 
 App: [http://localhost:3010](http://localhost:3010)
 
-> If you change the backend port in `.env`, update `NEXT_PUBLIC_API_URL` accordingly.
+- `npm run dev` → API `http://localhost:3011` (`.env.development`)
+- `npm run build && npm start` → API `https://ai-cv-maker-3qcm.onrender.com` (`.env.production`)
+
+> Local backend port comes from Backend `.env` (`PORT`). Keep `NEXT_PUBLIC_API_URL` in `.env.development` in sync with that port.
 
 ---
 
@@ -124,11 +125,22 @@ App: [http://localhost:3010](http://localhost:3010)
 
 Full list: [`Backend/.env.example`](Backend/.env.example)
 
-### Frontend (`.env.local`)
+### Frontend
+
+| File | When | Value |
+|------|------|--------|
+| `.env.development` | `npm run dev` | `http://localhost:3011` |
+| `.env.production` | `npm run build` / `npm start` | Render API URL |
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:3001
+# .env.development
+NEXT_PUBLIC_API_URL=http://localhost:3011
+
+# .env.production
+NEXT_PUBLIC_API_URL=https://ai-cv-maker-3qcm.onrender.com
 ```
+
+`NEXT_PUBLIC_*` values are baked in at **build** time. After changing production URL, run `npm run build` again before `npm start`.
 
 ---
 
