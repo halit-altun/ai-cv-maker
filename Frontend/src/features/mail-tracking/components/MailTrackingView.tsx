@@ -97,6 +97,8 @@ export function MailTrackingView() {
   const [statusFilter, setStatusFilter] = useState<'' | MailTrackingStatus>('');
   const [projectFilter, setProjectFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
+  /** Tek gün — gönderim tarihi (YYYY-MM-DD) */
+  const [sentDateFilter, setSentDateFilter] = useState('');
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -115,6 +117,7 @@ export function MailTrackingView() {
           status: statusFilter || undefined,
           projectId: projectFilter || undefined,
           company: companyFilter.trim() || undefined,
+          date: sentDateFilter || undefined,
         }),
         getMailTrackingStatsRequest(projectFilter || undefined),
         listOutreachProjectsRequest().catch(() => ({ projects: [] as Array<{ id: string; name: string }> })),
@@ -133,7 +136,7 @@ export function MailTrackingView() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, projectFilter, companyFilter]);
+  }, [statusFilter, projectFilter, companyFilter, sentDateFilter]);
 
   useEffect(() => {
     void loadData();
@@ -299,6 +302,17 @@ export function MailTrackingView() {
           value={companyFilter}
           onChange={(e) => setCompanyFilter(e.target.value)}
           sx={{ minWidth: 200 }}
+        />
+
+        <TextField
+          size="small"
+          type="date"
+          label="Gönderim tarihi"
+          value={sentDateFilter}
+          onChange={(e) => setSentDateFilter(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+          sx={{ minWidth: 180 }}
+          helperText={sentDateFilter ? 'Tek gün (gönderim)' : 'Tüm günler'}
         />
       </Stack>
 

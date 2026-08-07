@@ -52,6 +52,8 @@ export async function listMailTrackingsRequest(params?: {
   status?: string;
   projectId?: string;
   company?: string;
+  /** Tek gün (YYYY-MM-DD) — gönderim tarihi */
+  date?: string;
   startDate?: string;
   endDate?: string;
 }): Promise<{ trackings: MailTrackingItem[]; total: number }> {
@@ -61,6 +63,7 @@ export async function listMailTrackingsRequest(params?: {
   if (params?.status) qs.set('status', params.status);
   if (params?.projectId) qs.set('projectId', params.projectId);
   if (params?.company) qs.set('company', params.company);
+  if (params?.date) qs.set('date', params.date);
   if (params?.startDate) qs.set('startDate', params.startDate);
   if (params?.endDate) qs.set('endDate', params.endDate);
 

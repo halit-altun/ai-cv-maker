@@ -52,7 +52,8 @@ router.get("/stats/summary", async (req, res, next) => {
  */
 router.get("/", async (req, res, next) => {
   try {
-    const { limit = 50, skip = 0, status, projectId, company, startDate, endDate } = req.query;
+    const { limit = 50, skip = 0, status, projectId, company, date, startDate, endDate } =
+      req.query;
 
     const result = await getUserMailTrackings(req.user.id, {
       limit: Number(limit) || 50,
@@ -60,6 +61,7 @@ router.get("/", async (req, res, next) => {
       status: status || undefined,
       projectId: projectId || undefined,
       company: company || undefined,
+      date: date || undefined,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
     });

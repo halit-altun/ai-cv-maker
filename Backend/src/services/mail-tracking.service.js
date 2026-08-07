@@ -125,9 +125,24 @@ async function updateMailStatus(mailId, status, errorMessage = null) {
 }
 
 /**
+ * YYYY-MM-DD → gün başı/sonu (Europe/Istanbul)
+ */
+function parseSentDayBounds(dateStr) {
+  const raw = String(dateStr || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const start = new Date(`${raw}T00:00:00.000+03:00`);
+  const end = new Date(`${raw}T23:59:59.999+03:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  return { start, end };
+}
+
+/**
  * Kullanıcının mail tracking listesini al
  */
-async function getUserMailTrackings(userId, { limit = 50, skip = 0, status, projectId, company, startDate, endDate } = {}) {
+async function getUserMailTrackings(
+  userId,
+  { limit = 50, skip = 0, status, projectId, company, date, startDate, endDate } = {}
+) {
   const query = { userId };
 
   if (status) {
@@ -142,15 +157,42 @@ async function getUserMailTrackings(userId, { limit = 50, skip = 0, status, proj
     query.company = { $regex: String(company), $options: "i" };
   }
 
-  if (startDate || endDate) {
-    query.createdAt = {};
-    if (startDate) query.createdAt.$gte = new Date(startDate);
-    if (endDate) query.createdAt.$lte = new Date(endDate);
+  // Tek gün (date) veya aralık — gönderim tarihi (sentAt); yoksa createdAt
+  const day = parseSentDayBounds(date);
+  if (day) {
+    query.$or = [
+      { sentAt: { $gte: day.start, $lte: day.end } },
+      {
+        $and: [
+          { $or: [{ sentAt: null }, { sentAt: { $exists: false } }] },
+          { createdAt: { $gte: day.start, $lte: day.end } },
+        ],
+      },
+    ];
+  } else if (startDate || endDate) {
+    const range = {};
+    if (startDate) {
+      const s = parseSentDayBounds(String(startDate).slice(0, 10));
+      range.$gte = s ? s.start : new Date(startDate);
+    }
+    if (endDate) {
+      const e = parseSentDayBounds(String(endDate).slice(0, 10));
+      range.$lte = e ? e.end : new Date(endDate);
+    }
+    query.$or = [
+      { sentAt: range },
+      {
+        $and: [
+          { $or: [{ sentAt: null }, { sentAt: { $exists: false } }] },
+          { createdAt: range },
+        ],
+      },
+    ];
   }
 
   const [trackings, total] = await Promise.all([
     MailTracking.find(query)
-      .sort({ createdAt: -1 })
+      .sort({ sentAt: -1, createdAt: -1 })
       .limit(limit)
       .skip(skip)
       .lean(),
