@@ -426,14 +426,10 @@ export function PreviewStep(props: PreviewStepProps) {
               >
                 <Box sx={{ px: 2, pt: 2 }}>
                   <FontSizeSelector
-                    nameValue={props.nameFontSize}
-                    profileTitleValue={props.profileTitleFontSize}
                     bodyValue={props.bodyFontSize}
                     headingValue={props.headingFontSize}
                     jobTitleValue={props.jobTitleFontSize}
                     skillsValue={props.skillsFontSize}
-                    onNameChange={props.setNameFontSize}
-                    onProfileTitleChange={props.setProfileTitleFontSize}
                     onBodyChange={props.setBodyFontSize}
                     onHeadingChange={props.setHeadingFontSize}
                     onJobTitleChange={props.setJobTitleFontSize}

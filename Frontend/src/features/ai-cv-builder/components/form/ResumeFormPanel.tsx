@@ -74,14 +74,10 @@ export function ResumeFormPanel({ state }: ResumeFormPanelProps) {
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         <LanguageSelector value={state.language} onChange={state.setLanguage} />
         <FontSizeSelector
-          nameValue={state.nameFontSize}
-          profileTitleValue={state.profileTitleFontSize}
           bodyValue={state.bodyFontSize}
           headingValue={state.headingFontSize}
           jobTitleValue={state.jobTitleFontSize}
           skillsValue={state.skillsFontSize}
-          onNameChange={state.setNameFontSize}
-          onProfileTitleChange={state.setProfileTitleFontSize}
           onBodyChange={state.setBodyFontSize}
           onHeadingChange={state.setHeadingFontSize}
           onJobTitleChange={state.setJobTitleFontSize}

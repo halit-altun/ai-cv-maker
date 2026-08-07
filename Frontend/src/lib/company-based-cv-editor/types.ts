@@ -180,6 +180,7 @@ export interface CompanyBasedCVData {
     linkedin: string;
     photoUrl?: string;
     includePhoto?: boolean;
+    photoSizePt?: number;
   };
   about: string;
   workExperience: Array<{

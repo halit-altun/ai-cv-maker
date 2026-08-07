@@ -69,6 +69,14 @@ import {
   type CvProfileTitleFontSize,
   type CvSkillsFontSize,
 } from '../cv-maker/cvTypography';
+import {
+  resolveCvPhotoSizePt,
+  CV_PHOTO_GAP_PT,
+  CV_PHOTO_LEFT_PT,
+  CV_PHOTO_FRAME_COLOR,
+  CV_PHOTO_FRAME_WIDTH_PT,
+  CV_IDENTITY_BEFORE_CONTACT_PT,
+} from '../cv-maker/cvPhoto';
 import { CompanyBasedCVData } from '@/lib/company-based-cv-editor/types';
 import { CompanyBasedCVService } from '@/lib/company-based-cv-editor/service';
 
@@ -523,7 +531,7 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
               ))}
             </Stack>
 
-            <Divider sx={{ my: 2 }} />
+            <Divider sx={{ my: 1.25 }} />
 
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
@@ -722,20 +730,18 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
         <Box className="cv-page">
           <Typography className="page-number">Sayfa 1</Typography>
 
-          {/* Header - Kişisel Bilgiler */}
+          {/* Header - Kişisel Bilgiler (foto sol üst; metin ortalı düzen korunur) */}
           {(() => {
             const showPhoto = Boolean(
               data.personalInfo.includePhoto && data.personalInfo.photoUrl
             );
+            const photoSizePt = resolveCvPhotoSizePt(data.personalInfo);
             return (
           <Box
             sx={{
-              mb: 3,
-              textAlign: showPhoto ? 'left' : 'center',
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'flex-start',
-              gap: 2,
+              mb: 2,
+              position: 'relative',
+              textAlign: 'center',
             }}
           >
             {showPhoto ? (
@@ -744,17 +750,22 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                 src={data.personalInfo.photoUrl}
                 alt=""
                 sx={{
-                  width: 72,
-                  height: 72,
+                  position: 'absolute',
+                  left: `${CV_PHOTO_LEFT_PT}pt`,
+                  top: `${CV_PHOTO_GAP_PT}pt`,
+                  width: `${photoSizePt}pt`,
+                  height: `${photoSizePt}pt`,
                   borderRadius: '50%',
                   objectFit: 'cover',
-                  flexShrink: 0,
+                  border: `${CV_PHOTO_FRAME_WIDTH_PT}pt solid ${CV_PHOTO_FRAME_COLOR}`,
+                  boxSizing: 'border-box',
+                  zIndex: 2,
+                  pointerEvents: 'none',
                 }}
               />
             ) : null}
-            <Box sx={{ flex: 1, minWidth: 0 }}>
             {isEditing ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: showPhoto ? 'stretch' : 'center' }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
                 <Box sx={{ display: 'flex', gap: 1, width: '100%', maxWidth: 400 }}>
                   <TextField
                     size="small"
@@ -780,38 +791,67 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                 />
               </Box>
             ) : (
-              <>
-                <Typography
-                  className="cv-name"
-                  variant="h4"
+              <Box
+                sx={{
+                  position: 'relative',
+                  height: `${CV_IDENTITY_BEFORE_CONTACT_PT}pt`,
+                }}
+              >
+                <Box
                   sx={{
-                    fontWeight: 700,
-                    color: '#1a1a1a',
-                    mb: 0.5,
-                    fontSize: `${resolvedNameFontSize}pt`,
-                    textAlign: showPhoto ? 'left' : 'center',
+                    position: 'absolute',
+                    left: 0,
+                    right: 0,
+                    top: `${CV_PHOTO_GAP_PT}pt`,
+                    height: `${photoSizePt}pt`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    zIndex: 1,
                   }}
                 >
-                  {data.personalInfo.firstName || 'Ad'} {data.personalInfo.lastName || 'Soyad'}
-                </Typography>
-                <Typography
-                  className="cv-profile-title"
-                  sx={{
-                    color: '#2c5aa0',
-                    mb: 2,
-                    fontWeight: 500,
-                    fontSize: `${resolvedProfileTitleFontSize}pt`,
-                    textAlign: showPhoto ? 'left' : 'center',
-                  }}
-                >
-                  {data.personalInfo.title || 'Ünvan'}
-                </Typography>
-              </>
+                  <Typography
+                    className="cv-name"
+                    variant="h4"
+                    sx={{
+                      fontWeight: 700,
+                      color: '#1a1a1a',
+                      mb: 0.5,
+                      fontSize: `${resolvedNameFontSize}pt`,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {data.personalInfo.firstName || 'Ad'} {data.personalInfo.lastName || 'Soyad'}
+                  </Typography>
+                  <Typography
+                    className="cv-profile-title"
+                    sx={{
+                      color: '#2c5aa0',
+                      mb: 0,
+                      fontWeight: 500,
+                      fontSize: `${resolvedProfileTitleFontSize}pt`,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {data.personalInfo.title || 'Ünvan'}
+                  </Typography>
+                </Box>
+              </Box>
             )}
 
-            {/* İletişim Bilgileri */}
+            {/* İletişim — resimsiz ile aynı kompakt boşluk */}
             {isEditing ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, width: '100%', maxWidth: 600 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  width: '100%',
+                  maxWidth: 600,
+                  mx: 'auto',
+                }}
+              >
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <TextField
                     size="small"
@@ -869,7 +909,13 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                 />
               </Box>
             ) : (
-              <Box sx={{ fontSize: '0.85rem', color: '#555', textAlign: showPhoto ? 'left' : 'center' }}>
+              <Box
+                sx={{
+                  fontSize: '0.85rem',
+                  color: '#555',
+                  textAlign: 'center',
+                }}
+              >
                 {/* İlk Satır: Adres | Telefon | E-posta */}
                 <Typography variant="body2" sx={{ mb: 0.5 }}>
                   {data.personalInfo.city && data.personalInfo.country && (
@@ -934,17 +980,16 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                 )}
               </Box>
             )}
-            </Box>
           </Box>
             );
           })()}
 
-          <Divider sx={{ my: 2 }} />
+          <Divider sx={{ my: 1.25 }} />
 
           {/* Hakkımda */}
           {data.about && (
             <>
-              <Box sx={{ mb: 3 }}>
+              <Box sx={{ mb: 2 }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: '#1a1a1a' }}>
                   {getSectionTitle('Hakkımda')}
                 </Typography>
@@ -970,14 +1015,14 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                   </Typography>
                 )}
               </Box>
-              <Divider sx={{ my: 2 }} />
+              <Divider sx={{ my: 1.25 }} />
             </>
           )}
 
           {/* İş Deneyimi */}
           {data.workExperience.length > 0 && (
             <>
-              <Box sx={{ mb: 3 }}>
+              <Box sx={{ mb: 2 }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
                   {getSectionTitle('İş Deneyimi')}
                 </Typography>
@@ -1120,14 +1165,14 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                   </Box>
                 ))}
               </Box>
-              <Divider sx={{ my: 2 }} />
+              <Divider sx={{ my: 1.25 }} />
             </>
           )}
 
           {/* Eğitim */}
           {data.education.length > 0 && (
             <>
-              <Box sx={{ mb: 3 }}>
+              <Box sx={{ mb: 2 }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
                   {getSectionTitle('Eğitim')}
                 </Typography>
@@ -1182,14 +1227,14 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                   </Box>
                 ))}
               </Box>
-              <Divider sx={{ my: 2 }} />
+              <Divider sx={{ my: 1.25 }} />
             </>
           )}
 
           {/* Beceriler */}
           {data.skills.length > 0 && (
             <>
-              <Box sx={{ mb: 3 }}>
+              <Box sx={{ mb: 2 }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
                   {getSectionTitle('Beceriler')}
                 </Typography>
@@ -1253,7 +1298,7 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                   </Box>
                 )}
               </Box>
-              <Divider sx={{ my: 2 }} />
+              <Divider sx={{ my: 1.25 }} />
             </>
           )}
 

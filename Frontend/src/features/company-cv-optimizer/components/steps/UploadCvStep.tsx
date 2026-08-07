@@ -193,7 +193,7 @@ export function UploadCvStep({
               </Typography>
               <Typography sx={{ fontFamily: fonts.body, fontSize: '0.85rem', color: colors.onSurfaceVariant }}>
                 {profilePhotoUrl
-                  ? 'Açıkken Profilim’deki fotoğraf CV’nin soluna eklenir.'
+                  ? 'Açıkken Profilim’deki fotoğraf info sol üstüne 3.5 cm vesikalık boyutta eklenir; isim/iletişim ortalı kalır.'
                   : 'Önce Profilim sayfasından bir profil fotoğrafı yükleyin.'}
               </Typography>
             </Box>

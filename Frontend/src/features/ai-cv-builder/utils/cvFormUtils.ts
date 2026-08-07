@@ -2,6 +2,10 @@ import type { WorkExperienceItem } from '@/components/cv-maker/WorkExperience';
 import type { EducationItem } from '@/components/cv-maker/Education';
 import type { LanguageItem } from '@/components/cv-maker/Languages';
 
+import {
+  CV_PHOTO_SIZE_PT,
+} from '@/components/cv-maker/cvPhoto';
+
 export const emptyPersonalInfo = {
   firstName: '',
   lastName: '',
@@ -17,6 +21,8 @@ export const emptyPersonalInfo = {
   photoUrl: '',
   /** CV önizleme/PDF'te fotoğraf göster */
   includePhoto: false,
+  /** Oval foto çapı (pt) — sabit 3.5 cm */
+  photoSizePt: CV_PHOTO_SIZE_PT,
 };
 
 export type PersonalInfoState = typeof emptyPersonalInfo;

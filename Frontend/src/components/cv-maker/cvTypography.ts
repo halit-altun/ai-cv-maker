@@ -7,15 +7,15 @@ export const CV_BODY_FONT_SIZES = [10, 11] as const;
 export type CvBodyFontSize = (typeof CV_BODY_FONT_SIZES)[number];
 export const DEFAULT_CV_BODY_FONT_SIZE: CvBodyFontSize = 11;
 
-/** CV başlığındaki ad soyad — kullanıcı yalnızca bu aralıktan seçer */
-export const CV_NAME_FONT_SIZES = [18, 19, 20, 21, 22, 23, 24] as const;
+/** CV başlığındaki ad soyad — sabit (düzenlenemez) */
+export const CV_NAME_FONT_SIZES = [22] as const;
 export type CvNameFontSize = (typeof CV_NAME_FONT_SIZES)[number];
-export const DEFAULT_CV_NAME_FONT_SIZE: CvNameFontSize = 20;
+export const DEFAULT_CV_NAME_FONT_SIZE: CvNameFontSize = 22;
 
-/** CV başlığındaki kişisel ünvan — kullanıcı yalnızca bu aralıktan seçer */
-export const CV_PROFILE_TITLE_FONT_SIZES = [12, 13, 14] as const;
+/** CV başlığındaki kişisel ünvan — sabit (düzenlenemez) */
+export const CV_PROFILE_TITLE_FONT_SIZES = [14] as const;
 export type CvProfileTitleFontSize = (typeof CV_PROFILE_TITLE_FONT_SIZES)[number];
-export const DEFAULT_CV_PROFILE_TITLE_FONT_SIZE: CvProfileTitleFontSize = 13;
+export const DEFAULT_CV_PROFILE_TITLE_FONT_SIZE: CvProfileTitleFontSize = 14;
 
 /** Ana bölüm başlıkları — kullanıcı yalnızca bu aralıktan seçer */
 export const CV_HEADING_FONT_SIZES = [14, 15, 16] as const;
@@ -33,18 +33,12 @@ export function clampCvBodyFontSize(value: number): CvBodyFontSize {
   return 11;
 }
 
-export function clampCvNameFontSize(value: number): CvNameFontSize {
-  const n = Math.round(Number(value) || DEFAULT_CV_NAME_FONT_SIZE);
-  if (n <= 18) return 18;
-  if (n >= 24) return 24;
-  return n as CvNameFontSize;
+export function clampCvNameFontSize(_value: number): CvNameFontSize {
+  return DEFAULT_CV_NAME_FONT_SIZE;
 }
 
-export function clampCvProfileTitleFontSize(value: number): CvProfileTitleFontSize {
-  const n = Math.round(Number(value) || DEFAULT_CV_PROFILE_TITLE_FONT_SIZE);
-  if (n <= 12) return 12;
-  if (n >= 14) return 14;
-  return 13;
+export function clampCvProfileTitleFontSize(_value: number): CvProfileTitleFontSize {
+  return DEFAULT_CV_PROFILE_TITLE_FONT_SIZE;
 }
 
 export function clampCvHeadingFontSize(value: number): CvHeadingFontSize {

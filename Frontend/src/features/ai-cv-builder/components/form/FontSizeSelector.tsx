@@ -12,28 +12,20 @@ import {
   CV_BODY_FONT_SIZES,
   CV_HEADING_FONT_SIZES,
   CV_JOB_TITLE_FONT_SIZES,
-  CV_NAME_FONT_SIZES,
-  CV_PROFILE_TITLE_FONT_SIZES,
   CV_SKILLS_FONT_SIZES,
   type CvBodyFontSize,
   type CvHeadingFontSize,
   type CvJobTitleFontSize,
-  type CvNameFontSize,
-  type CvProfileTitleFontSize,
   type CvSkillsFontSize,
 } from '@/components/cv-maker/cvTypography';
 import { dashboardTokens } from '@/features/dashboard/styles/dashboardTokens';
 import { aiCvBuilderCopy } from '../../constants/copy';
 
 interface FontSizeSelectorProps {
-  nameValue: CvNameFontSize;
-  profileTitleValue: CvProfileTitleFontSize;
   bodyValue: CvBodyFontSize;
   headingValue: CvHeadingFontSize;
   jobTitleValue: CvJobTitleFontSize;
   skillsValue: CvSkillsFontSize;
-  onNameChange: (value: CvNameFontSize) => void;
-  onProfileTitleChange: (value: CvProfileTitleFontSize) => void;
   onBodyChange: (value: CvBodyFontSize) => void;
   onHeadingChange: (value: CvHeadingFontSize) => void;
   onJobTitleChange: (value: CvJobTitleFontSize) => void;
@@ -41,14 +33,10 @@ interface FontSizeSelectorProps {
 }
 
 export function FontSizeSelector({
-  nameValue,
-  profileTitleValue,
   bodyValue,
   headingValue,
   jobTitleValue,
   skillsValue,
-  onNameChange,
-  onProfileTitleChange,
   onBodyChange,
   onHeadingChange,
   onJobTitleChange,
@@ -68,36 +56,6 @@ export function FontSizeSelector({
     <Box>
       <Typography sx={{ ...labelSx, mb: 1.5 }}>{aiCvBuilderCopy.fontSizeSelect}</Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <FormLabel sx={labelSx}>{aiCvBuilderCopy.fontSizeName}</FormLabel>
-          <Select
-            value={nameValue}
-            onChange={(e) => onNameChange(Number(e.target.value) as CvNameFontSize)}
-          >
-            {CV_NAME_FONT_SIZES.map((size) => (
-              <MenuItem key={size} value={size}>
-                {size} pt
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        <FormControl size="small" sx={{ minWidth: 160 }}>
-          <FormLabel sx={labelSx}>{aiCvBuilderCopy.fontSizeProfileTitle}</FormLabel>
-          <Select
-            value={profileTitleValue}
-            onChange={(e) =>
-              onProfileTitleChange(Number(e.target.value) as CvProfileTitleFontSize)
-            }
-          >
-            {CV_PROFILE_TITLE_FONT_SIZES.map((size) => (
-              <MenuItem key={size} value={size}>
-                {size} pt
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
         <FormControl size="small" sx={{ minWidth: 170 }}>
           <FormLabel sx={labelSx}>{aiCvBuilderCopy.fontSizeBody}</FormLabel>
           <Select

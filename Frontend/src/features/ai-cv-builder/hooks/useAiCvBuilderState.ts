@@ -32,6 +32,10 @@ import {
   DEFAULT_CV_PROFILE_TITLE_FONT_SIZE,
   DEFAULT_CV_SKILLS_FONT_SIZE,
 } from '@/components/cv-maker/cvTypography';
+import {
+  CV_PHOTO_SIZE_PT,
+  clampCvPhotoSizePt,
+} from '@/components/cv-maker/cvPhoto';
 import { authFetch } from '@/lib/auth/authFetch';
 import type { AuthUser } from '@/lib/auth/types';
 
@@ -53,6 +57,7 @@ function personalInfoFromProfile(user: AuthUser): PersonalInfoState {
     linkedin: user.linkedinUrl || '',
     photoUrl: user.profileImageUrl || '',
     includePhoto: false,
+    photoSizePt: CV_PHOTO_SIZE_PT,
   };
 }
 
@@ -62,7 +67,7 @@ function mergeEmptyPersonalInfo(
 ): PersonalInfoState {
   const next = { ...current };
   (Object.keys(defaults) as Array<keyof PersonalInfoState>).forEach((key) => {
-    if (key === 'includePhoto') return;
+    if (key === 'includePhoto' || key === 'photoSizePt') return;
     if (typeof defaults[key] === 'boolean') return;
     const currentVal = String(current[key] || '').trim();
     const defaultVal = String(defaults[key] || '').trim();
@@ -73,6 +78,7 @@ function mergeEmptyPersonalInfo(
   if (!current.photoUrl && defaults.photoUrl) {
     next.photoUrl = defaults.photoUrl;
   }
+  next.photoSizePt = clampCvPhotoSizePt(current.photoSizePt ?? defaults.photoSizePt);
   return next;
 }
 
@@ -160,6 +166,9 @@ export function useAiCvBuilderState(cvId?: string) {
           linkedin: data.personalInfo.linkedin ?? '',
           photoUrl: (data.personalInfo as { photoUrl?: string }).photoUrl ?? '',
           includePhoto: Boolean((data.personalInfo as { includePhoto?: boolean }).includePhoto),
+          photoSizePt: clampCvPhotoSizePt(
+            (data.personalInfo as { photoSizePt?: number }).photoSizePt
+          ),
         });
         setAbout(data.about ?? '');
         setWorkExperience(normalizeWorkExperience(data.workExperience ?? []));
@@ -177,9 +186,15 @@ export function useAiCvBuilderState(cvId?: string) {
     };
   }, [cvId]);
 
-  const handlePersonalInfoChange = useCallback((field: string, value: string | boolean) => {
-    setPersonalInfo((prev) => ({ ...prev, [field]: value }));
-  }, []);
+  const handlePersonalInfoChange = useCallback(
+    (field: string, value: string | boolean | number) => {
+      setPersonalInfo((prev) => ({
+        ...prev,
+        [field]: field === 'photoSizePt' ? clampCvPhotoSizePt(value) : value,
+      }));
+    },
+    []
+  );
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] || null;
@@ -216,6 +231,7 @@ export function useAiCvBuilderState(cvId?: string) {
           linkedin: parsedData.personalInfo.linkedin ?? '',
           photoUrl: personalInfo.photoUrl || profilePhotoUrl || '',
           includePhoto: personalInfo.includePhoto,
+          photoSizePt: clampCvPhotoSizePt(personalInfo.photoSizePt),
         });
       }
       setAbout(parsedData.about ?? '');

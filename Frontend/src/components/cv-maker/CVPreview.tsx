@@ -49,6 +49,14 @@ import {
   clampCvProfileTitleFontSize,
   clampCvSkillsFontSize,
 } from './cvTypography';
+import {
+  resolveCvPhotoSizePt,
+  CV_PHOTO_GAP_PT,
+  CV_PHOTO_LEFT_PT,
+  CV_PHOTO_FRAME_COLOR,
+  CV_PHOTO_FRAME_WIDTH_PT,
+  CV_IDENTITY_BEFORE_CONTACT_PT,
+} from './cvPhoto';
 
 /** İletişim rozetleriyle aynı arka plan */
 const CONTACT_BADGE_BG = '#F5F5F5';
@@ -67,6 +75,7 @@ interface CVData {
     linkedin: string;
     photoUrl?: string;
     includePhoto?: boolean;
+    photoSizePt?: number;
   };
   about: string;
   workExperience: WorkExperienceItem[];
@@ -117,6 +126,10 @@ const CVPreview: React.FC<CVPreviewProps> = ({
   const skillsPt = resolvedSkillsFontSize;
   const namePt = resolvedNameFontSize;
   const profileTitlePt = resolvedProfileTitleFontSize;
+  const showPhoto = Boolean(
+    data.personalInfo.includePhoto && data.personalInfo.photoUrl
+  );
+  const photoSizePt = resolveCvPhotoSizePt(data.personalInfo);
 
   const contactPreviewIconSx = {
     fontSize: `${bodyPt}pt`,
@@ -361,65 +374,89 @@ const formatLinkedInDisplayUrl = (url: string) => {
         <Box className="cv-page">
           <Typography className="page-number">Sayfa 1</Typography>
 
-      {/* Header - Kişisel Bilgiler */}
+      {/* Header: ad/ünvan/info konumu sabit; foto varsa absolute eklenir */}
       <Box
         className="section-item"
         sx={{
-          mb: 3,
-          textAlign: data.personalInfo.includePhoto && data.personalInfo.photoUrl ? 'left' : 'center',
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'flex-start',
-          gap: 2,
+          mb: 2,
+          position: 'relative',
+          textAlign: 'center',
         }}
       >
-        {data.personalInfo.includePhoto && data.personalInfo.photoUrl ? (
+        {showPhoto ? (
           <Box
             component="img"
             src={data.personalInfo.photoUrl}
             alt=""
             sx={{
-              width: 72,
-              height: 72,
+              position: 'absolute',
+              left: `${CV_PHOTO_LEFT_PT}pt`,
+              top: `${CV_PHOTO_GAP_PT}pt`,
+              width: `${photoSizePt}pt`,
+              height: `${photoSizePt}pt`,
               borderRadius: '50%',
               objectFit: 'cover',
-              flexShrink: 0,
+              border: `${CV_PHOTO_FRAME_WIDTH_PT}pt solid ${CV_PHOTO_FRAME_COLOR}`,
+              boxSizing: 'border-box',
+              zIndex: 2,
+              pointerEvents: 'none',
             }}
           />
         ) : null}
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography
-          className="cv-name"
-          variant="h4"
-          sx={{
-            fontWeight: 700,
-            color: '#1a1a1a',
-            mb: 0.5,
-            fontSize: `${namePt}pt`,
-            textAlign: data.personalInfo.includePhoto && data.personalInfo.photoUrl ? 'left' : 'center',
-          }}
-        >
-          {data.personalInfo.firstName || 'Ad'} {data.personalInfo.lastName || 'Soyad'}
-        </Typography>
-        <Typography
-          className="cv-profile-title"
-          sx={{
-            color: '#2c5aa0',
-            mb: 2,
-            fontWeight: 500,
-            fontSize: `${profileTitlePt}pt`,
-            textAlign: data.personalInfo.includePhoto && data.personalInfo.photoUrl ? 'left' : 'center',
-          }}
-        >
-          {data.personalInfo.title || 'Ünvan'}
-        </Typography>
 
-        {/* İletişim Bilgileri */}
+        <Box
+          sx={{
+            position: 'relative',
+            height: `${CV_IDENTITY_BEFORE_CONTACT_PT}pt`,
+          }}
+        >
+          <Box
+            sx={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: `${CV_PHOTO_GAP_PT}pt`,
+              height: `${photoSizePt}pt`,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              textAlign: 'center',
+              zIndex: 1,
+            }}
+          >
+            <Typography
+              className="cv-name"
+              variant="h4"
+              sx={{
+                fontWeight: 700,
+                color: '#1a1a1a',
+                mb: 0.5,
+                fontSize: `${namePt}pt`,
+                textAlign: 'center',
+              }}
+            >
+              {data.personalInfo.firstName || 'Ad'} {data.personalInfo.lastName || 'Soyad'}
+            </Typography>
+            <Typography
+              className="cv-profile-title"
+              sx={{
+                color: '#2c5aa0',
+                mb: 0,
+                fontWeight: 500,
+                fontSize: `${profileTitlePt}pt`,
+                textAlign: 'center',
+              }}
+            >
+              {data.personalInfo.title || 'Ünvan'}
+            </Typography>
+          </Box>
+        </Box>
+
         <Box
           sx={{
             fontSize: `${bodyPt}pt`,
             color: '#555',
-            textAlign: data.personalInfo.includePhoto && data.personalInfo.photoUrl ? 'left' : 'center',
+            textAlign: 'center',
           }}
         >
           {/* İlk Satır: Konum | Telefon | E-posta */}
@@ -427,8 +464,7 @@ const formatLinkedInDisplayUrl = (url: string) => {
             sx={{
               display: 'flex',
               flexWrap: 'wrap',
-              justifyContent:
-                data.personalInfo.includePhoto && data.personalInfo.photoUrl ? 'flex-start' : 'center',
+              justifyContent: 'center',
               alignItems: 'center',
               columnGap: 1,
               rowGap: 0.5,
@@ -484,8 +520,7 @@ const formatLinkedInDisplayUrl = (url: string) => {
               sx={{
                 display: 'flex',
                 flexWrap: 'wrap',
-                justifyContent:
-                  data.personalInfo.includePhoto && data.personalInfo.photoUrl ? 'flex-start' : 'center',
+                justifyContent: 'center',
                 alignItems: 'center',
                 columnGap: 1,
                 rowGap: 0.5,
@@ -558,15 +593,14 @@ const formatLinkedInDisplayUrl = (url: string) => {
             </Box>
           )}
         </Box>
-        </Box>
       </Box>
 
-      <Divider sx={{ my: 2 }} />
+      <Divider sx={{ my: 1.25 }} />
 
       {/* Hakkımda */}
       {data.about && (
         <>
-          <Box className="section-item" sx={{ mb: 3 }}>
+          <Box className="section-item" sx={{ mb: 2 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: '#1a1a1a' }}>
               Hakkımda
             </Typography>
@@ -574,14 +608,14 @@ const formatLinkedInDisplayUrl = (url: string) => {
               {data.about}
             </Typography>
           </Box>
-          <Divider sx={{ my: 2 }} />
+          <Divider sx={{ my: 1.25 }} />
         </>
       )}
 
       {/* İş Deneyimi */}
       {data.workExperience.length > 0 && (
         <>
-          <Box className="section-item" sx={{ mb: 3 }}>
+          <Box className="section-item" sx={{ mb: 2 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
               İş Deneyimi
             </Typography>
@@ -635,14 +669,14 @@ const formatLinkedInDisplayUrl = (url: string) => {
               </Box>
             ))}
           </Box>
-          <Divider sx={{ my: 2 }} />
+          <Divider sx={{ my: 1.25 }} />
         </>
       )}
 
         {/* Eğitim */}
       {data.education.length > 0 && (
         <>
-          <Box className="section-item" sx={{ mb: 3 }}>
+          <Box className="section-item" sx={{ mb: 2 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
               Eğitim
             </Typography>
@@ -664,14 +698,14 @@ const formatLinkedInDisplayUrl = (url: string) => {
               </Box>
             ))}
           </Box>
-          <Divider sx={{ my: 2 }} />
+          <Divider sx={{ my: 1.25 }} />
         </>
       )}
 
       {/* Beceriler */}
       {data.skills.length > 0 && (
         <>
-          <Box className="section-item" sx={{ mb: 3 }}>
+          <Box className="section-item" sx={{ mb: 2 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
               Beceriler
             </Typography>
@@ -727,7 +761,7 @@ const formatLinkedInDisplayUrl = (url: string) => {
               </Stack>
             )}
           </Box>
-          <Divider sx={{ my: 2 }} />
+          <Divider sx={{ my: 1.25 }} />
         </>
       )}
 

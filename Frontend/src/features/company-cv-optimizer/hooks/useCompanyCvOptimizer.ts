@@ -35,6 +35,7 @@ import {
   type CvProfileTitleFontSize,
   type CvSkillsFontSize,
 } from '@/components/cv-maker/cvTypography';
+import { CV_PHOTO_SIZE_PT } from '@/components/cv-maker/cvPhoto';
 import {
   buildRecipientEmails,
   extractDomainFromUrl,
@@ -225,11 +226,13 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   useEffect(() => {
     const nextPhoto = includeCvPhoto && profilePhotoUrl ? profilePhotoUrl : '';
     const nextInclude = Boolean(includeCvPhoto && profilePhotoUrl);
+    const nextPhotoSize = CV_PHOTO_SIZE_PT;
     const patch = (prev: CompanyBasedCVData | null): CompanyBasedCVData | null => {
       if (!prev) return prev;
       if (
         prev.personalInfo.photoUrl === nextPhoto &&
-        Boolean(prev.personalInfo.includePhoto) === nextInclude
+        Boolean(prev.personalInfo.includePhoto) === nextInclude &&
+        Number(prev.personalInfo.photoSizePt) === nextPhotoSize
       ) {
         return prev;
       }
@@ -239,6 +242,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           ...prev.personalInfo,
           photoUrl: nextPhoto,
           includePhoto: nextInclude,
+          photoSizePt: nextPhotoSize,
         },
       };
     };
@@ -944,6 +948,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           linkedin: parsedCVData.personalInfo?.linkedin || '',
           photoUrl: includeCvPhoto && profilePhotoUrl ? profilePhotoUrl : '',
           includePhoto: Boolean(includeCvPhoto && profilePhotoUrl),
+          photoSizePt: CV_PHOTO_SIZE_PT,
         },
         about: (() => {
           const originalAbout = parsedCVData.about || '';

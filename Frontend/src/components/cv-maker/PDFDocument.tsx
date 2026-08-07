@@ -23,6 +23,16 @@ import {
   clampCvProfileTitleFontSize,
   clampCvSkillsFontSize,
 } from './cvTypography';
+import {
+  resolveCvPhotoSizePt,
+  CV_PAGE_PADDING_PT,
+  CV_PHOTO_FRAME_COLOR,
+  CV_PHOTO_FRAME_WIDTH_PT,
+  CV_IDENTITY_BEFORE_CONTACT_PT,
+  CV_PHOTO_SIZE_PT,
+  CV_PHOTO_PAGE_LEFT_PT,
+  CV_PHOTO_PAGE_TOP_PT,
+} from './cvPhoto';
 
 /** MUI @mui/icons-material ile aynı path'ler — PDF'te önizleme ikonlarıyla uyumlu */
 const PDF_ICON_PATHS = {
@@ -120,64 +130,82 @@ const createStyles = (
 ) =>
   StyleSheet.create({
     page: {
-      padding: 40,
+      padding: 0,
       fontSize: bodyPt,
       fontFamily: 'Calibri',
+      position: 'relative',
+    },
+    /** Same 20mm inset as preview `.cv-page` */
+    pageContent: {
+      padding: CV_PAGE_PADDING_PT,
     },
     header: {
-      marginBottom: 20,
+      marginBottom: 12,
       textAlign: 'center',
+      position: 'relative',
     },
-    headerWithPhoto: {
-      marginBottom: 20,
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      textAlign: 'left',
+    /**
+     * Photo frame on Page (padding:0) — same coords as preview
+     * (page padding + header offset). View border ≈ CSS border-box oval.
+     */
+    photoFrameOnPage: {
+      position: 'absolute',
+      left: CV_PHOTO_PAGE_LEFT_PT,
+      top: CV_PHOTO_PAGE_TOP_PT,
+      zIndex: 10,
+      borderWidth: CV_PHOTO_FRAME_WIDTH_PT,
+      borderColor: CV_PHOTO_FRAME_COLOR,
+      borderStyle: 'solid',
+      overflow: 'hidden',
     },
-    photo: {
-      width: 72,
-      height: 72,
-      borderRadius: 36,
+    photoImage: {
       objectFit: 'cover',
-      marginRight: 14,
+      width: '100%',
+      height: '100%',
     },
-    headerTextCol: {
-      flex: 1,
+    /**
+     * Name/title band on Page — same vertical band as photo (preview flex center).
+     */
+    nameTitleOnPage: {
+      position: 'absolute',
+      left: CV_PAGE_PADDING_PT,
+      right: CV_PAGE_PADDING_PT,
+      top: CV_PHOTO_PAGE_TOP_PT,
+      height: CV_PHOTO_SIZE_PT,
+      justifyContent: 'center',
+      alignItems: 'center',
+      textAlign: 'center',
+      zIndex: 5,
+    },
+    /** Reserves info start Y in flow (preview spacer) */
+    identitySpacer: {
+      height: CV_IDENTITY_BEFORE_CONTACT_PT,
     },
     name: {
       fontSize: namePt,
       fontWeight: 700,
       marginBottom: 5,
-    },
-    nameLeft: {
-      fontSize: namePt,
-      fontWeight: 700,
-      marginBottom: 5,
-      textAlign: 'left',
+      textAlign: 'center',
     },
     title: {
       fontSize: profileTitlePt,
       color: PDF_ACCENT_BLUE,
       marginBottom: 10,
+      textAlign: 'center',
     },
-    titleLeft: {
+    titleCentered: {
       fontSize: profileTitlePt,
       color: PDF_ACCENT_BLUE,
-      marginBottom: 10,
-      textAlign: 'left',
+      marginBottom: 0,
+      textAlign: 'center',
+    },
+    contactBlock: {
+      marginTop: 0,
     },
     contactRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 4,
-      gap: 5,
-    },
-    contactRowLeft: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'flex-start',
       alignItems: 'center',
       marginBottom: 4,
       gap: 5,
@@ -201,15 +229,15 @@ const createStyles = (
       textDecoration: 'none',
     },
     section: {
-      marginBottom: 15,
+      marginBottom: 10,
     },
     sectionTitle: {
       fontSize: headingPt,
       fontWeight: 700,
-      marginBottom: 8,
+      marginBottom: 6,
       borderBottomWidth: 1,
       borderBottomColor: '#333',
-      paddingBottom: 3,
+      paddingBottom: 2,
     },
     text: {
       fontSize: bodyPt,
@@ -303,6 +331,7 @@ interface PDFDocumentProps {
       linkedin: string;
       photoUrl?: string;
       includePhoto?: boolean;
+      photoSizePt?: number;
     };
     about: string;
     workExperience: Array<{
@@ -401,7 +430,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({
 
   const locationLine = [personalInfo.city, personalInfo.country].filter(Boolean).join(', ');
   const showPhoto = Boolean(personalInfo.includePhoto && personalInfo.photoUrl);
-  const contactRowStyle = showPhoto ? styles.contactRowLeft : styles.contactRow;
+  const photoSizePt = resolveCvPhotoSizePt(personalInfo);
 
   // Başlık çevirileri
   const getSectionTitle = (section: string) => {
@@ -420,12 +449,10 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({
 
   const headerInner = (
     <>
-      <Text style={showPhoto ? styles.nameLeft : styles.name}>
-        {personalInfo.firstName} {personalInfo.lastName}
-      </Text>
-      <Text style={showPhoto ? styles.titleLeft : styles.title}>{personalInfo.title}</Text>
-      
-      <View style={contactRowStyle}>
+      <View style={styles.identitySpacer} />
+
+      <View style={styles.contactBlock}>
+      <View style={styles.contactRow}>
         {locationLine ? (
           <View style={styles.contactBadge}>
             <PdfContactIcon pathD={PDF_ICON_PATHS.location} />
@@ -449,7 +476,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({
       </View>
 
       {(personalInfo.portfolio || personalInfo.github || personalInfo.linkedin) && (
-        <View style={contactRowStyle}>
+        <View style={styles.contactRow}>
           {personalInfo.portfolio ? (
             <View style={styles.contactBadge}>
               <PdfContactIcon pathD={PDF_ICON_PATHS.public} />
@@ -478,24 +505,55 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({
           ) : null}
         </View>
       )}
+      </View>
     </>
+  );
+
+  const photoInnerSize = Math.max(
+    photoSizePt - CV_PHOTO_FRAME_WIDTH_PT * 2,
+    1
   );
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Header */}
+        {/* Page-absolute layers — same geometry as preview (padding + offsets) */}
         {showPhoto ? (
-          <View style={styles.headerWithPhoto} wrap={false}>
+          <View
+            style={[
+              styles.photoFrameOnPage,
+              {
+                width: photoSizePt,
+                height: photoSizePt,
+                borderRadius: photoSizePt / 2,
+              },
+            ]}
+          >
             {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image */}
-            <Image src={personalInfo.photoUrl!} style={styles.photo} />
-            <View style={styles.headerTextCol}>{headerInner}</View>
+            <Image
+              src={personalInfo.photoUrl!}
+              style={[
+                styles.photoImage,
+                {
+                  width: photoInnerSize,
+                  height: photoInnerSize,
+                  borderRadius: photoInnerSize / 2,
+                },
+              ]}
+            />
           </View>
-        ) : (
+        ) : null}
+        <View style={styles.nameTitleOnPage}>
+          <Text style={styles.name}>
+            {personalInfo.firstName} {personalInfo.lastName}
+          </Text>
+          <Text style={styles.titleCentered}>{personalInfo.title}</Text>
+        </View>
+
+        <View style={styles.pageContent}>
           <View style={styles.header} wrap={false}>
             {headerInner}
           </View>
-        )}
 
         {/* About */}
         {about && (
@@ -618,6 +676,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({
             )}
           </View>
         )}
+        </View>
       </Page>
     </Document>
   );

@@ -6,15 +6,17 @@ import { SectionHeading } from './common/SectionHeading';
 import { EditorField } from './common/EditorField';
 import { aiCvBuilderCopy } from '../../constants/copy';
 import type { PersonalInfoState } from '../../utils/cvFormUtils';
+import { CV_PHOTO_SIZE_PT } from '@/components/cv-maker/cvPhoto';
 
 interface PersonalInfoSectionProps {
   data: PersonalInfoState;
-  onChange: (field: string, value: string | boolean) => void;
+  onChange: (field: string, value: string | boolean | number) => void;
   profilePhotoUrl?: string;
 }
 
 export function PersonalInfoSection({ data, onChange, profilePhotoUrl }: PersonalInfoSectionProps) {
   const hasProfilePhoto = Boolean(profilePhotoUrl || data.photoUrl);
+  const photoOn = Boolean(data.includePhoto) && hasProfilePhoto;
 
   return (
     <Box>
@@ -31,26 +33,30 @@ export function PersonalInfoSection({ data, onChange, profilePhotoUrl }: Persona
           borderRadius: 2,
           border: '1px solid',
           borderColor: 'divider',
+          bgcolor: 'rgba(44, 90, 160, 0.04)',
         }}
       >
         <FormControlLabel
           control={
             <Switch
-              checked={Boolean(data.includePhoto) && hasProfilePhoto}
+              checked={photoOn}
               disabled={!hasProfilePhoto}
               onChange={(e) => {
                 const on = e.target.checked;
                 onChange('includePhoto', on);
-                if (on && profilePhotoUrl) onChange('photoUrl', profilePhotoUrl);
+                if (on && profilePhotoUrl) {
+                  onChange('photoUrl', profilePhotoUrl);
+                  onChange('photoSizePt', CV_PHOTO_SIZE_PT);
+                }
                 if (!on) onChange('photoUrl', '');
               }}
             />
           }
-          label="CV’ye profil fotoğrafı ekle (solda)"
+          label="CV’ye profil fotoğrafı ekle (sol üst, oval · 3.5 cm)"
         />
         <Typography variant="caption" color="text.secondary" display="block">
           {hasProfilePhoto
-            ? 'Profilim’deki fotoğraf kullanılır. Değiştirmek için Profilim sayfasına gidin.'
+            ? 'Profilim’deki fotoğraf info bloğunun sol üstüne 3.5 cm vesikalık boyutta eklenir; isim ve iletişim ortalı kalır.'
             : 'Önce Profilim’den fotoğraf yükleyin.'}
         </Typography>
       </Box>
