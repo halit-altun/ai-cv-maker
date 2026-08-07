@@ -83,8 +83,9 @@ async function main() {
   );
 
   const server = http.createServer(app);
-  server.listen(port, () => {
-    console.log(`Sunucu http://localhost:${port} adresinde çalışıyor.`);
+  // Container/Northflank: tüm arayüzlerde dinle (localhost-only Connection refused önler)
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Sunucu 0.0.0.0:${port} adresinde dinliyor.`);
     try {
       const {
         getTrackingPublicBaseUrl,
