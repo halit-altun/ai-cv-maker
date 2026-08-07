@@ -71,6 +71,7 @@ function parseSession(data: Record<string, unknown>): AuthSession {
   saveSession({
     accessToken: session.accessToken,
     refreshToken: session.refreshToken,
+    refreshTokenExpiresAt: session.refreshTokenExpiresAt,
     user: session.user,
   });
 

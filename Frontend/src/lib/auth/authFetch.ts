@@ -85,6 +85,7 @@ async function refreshSession(): Promise<boolean> {
           user?: AuthUser;
           accessToken?: string;
           refreshToken?: string;
+          refreshTokenExpiresAt?: string;
         };
 
         if (
@@ -101,6 +102,7 @@ async function refreshSession(): Promise<boolean> {
         saveSession({
           accessToken: data.accessToken,
           refreshToken: data.refreshToken,
+          refreshTokenExpiresAt: data.refreshTokenExpiresAt,
           user: data.user,
         });
         return true;

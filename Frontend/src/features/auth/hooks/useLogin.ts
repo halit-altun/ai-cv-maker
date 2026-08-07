@@ -1,13 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { loginRequest } from '@/lib/auth/api';
 import { appRoutes } from '@/features/dashboard/constants/routes';
 import { authCopy, getAuthErrorMessage } from '../constants/copy';
 
+function resolvePostLoginPath(returnUrl: string | null): string {
+  if (returnUrl?.startsWith('/') && !returnUrl.startsWith('//') && !returnUrl.includes('://')) {
+    return returnUrl;
+  }
+  return appRoutes.dashboard;
+}
+
 export function useLogin() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,15 +34,11 @@ export function useLogin() {
 
     try {
       await loginRequest({ email, password });
-      const returnUrl = searchParams.get('returnUrl');
-      const destination =
-        returnUrl?.startsWith('/') && !returnUrl.startsWith('//')
-          ? returnUrl
-          : appRoutes.dashboard;
-      router.replace(destination);
+      // Full navigation so Next middleware sees first-party cookies (Lamfer-style).
+      // Soft router.replace can bounce back to /login on Netlify before cookies stick.
+      window.location.replace(resolvePostLoginPath(searchParams.get('returnUrl')));
     } catch (err) {
       setError(getAuthErrorMessage(err));
-    } finally {
       setLoading(false);
     }
   }

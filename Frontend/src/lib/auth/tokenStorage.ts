@@ -1,84 +1,134 @@
-const ACCESS_TOKEN_KEY = 'cvai_access_token';
-const REFRESH_TOKEN_KEY = 'cvai_refresh_token';
-const USER_KEY = 'cvai_auth_user';
+import { deleteCookie, getCookie, setCookie } from './cookieUtils';
 
-/** Must match Backend cookie names — Next.js middleware gates protected routes with these. */
-const ACCESS_COOKIE_NAME = 'cvai_access_token';
-const REFRESH_COOKIE_NAME = 'cvai_refresh_token';
+/** Must match Next.js middleware cookie names. */
+export const AUTH_COOKIE_KEYS = {
+  accessToken: 'cvai_access_token',
+  refreshToken: 'cvai_refresh_token',
+  refreshExpiresAt: 'cvai_refresh_expires_at',
+  clientId: 'cvai_client_id',
+} as const;
 
-const ACCESS_MAX_AGE_SEC = 60 * 60; // 1h
-const REFRESH_MAX_AGE_SEC = 60 * 60 * 24 * 90; // 90d
+const USER_SESSION_KEY = 'cvai_auth_user_session';
+const LEGACY_LOCAL_KEYS = [
+  'cvai_access_token',
+  'cvai_refresh_token',
+  'cvai_auth_user',
+] as const;
 
-function canUseStorage(): boolean {
-  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+const ACCESS_TOKEN_MAX_AGE_SECONDS = 60 * 60;
+const REFRESH_TOKEN_MAX_AGE_SECONDS = 90 * 24 * 60 * 60;
+
+function canUseWindow(): boolean {
+  return typeof window !== 'undefined';
 }
 
-function canUseDocument(): boolean {
-  return typeof document !== 'undefined';
+function clearLegacyLocalStorage(): void {
+  if (!canUseWindow()) return;
+  LEGACY_LOCAL_KEYS.forEach((key) => {
+    window.localStorage.removeItem(key);
+  });
 }
 
-/**
- * First-party cookies on the frontend host (e.g. Netlify).
- * Backend httpOnly cookies are set on the API host (Render) and are invisible to
- * Next.js middleware on a different origin — so we mirror tokens here for route guards.
- */
-function setClientAuthCookies(accessToken: string, refreshToken: string): void {
-  if (!canUseDocument()) return;
-  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `${ACCESS_COOKIE_NAME}=${encodeURIComponent(accessToken)}; Path=/; Max-Age=${ACCESS_MAX_AGE_SEC}; SameSite=Lax${secure}`;
-  document.cookie = `${REFRESH_COOKIE_NAME}=${encodeURIComponent(refreshToken)}; Path=/; Max-Age=${REFRESH_MAX_AGE_SEC}; SameSite=Lax${secure}`;
-}
-
-function clearClientAuthCookies(): void {
-  if (!canUseDocument()) return;
-  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `${ACCESS_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
-  document.cookie = `${REFRESH_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
-}
-
-export function getAccessToken(): string | null {
-  if (!canUseStorage()) return null;
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
-}
-
-export function getRefreshToken(): string | null {
-  if (!canUseStorage()) return null;
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
-}
-
-export function getStoredUser<T = unknown>(): T | null {
-  if (!canUseStorage()) return null;
-  const raw = localStorage.getItem(USER_KEY);
-  if (!raw) return null;
+function persistUserBackup(user: unknown): void {
+  if (!canUseWindow()) return;
   try {
+    window.sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(user));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function readUserBackup<T = unknown>(): T | null {
+  if (!canUseWindow()) return null;
+  try {
+    const raw = window.sessionStorage.getItem(USER_SESSION_KEY);
+    if (!raw) return null;
     return JSON.parse(raw) as T;
   } catch {
     return null;
   }
 }
 
+function clearUserBackup(): void {
+  if (!canUseWindow()) return;
+  try {
+    window.sessionStorage.removeItem(USER_SESSION_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function resolveRefreshExpiresAt(refreshTokenExpiresAt?: string): string {
+  if (refreshTokenExpiresAt) return refreshTokenExpiresAt;
+  return new Date(Date.now() + REFRESH_TOKEN_MAX_AGE_SECONDS * 1000).toISOString();
+}
+
+export function getAccessToken(): string | null {
+  return getCookie(AUTH_COOKIE_KEYS.accessToken);
+}
+
+export function getRefreshToken(): string | null {
+  return getCookie(AUTH_COOKIE_KEYS.refreshToken);
+}
+
 export function getClientId(): string | null {
+  const fromCookie = String(getCookie(AUTH_COOKIE_KEYS.clientId) || '').trim();
+  if (fromCookie) return fromCookie;
   const user = getStoredUser<{ clientId?: string }>();
   const clientId = String(user?.clientId || '').trim();
   return clientId || null;
 }
 
+export function getStoredUser<T = unknown>(): T | null {
+  return readUserBackup<T>();
+}
+
 export function saveSession(params: {
   accessToken: string;
   refreshToken: string;
+  refreshTokenExpiresAt?: string;
   user: unknown;
 }): void {
-  if (!canUseStorage()) return;
-  localStorage.setItem(ACCESS_TOKEN_KEY, params.accessToken);
-  localStorage.setItem(REFRESH_TOKEN_KEY, params.refreshToken);
-  localStorage.setItem(USER_KEY, JSON.stringify(params.user));
-  setClientAuthCookies(params.accessToken, params.refreshToken);
+  if (!params.accessToken || !params.refreshToken) {
+    persistUserBackup(params.user);
+    return;
+  }
+
+  const refreshExpiresAt = resolveRefreshExpiresAt(params.refreshTokenExpiresAt);
+  const clientId =
+    params.user &&
+    typeof params.user === 'object' &&
+    'clientId' in params.user
+      ? String((params.user as { clientId?: string }).clientId || '').trim()
+      : '';
+
+  setCookie(
+    AUTH_COOKIE_KEYS.accessToken,
+    params.accessToken,
+    ACCESS_TOKEN_MAX_AGE_SECONDS
+  );
+  setCookie(
+    AUTH_COOKIE_KEYS.refreshToken,
+    params.refreshToken,
+    REFRESH_TOKEN_MAX_AGE_SECONDS
+  );
+  setCookie(
+    AUTH_COOKIE_KEYS.refreshExpiresAt,
+    refreshExpiresAt,
+    REFRESH_TOKEN_MAX_AGE_SECONDS
+  );
+  if (clientId) {
+    setCookie(AUTH_COOKIE_KEYS.clientId, clientId, REFRESH_TOKEN_MAX_AGE_SECONDS);
+  }
+
+  persistUserBackup(params.user);
+  clearLegacyLocalStorage();
 }
 
 export function clearSession(): void {
-  if (!canUseStorage()) return;
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
-  clearClientAuthCookies();
+  Object.values(AUTH_COOKIE_KEYS).forEach((key) => {
+    deleteCookie(key);
+  });
+  clearUserBackup();
+  clearLegacyLocalStorage();
 }
