@@ -8,6 +8,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "prestart": "node scripts/start-reacher.js",
     "start": "node index.js",
     "predev": "node scripts/start-reacher.js",
     "dev": "nodemon index.js",

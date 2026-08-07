@@ -1,5 +1,5 @@
 /**
- * Backend `npm run dev` ile birlikte Reacher Docker container'ını ayağa kaldırır.
+ * Backend `npm start` / `npm run dev` öncesinde Reacher Docker container'ını ayağa kaldırır.
  * Zaten çalışıyorsa dokunmaz; Docker yoksa uyarı verir ve backend'e devam eder.
  */
 const { spawnSync } = require("child_process");
