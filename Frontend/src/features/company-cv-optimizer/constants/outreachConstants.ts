@@ -30,7 +30,19 @@ export type EmailPrefixCategoryId =
   | 'team-founders'
   | 'minimal-three'
   | 'main-domain-only'
+  | 'turkey-hiring'
   | 'custom';
+
+/** Diğer kategorilerle karışmayan tek-seçim modları */
+export const EXCLUSIVE_EMAIL_CATEGORY_IDS: EmailPrefixCategoryId[] = [
+  'minimal-three',
+  'main-domain-only',
+  'turkey-hiring',
+];
+
+export function isExclusiveEmailCategory(id: EmailPrefixCategoryId): boolean {
+  return EXCLUSIVE_EMAIL_CATEGORY_IDS.includes(id);
+}
 
 export interface EmailPrefixCategory {
   id: EmailPrefixCategoryId;
@@ -119,6 +131,12 @@ export const EMAIL_PREFIX_CATEGORIES: EmailPrefixCategory[] = [
     description:
       'Yalnızca girilen ana adrese gönderir (ör. halitkhalil@firma.com). Sadece domain yazıldıysa info@domain kullanılır.',
     prefixes: ['info'],
+  },
+  {
+    id: 'turkey-hiring',
+    label: '7. Türkiye işe alım',
+    description: 'Yalnızca ik@ ve kariyer@ adreslerine gönderir.',
+    prefixes: ['ik', 'kariyer'],
   },
 ];
 
@@ -234,6 +252,11 @@ export function buildRecipientEmails(params: {
     return [`${local}@${domain}`];
   }
 
+  // Türkiye işe alım — yalnızca ik@ ve kariyer@
+  if (params.selectedCategoryIds.includes('turkey-hiring')) {
+    return ['ik', 'kariyer'].map((prefix) => `${prefix}@${domain}`);
+  }
+
   const set = new Set<string>();
 
   // Kullanıcının firma sayfasından girdiği ana adres — checkbox açıksa eklenir
@@ -242,7 +265,14 @@ export function buildRecipientEmails(params: {
   }
 
   for (const categoryId of params.selectedCategoryIds) {
-    if (categoryId === 'custom' || categoryId === 'minimal-three' || categoryId === 'main-domain-only') continue;
+    if (
+      categoryId === 'custom' ||
+      categoryId === 'minimal-three' ||
+      categoryId === 'main-domain-only' ||
+      categoryId === 'turkey-hiring'
+    ) {
+      continue;
+    }
     const category = EMAIL_PREFIX_CATEGORIES.find((c) => c.id === categoryId);
     if (!category) continue;
     for (const prefix of category.prefixes) {

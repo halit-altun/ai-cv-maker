@@ -6,7 +6,11 @@ export interface DashboardSidebarLink {
   href: string;
   icon: SvgIconComponent;
   matchPath?: string;
+  /** true ise yalnızca tam path (veya trailing slash) eşleşir */
+  matchExact?: boolean;
   group?: 'primary' | 'footer';
+  /** Alt menü (ör. AI Optimizer → Company based / Toplu başvuru) */
+  children?: DashboardSidebarLink[];
 }
 
 export interface DashboardStatChip {

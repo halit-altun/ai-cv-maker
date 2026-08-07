@@ -1,4 +1,5 @@
 const OutreachLog = require("../models/outreach-log.model");
+const MailTracking = require("../models/mail-tracking.model");
 const { sendMail } = require("./email.service");
 const { enqueueEmail } = require("./email-queue.service");
 const { createMailTracking, generateTrackingPixelHtml } = require("./mail-tracking.service");
@@ -348,6 +349,7 @@ async function sendCompanyOutreachEmails({
   // </html>`;
 
   const results = [];
+  const mailIds = [];
   const selectedSet = new Set(list.map((e) => String(e).toLowerCase()));
 
   // Doğrulama sonrası geçersiz / limite takılan adayları logla
@@ -364,6 +366,7 @@ async function sendCompanyOutreachEmails({
           : `Doğrulama başarısız (${check.provider}: ${check.result})`,
         verifyProvider: check.provider || "",
         verifyResult: check.result || "",
+        mailId: "",
       });
     }
   }
@@ -403,6 +406,7 @@ async function sendCompanyOutreachEmails({
         });
         
         mailId = trackingResult.mailId;
+        if (mailId) mailIds.push(mailId);
         pixelHtml = generateTrackingPixelHtml(mailId);
         htmlBody = createEmailHtmlTemplate(text, pixelHtml);
       }
@@ -437,6 +441,7 @@ async function sendCompanyOutreachEmails({
           errorMessage: "",
           verifyProvider: checkMeta?.provider || verificationMeta.provider || "",
           verifyResult: checkMeta?.result || (verificationMeta.provider ? "valid" : ""),
+          mailId: mailId || "",
         });
       } else if (queueResult.queued) {
         // Kuyruğa eklendi
@@ -449,6 +454,7 @@ async function sendCompanyOutreachEmails({
           estimatedSendTime: queueResult.estimatedSendTime,
           verifyProvider: checkMeta?.provider || verificationMeta.provider || "",
           verifyResult: checkMeta?.result || (verificationMeta.provider ? "valid" : ""),
+          mailId: mailId || "",
         });
       }
     } catch (err) {
@@ -458,9 +464,11 @@ async function sendCompanyOutreachEmails({
         errorMessage: err instanceof Error ? err.message : "Gönderim hatası",
         verifyProvider: checkMeta?.provider || verificationMeta.provider || "",
         verifyResult: checkMeta?.result || (verificationMeta.provider ? "valid" : ""),
+        mailId: "",
       });
     }
   }
+
 
   const sentCount = results.filter((r) => r.status === "sent").length;
   const loggedCount = results.filter((r) => r.status === "logged").length;
@@ -499,6 +507,14 @@ async function sendCompanyOutreachEmails({
     sentAt: new Date(),
   });
 
+  // Tracking kayıtlarını logId ile bağla
+  if (mailIds.length) {
+    await MailTracking.updateMany(
+      { mailId: { $in: mailIds } },
+      { $set: { outreachLogId: log._id } }
+    ).catch(() => null);
+  }
+
   return {
     total: list.length,
     sentCount,
@@ -506,6 +522,7 @@ async function sendCompanyOutreachEmails({
     failedCount,
     status,
     results,
+    mailIds,
     replyTo: replyTo || null,
     domain: resolvedDomain,
     logId: String(log._id),
@@ -518,6 +535,7 @@ async function sendCompanyOutreachEmails({
       : list,
   };
 }
+
 
 async function createAiErrorLog({
   clientId,
@@ -585,6 +603,8 @@ async function createAnalysisOnlyLog({
   targetPosition,
   projectId,
   matchScore,
+  subject,
+  bodyText,
 }) {
   if (!projectId) {
     throw new AppError("Proje seçili değil — analiz kaydı oluşturulmaz.", 400, "PROJECT_REQUIRED");
@@ -601,8 +621,8 @@ async function createAnalysisOnlyLog({
     companyName: String(companyName || "").trim() || resolvedDomain,
     domain: resolvedDomain,
     status: "analysis_only",
-    subject: "",
-    bodyText: "",
+    subject: String(subject || "").trim(),
+    bodyText: String(bodyText || "").trim(),
     templateType: "none",
     cvId: cvId || null,
     cvTitle: cvTitle || "",

@@ -39,6 +39,7 @@ import { CV_PHOTO_SIZE_PT } from '@/components/cv-maker/cvPhoto';
 import {
   buildRecipientEmails,
   extractDomainFromUrl,
+  isExclusiveEmailCategory,
   normalizeEmailDomainInput,
   resolveOutreachEmailLanguage,
   resolvePageTypeLabel,
@@ -1030,8 +1031,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           includePrimaryEmail: includePrimaryEmailInSend,
         });
         recipientsForAutoSend =
-          selectedEmailPrefixCategories.includes('minimal-three') ||
-          selectedEmailPrefixCategories.includes('main-domain-only')
+          selectedEmailPrefixCategories.some(isExclusiveEmailCategory)
             ? candidates
             : candidates.slice(0, 3);
         setSelectedOutreachRecipients(recipientsForAutoSend);

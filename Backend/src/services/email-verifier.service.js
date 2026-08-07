@@ -46,6 +46,8 @@ const ROLE_BASED_CAREER_LOCALS = new Set([
   "tech-hiring",
   "tech-careers",
   "engineering-hiring",
+  "ik",
+  "kariyer",
 ]);
 
 function isRoleBasedCareerAddress(email) {

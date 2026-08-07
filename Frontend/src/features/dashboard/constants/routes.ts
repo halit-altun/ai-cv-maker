@@ -8,6 +8,8 @@ export const appRoutes = {
   dashboard: '/dashboard',
   myCvs: '/my-cvs',
   aiOptimizer: '/company-based-cv-editor',
+  aiOptimizerBulk: '/company-based-cv-editor/bulk',
+  todoApplications: '/todo-applications',
   outreachLogs: '/outreach-logs',
   outreachProjects: '/outreach-projects',
   mailTracking: '/mail-tracking',
@@ -21,6 +23,11 @@ export const appRoutes = {
   cookies: '/cookies',
   logout: '#',
 } as const;
+
+/** To Do proje detay yolu */
+export function getTodoProjectPath(projectId: string): string {
+  return `/todo-applications/${encodeURIComponent(projectId)}`;
+}
 
 /** Dashboard shell kullanılmayan auth sayfaları */
 export const authShellExemptPaths = [

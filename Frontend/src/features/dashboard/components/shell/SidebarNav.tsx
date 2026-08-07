@@ -1,9 +1,18 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Box, Button, ListItemButton, ListItemIcon, ListItemText, Typography } from '@mui/material';
-import { AutoAwesome } from '@mui/icons-material';
+import {
+  Box,
+  Button,
+  Collapse,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Typography,
+} from '@mui/material';
+import { AutoAwesome, ExpandLess, ExpandMore } from '@mui/icons-material';
 import type { DashboardSidebarLink } from '../../types';
 import { dashboardCopy } from '../../constants/copy';
 import { appRoutes } from '../../constants/routes';
@@ -19,6 +28,13 @@ interface SidebarNavProps {
 }
 
 function isActivePath(pathname: string, item: DashboardSidebarLink): boolean {
+  const base = item.matchPath || item.href;
+  if (!base || base === '#') {
+    return pathname === item.href;
+  }
+  if (item.matchExact) {
+    return pathname === base || pathname === `${base}/`;
+  }
   if (item.matchPath) {
     return pathname === item.matchPath || pathname.startsWith(`${item.matchPath}/`);
   }
@@ -26,6 +42,13 @@ function isActivePath(pathname: string, item: DashboardSidebarLink): boolean {
     return pathname === item.href;
   }
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+function isGroupActive(pathname: string, item: DashboardSidebarLink): boolean {
+  if (item.children?.length) {
+    return item.children.some((child) => isActivePath(pathname, child)) || isActivePath(pathname, item);
+  }
+  return isActivePath(pathname, item);
 }
 
 export function SidebarNav({
@@ -40,9 +63,34 @@ export function SidebarNav({
   const { colors, fonts, radius } = dashboardTokens;
   const resolvedAccountLabel = accountLabel || dashboardCopy.accountLabel;
 
-  const navItemSx = (active: boolean) => ({
+  const initiallyOpen = useMemo(() => {
+    const open: Record<string, boolean> = {};
+    for (const item of primaryItems) {
+      if (item.children?.length && isGroupActive(pathname, item)) {
+        open[item.id] = true;
+      }
+    }
+    return open;
+  }, [primaryItems, pathname]);
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(initiallyOpen);
+
+  useEffect(() => {
+    setOpenGroups((prev) => {
+      const next = { ...prev };
+      for (const item of primaryItems) {
+        if (item.children?.length && isGroupActive(pathname, item)) {
+          next[item.id] = true;
+        }
+      }
+      return next;
+    });
+  }, [pathname, primaryItems]);
+
+  const navItemSx = (active: boolean, nested = false) => ({
     borderRadius: radius.md,
-    p: 2,
+    p: nested ? 1.5 : 2,
+    pl: nested ? 3.5 : 2,
     mb: 0.5,
     gap: 2,
     color: active ? colors.onSecondaryContainer : colors.onSurfaceVariant,
@@ -62,7 +110,11 @@ export function SidebarNav({
     },
   });
 
-  const renderItem = (item: DashboardSidebarLink) => {
+  const toggleGroup = (id: string) => {
+    setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const renderLeaf = (item: DashboardSidebarLink, nested = false) => {
     const Icon = item.icon;
     const active = isActivePath(pathname, item);
     const isHash = item.href === '#';
@@ -70,13 +122,13 @@ export function SidebarNav({
     const content = (
       <>
         <ListItemIcon sx={{ minWidth: 0, color: 'inherit' }}>
-          <Icon sx={{ fontSize: 22 }} />
+          <Icon sx={{ fontSize: nested ? 18 : 22 }} />
         </ListItemIcon>
         <ListItemText
           primary={item.label}
           primaryTypographyProps={{
             fontFamily: fonts.body,
-            fontSize: 14,
+            fontSize: nested ? 13 : 14,
             lineHeight: '16px',
             letterSpacing: '0.01em',
             fontWeight: 600,
@@ -100,7 +152,7 @@ export function SidebarNav({
           key={item.id}
           selected={active}
           onClick={handleClick}
-          sx={navItemSx(active)}
+          sx={navItemSx(active, nested)}
         >
           {content}
         </ListItemButton>
@@ -114,13 +166,52 @@ export function SidebarNav({
         href={item.href}
         selected={active}
         onClick={onNavigate}
-        sx={navItemSx(active)}
+        sx={navItemSx(active, nested)}
       >
         {content}
       </ListItemButton>
     );
   };
 
+  const renderItem = (item: DashboardSidebarLink) => {
+    if (!item.children?.length) {
+      return renderLeaf(item);
+    }
+
+    const Icon = item.icon;
+    const groupActive = isGroupActive(pathname, item);
+    const open = openGroups[item.id] ?? groupActive;
+
+    return (
+      <Box key={item.id}>
+        <ListItemButton
+          selected={groupActive && !open}
+          onClick={() => toggleGroup(item.id)}
+          sx={navItemSx(groupActive)}
+        >
+          <ListItemIcon sx={{ minWidth: 0, color: 'inherit' }}>
+            <Icon sx={{ fontSize: 22 }} />
+          </ListItemIcon>
+          <ListItemText
+            primary={item.label}
+            primaryTypographyProps={{
+              fontFamily: fonts.body,
+              fontSize: 14,
+              lineHeight: '16px',
+              letterSpacing: '0.01em',
+              fontWeight: 600,
+            }}
+          />
+          {open ? <ExpandLess sx={{ fontSize: 18 }} /> : <ExpandMore sx={{ fontSize: 18 }} />}
+        </ListItemButton>
+        <Collapse in={open} timeout="auto" unmountOnExit>
+          <Box sx={{ mb: 0.5 }}>
+            {item.children.map((child) => renderLeaf(child, true))}
+          </Box>
+        </Collapse>
+      </Box>
+    );
+  };
 
   return (
     <Box

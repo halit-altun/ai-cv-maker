@@ -11,7 +11,11 @@ const EmailVerificationToken = require("./src/models/email-verification-token.mo
 const EmailQueue = require("./src/models/email-queue.model");
 const MailTracking = require("./src/models/mail-tracking.model");
 const MailOpenEvent = require("./src/models/mail-open-event.model");
+const TodoApplicationItem = require("./src/models/todo-application-item.model");
+const TodoApplicationJob = require("./src/models/todo-application-job.model");
+const TodoProjectSettings = require("./src/models/todo-project-settings.model");
 const { processEmailQueue } = require("./src/services/email-queue.service");
+const { processTodoApplicationJobs } = require("./src/services/todo-application.service");
 
 // Windows/yerel DNS bazı ortamlarda mongodb+srv SRV kayıtlarını çözemez
 dns.setServers(["8.8.8.8", "1.1.1.1"]);
@@ -39,6 +43,9 @@ async function syncIndexes() {
     EmailQueue.syncIndexes(),
     MailTracking.syncIndexes(),
     MailOpenEvent.syncIndexes(),
+    TodoApplicationItem.syncIndexes(),
+    TodoApplicationJob.syncIndexes(),
+    TodoProjectSettings.syncIndexes(),
   ]);
   console.log("Model indexleri senkronize edildi.");
 }
@@ -61,6 +68,19 @@ async function main() {
     }
   }, EMAIL_QUEUE_INTERVAL_MS);
   console.log(`Email queue processor başlatıldı (interval: ${EMAIL_QUEUE_INTERVAL_MS / 1000}s).`);
+
+  // To Do / Toplu başvuru job processor (sayfa kapansa da devam eder)
+  const TODO_JOB_INTERVAL_MS = 20_000;
+  setInterval(async () => {
+    try {
+      await processTodoApplicationJobs();
+    } catch (error) {
+      console.error("[TODO_APPLICATION_PROCESSOR] Hata:", error);
+    }
+  }, TODO_JOB_INTERVAL_MS);
+  console.log(
+    `To Do application processor başlatıldı (interval: ${TODO_JOB_INTERVAL_MS / 1000}s).`
+  );
 
   const server = http.createServer(app);
   server.listen(port, () => {

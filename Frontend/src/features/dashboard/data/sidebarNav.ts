@@ -9,6 +9,9 @@ import {
   SettingsOutlined,
   HelpOutline,
   Logout,
+  Checklist,
+  DynamicFeed,
+  BusinessCenter,
 } from '@mui/icons-material';
 import type { DashboardSidebarLink } from '../types';
 import { appRoutes } from '../constants/routes';
@@ -37,6 +40,34 @@ export function getPrimaryNavItems(): DashboardSidebarLink[] {
       label: 'AI Optimizer',
       href: appRoutes.aiOptimizer,
       icon: AutoAwesome,
+      matchPath: '/company-based-cv-editor',
+      group: 'primary',
+      children: [
+        {
+          id: 'ai-optimizer-company',
+          label: 'Company based',
+          href: appRoutes.aiOptimizer,
+          icon: BusinessCenter,
+          matchPath: '/company-based-cv-editor',
+          matchExact: true,
+          group: 'primary',
+        },
+        {
+          id: 'ai-optimizer-bulk',
+          label: 'Toplu başvuru',
+          href: appRoutes.aiOptimizerBulk,
+          icon: DynamicFeed,
+          matchPath: '/company-based-cv-editor/bulk',
+          group: 'primary',
+        },
+      ],
+    },
+    {
+      id: 'todo-applications',
+      label: 'To Do Başvuruları',
+      href: appRoutes.todoApplications,
+      icon: Checklist,
+      matchPath: '/todo-applications',
       group: 'primary',
     },
     {

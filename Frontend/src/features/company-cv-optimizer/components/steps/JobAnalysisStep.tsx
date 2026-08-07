@@ -43,6 +43,7 @@ import {
   buildRecipientEmails,
   extractDomainFromUrl,
   extractLocalPartFromInput,
+  isExclusiveEmailCategory,
   normalizeEmailDomainInput,
   type CompanyPageType,
   type EmailPrefixCategoryId,
@@ -237,13 +238,11 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
 
   const toggleEmailCategory = (id: EmailPrefixCategoryId) => {
     props.setSelectedEmailPrefixCategories((prev) => {
-      // 5 ve 6 diğer kategorilerle karışmaz — tek seçim
-      if (id === 'minimal-three' || id === 'main-domain-only') {
+      // 5, 6 ve 7 diğer kategorilerle karışmaz — tek seçim
+      if (isExclusiveEmailCategory(id)) {
         return prev.includes(id) ? [] : [id];
       }
-      const withoutExclusive = prev.filter(
-        (x) => x !== 'minimal-three' && x !== 'main-domain-only'
-      );
+      const withoutExclusive = prev.filter((x) => !isExclusiveEmailCategory(x));
       return withoutExclusive.includes(id)
         ? withoutExclusive.filter((x) => x !== id)
         : [...withoutExclusive, id];
@@ -955,7 +954,7 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
                         <Box>
                           <Typography fontWeight={600}>{cat.label}</Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {cat.id === 'minimal-three' || cat.id === 'main-domain-only'
+                            {isExclusiveEmailCategory(cat.id)
                               ? `${cat.description}`
                               : `${cat.description} · ${cat.prefixes.length} adres`}
                           </Typography>
@@ -988,13 +987,23 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
                                 extractLocalPartFromInput(rawInput) || 'info';
                               return domain ? [`${local}@${domain}`] : [];
                             })()
+                          : cat.id === 'turkey-hiring'
+                            ? (() => {
+                                const domain =
+                                  normalizeEmailDomainInput(
+                                    props.emailDomainOverride.trim() ||
+                                      previewDomain ||
+                                      'domain.com'
+                                  ) || 'domain.com';
+                                return [`ik@${domain}`, `kariyer@${domain}`];
+                              })()
                           : cat.prefixes.map((prefix) => `${prefix}@${domainSuffix}`)
                       ).map((emailOrPrefix) => (
                         <Chip
                           key={emailOrPrefix}
                           size="small"
                           label={
-                            cat.id === 'minimal-three' || cat.id === 'main-domain-only'
+                            isExclusiveEmailCategory(cat.id)
                               ? emailOrPrefix
                               : emailOrPrefix.includes('@')
                                 ? emailOrPrefix

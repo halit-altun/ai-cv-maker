@@ -11,6 +11,7 @@ const recipientResultSchema = new mongoose.Schema(
     errorMessage: { type: String, default: "" },
     verifyProvider: { type: String, default: "" },
     verifyResult: { type: String, default: "" },
+    mailId: { type: String, default: "" },
   },
   { _id: false }
 );
