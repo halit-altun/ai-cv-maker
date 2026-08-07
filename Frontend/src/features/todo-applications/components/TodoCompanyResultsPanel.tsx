@@ -279,7 +279,15 @@ export function TodoCompanyResultsPanel({ projectId }: TodoCompanyResultsPanelPr
                   <TableCell sx={{ fontSize: 12 }}>
                     {c.uniqueOpenedRecipients || 0}
                   </TableCell>
-                  <TableCell sx={{ fontSize: 12, maxWidth: 180 }} noWrap>
+                  <TableCell
+                    sx={{
+                      fontSize: 12,
+                      maxWidth: 180,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
                     {c.coldEmailSubject || '—'}
                   </TableCell>
                 </TableRow>
