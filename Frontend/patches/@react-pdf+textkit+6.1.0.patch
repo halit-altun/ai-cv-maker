@@ -1,0 +1,22 @@
+diff --git a/node_modules/@react-pdf/textkit/lib/textkit.js b/node_modules/@react-pdf/textkit/lib/textkit.js
+index 4e1b193..7857fed 100644
+--- a/node_modules/@react-pdf/textkit/lib/textkit.js
++++ b/node_modules/@react-pdf/textkit/lib/textkit.js
+@@ -210,7 +210,7 @@ const slice$2 = (start, end, font, glyph) => {
+     const string = String.fromCodePoint(...codePoints);
+     // passing LTR To force fontkit to not reverse the string
+     return font
+-        ? font.layout(string, undefined, undefined, undefined, 'ltr').glyphs
++        ? font.layout(string, { liga: false, clig: false, dlig: false, hlig: false, calt: false }, undefined, undefined, 'ltr').glyphs
+         : [glyph];
+ };
+ 
+@@ -974,7 +974,7 @@ const layoutRun = (string) => {
+         if (typeof font === 'string')
+             throw new Error('Invalid font');
+         // passing LTR To force fontkit to not reverse the string
+-        const glyphRun = font[0].layout(runString, undefined, undefined, undefined, 'ltr');
++        const glyphRun = font[0].layout(runString, { liga: false, clig: false, dlig: false, hlig: false, calt: false }, undefined, undefined, 'ltr');
+         const positions = scalePositions(run, glyphRun.positions);
+         const glyphIndices = resolve(glyphRun.glyphs);
+         const result = {
