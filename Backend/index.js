@@ -94,7 +94,7 @@ async function initAfterListen() {
     TodoProjectSettings,
   ]);
 
-  const EMAIL_QUEUE_INTERVAL_MS = 30_000;
+  const EMAIL_QUEUE_INTERVAL_MS = 5_000;
   setInterval(async () => {
     try {
       await processEmailQueue();

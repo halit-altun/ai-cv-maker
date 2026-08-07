@@ -16,9 +16,13 @@ export type AuthUser = {
   autoSendOutreachAfterAnalysis?: boolean;
   /** AI Provider: gemini-free (3 key) / gemini-pro (1 key paid) / openai */
   preferredAiProvider?: 'gemini-free' | 'gemini-pro' | 'openai';
-  /** Gmail mail gönderim aralığı - minimum (dakika). 0 = sınırsız */
+  /** Gmail queue: min aralık toplam saniye (0 = sınırsız) */
+  gmailSendIntervalMinSeconds?: number;
+  /** Gmail queue: max aralık toplam saniye */
+  gmailSendIntervalMaxSeconds?: number;
+  /** @deprecated floor(seconds/60) — geriye uyum */
   gmailSendIntervalMinMinutes?: number;
-  /** Gmail mail gönderim aralığı - maximum (dakika). 0 = sınırsız */
+  /** @deprecated floor(seconds/60) — geriye uyum */
   gmailSendIntervalMaxMinutes?: number;
   /** Mail okundu tracking (pixel) aktif mi */
   enableMailTracking?: boolean;

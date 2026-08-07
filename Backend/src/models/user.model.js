@@ -30,15 +30,28 @@ const userSchema = new mongoose.Schema(
     },
     gmailSendIntervalMinMinutes: {
       type: Number,
-      default: 0, // 0 = sınırsız, >0 = minimum dakika
+      default: 0, // legacy / türetilmiş (floor(seconds/60))
       min: 0,
-      max: 1440, // Max 24 saat
+      max: 1440,
     },
     gmailSendIntervalMaxMinutes: {
       type: Number,
-      default: 0, // 0 = sınırsız, >0 = maximum dakika
+      default: 0,
       min: 0,
-      max: 1440, // Max 24 saat
+      max: 1440,
+    },
+    /** Kaynak değer: mail kuyruk aralığı toplam saniye (0 = sınırsız) */
+    gmailSendIntervalMinSeconds: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 86400, // 24 saat
+    },
+    gmailSendIntervalMaxSeconds: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 86400,
     },
     enableMailTracking: {
       type: Boolean,

@@ -72,8 +72,10 @@ export function ProfileView() {
   const [githubUrl, setGithubUrl] = useState('');
   const [autoSendOutreachAfterAnalysis, setAutoSendOutreachAfterAnalysis] = useState(false);
   const [preferredAiProvider, setPreferredAiProvider] = useState<'gemini-free' | 'gemini-pro' | 'openai'>('gemini-free');
-  const [gmailSendIntervalMinMinutes, setGmailSendIntervalMinMinutes] = useState(0);
-  const [gmailSendIntervalMaxMinutes, setGmailSendIntervalMaxMinutes] = useState(0);
+  const [intervalMinMinutes, setIntervalMinMinutes] = useState(0);
+  const [intervalMinSecondsPart, setIntervalMinSecondsPart] = useState(0);
+  const [intervalMaxMinutes, setIntervalMaxMinutes] = useState(0);
+  const [intervalMaxSecondsPart, setIntervalMaxSecondsPart] = useState(0);
   const [enableMailTracking, setEnableMailTracking] = useState(true);
   const [emailVerifyQuota, setEmailVerifyQuota] = useState<EmailVerifyQuota | null>(null);
   const [outreachQuota, setOutreachQuota] = useState<{
@@ -101,8 +103,18 @@ export function ProfileView() {
     setGithubUrl(u.githubUrl || '');
     setAutoSendOutreachAfterAnalysis(u.autoSendOutreachAfterAnalysis === true);
     setPreferredAiProvider(u.preferredAiProvider || 'gemini-free');
-    setGmailSendIntervalMinMinutes(u.gmailSendIntervalMinMinutes || 0);
-    setGmailSendIntervalMaxMinutes(u.gmailSendIntervalMaxMinutes || 0);
+    const minTotal =
+      typeof u.gmailSendIntervalMinSeconds === 'number' && u.gmailSendIntervalMinSeconds > 0
+        ? u.gmailSendIntervalMinSeconds
+        : (u.gmailSendIntervalMinMinutes || 0) * 60;
+    const maxTotal =
+      typeof u.gmailSendIntervalMaxSeconds === 'number' && u.gmailSendIntervalMaxSeconds > 0
+        ? u.gmailSendIntervalMaxSeconds
+        : (u.gmailSendIntervalMaxMinutes || 0) * 60;
+    setIntervalMinMinutes(Math.floor(minTotal / 60));
+    setIntervalMinSecondsPart(minTotal % 60);
+    setIntervalMaxMinutes(Math.floor(maxTotal / 60));
+    setIntervalMaxSecondsPart(maxTotal % 60);
     setEnableMailTracking(u.enableMailTracking !== false);
   };
 
@@ -154,6 +166,8 @@ export function ProfileView() {
     setSaveMessage(null);
     setError(null);
     try {
+      const minTotal = Math.max(0, intervalMinMinutes * 60 + intervalMinSecondsPart);
+      const maxTotal = Math.max(0, intervalMaxMinutes * 60 + intervalMaxSecondsPart);
       const updated = await updateProfileRequest({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
@@ -167,8 +181,8 @@ export function ProfileView() {
         githubUrl: githubUrl.trim(),
         autoSendOutreachAfterAnalysis,
         preferredAiProvider,
-        gmailSendIntervalMinMinutes,
-        gmailSendIntervalMaxMinutes,
+        gmailSendIntervalMinSeconds: minTotal,
+        gmailSendIntervalMaxSeconds: maxTotal,
         enableMailTracking,
       });
       applyUserToForm(updated);
@@ -505,65 +519,94 @@ export function ProfileView() {
               Gmail Gönderim Aralığı (Random Queue Sistemi)
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Çoklu sekme veya otomatik mail durumunda mailler sıraya girer. Her mail arasında random bir süre beklenir.
+              Çoklu sekme veya otomatik mail durumunda mailler sıraya girer. Her mail arasında
+              dakika + saniye cinsinden random bir süre beklenir (ör. 0 dk 30 sn – 2 dk 0 sn).
             </Typography>
 
             {/* Önerilen Aralıklar Infobox */}
             <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
               <Typography variant="body2" sx={{ fontWeight: 700, mb: 1 }}>
-                📊 Önerilen Aralıklar:
+                Önerilen Aralıklar:
               </Typography>
               <Box component="ul" sx={{ m: 0, pl: 2 }}>
                 <li>
                   <Typography variant="caption">
-                    <strong>Tek mailbox:</strong> 2-5 dakika rastgele aralık
+                    <strong>Hızlı test:</strong> 30 sn – 1 dk
                   </Typography>
                 </li>
                 <li>
                   <Typography variant="caption">
-                    <strong>Daha güvenli:</strong> 3-7 dakika rastgele aralık
+                    <strong>Tek mailbox:</strong> 2–5 dakika
                   </Typography>
                 </li>
                 <li>
                   <Typography variant="caption">
-                    <strong>Çok muhafazakâr:</strong> 5-10 dakika rastgele aralık
+                    <strong>Daha güvenli:</strong> 3–7 dakika
                   </Typography>
                 </li>
               </Box>
             </Alert>
 
+            <Typography fontWeight={600} fontSize={14} sx={{ mb: 1 }}>
+              Minimum aralık
+            </Typography>
             <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
               <TextField
                 fullWidth
                 type="number"
-                label="Minimum (Dakika)"
-                value={gmailSendIntervalMinMinutes}
+                label="Dakika"
+                value={intervalMinMinutes}
                 onChange={(e) => {
                   const val = Number(e.target.value);
-                  if (val >= 0 && val <= 1440) {
-                    setGmailSendIntervalMinMinutes(val);
-                  }
+                  if (val >= 0 && val <= 1440) setIntervalMinMinutes(val);
                 }}
                 inputProps={{ min: 0, max: 1440, step: 1 }}
-                helperText="Min bekleme süresi"
               />
               <TextField
                 fullWidth
                 type="number"
-                label="Maximum (Dakika)"
-                value={gmailSendIntervalMaxMinutes}
+                label="Saniye"
+                value={intervalMinSecondsPart}
                 onChange={(e) => {
                   const val = Number(e.target.value);
-                  if (val >= 0 && val <= 1440) {
-                    setGmailSendIntervalMaxMinutes(val);
-                  }
+                  if (val >= 0 && val <= 59) setIntervalMinSecondsPart(val);
                 }}
-                inputProps={{ min: 0, max: 1440, step: 1 }}
-                helperText="Max bekleme süresi"
+                inputProps={{ min: 0, max: 59, step: 1 }}
               />
             </Box>
 
-            {gmailSendIntervalMinMinutes === 0 && gmailSendIntervalMaxMinutes === 0 && (
+            <Typography fontWeight={600} fontSize={14} sx={{ mb: 1 }}>
+              Maximum aralık
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Dakika"
+                value={intervalMaxMinutes}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  if (val >= 0 && val <= 1440) setIntervalMaxMinutes(val);
+                }}
+                inputProps={{ min: 0, max: 1440, step: 1 }}
+              />
+              <TextField
+                fullWidth
+                type="number"
+                label="Saniye"
+                value={intervalMaxSecondsPart}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  if (val >= 0 && val <= 59) setIntervalMaxSecondsPart(val);
+                }}
+                inputProps={{ min: 0, max: 59, step: 1 }}
+              />
+            </Box>
+
+            {intervalMinMinutes === 0 &&
+              intervalMinSecondsPart === 0 &&
+              intervalMaxMinutes === 0 &&
+              intervalMaxSecondsPart === 0 && (
               <Alert severity="warning" sx={{ borderRadius: 2 }}>
                 <Typography variant="body2">
                   <strong>Uyarı:</strong> Sınırsız mod aktif. Çoklu sekmede aynı anda birden fazla mail gidebilir.
@@ -571,13 +614,23 @@ export function ProfileView() {
               </Alert>
             )}
 
-            {(gmailSendIntervalMinMinutes > 0 || gmailSendIntervalMaxMinutes > 0) && (
+            {(intervalMinMinutes > 0 ||
+              intervalMinSecondsPart > 0 ||
+              intervalMaxMinutes > 0 ||
+              intervalMaxSecondsPart > 0) && (
               <Alert severity="success" sx={{ borderRadius: 2 }}>
                 <Typography variant="body2">
-                  <strong>Queue Aktif:</strong> Her mail arasında {gmailSendIntervalMinMinutes}-
-                  {gmailSendIntervalMaxMinutes} dakika arası random bir süre beklenir. İlk mail
-                  hemen gider, sonrakiler sıraya girer. Aralığı değiştirirseniz sıradaki mailler
-                  (devam eden analizden sonra) yeni değere göre yeniden planlanır.
+                  <strong>Queue Aktif:</strong> Her mail arasında{' '}
+                  {intervalMinMinutes > 0 ? `${intervalMinMinutes} dk ` : ''}
+                  {intervalMinSecondsPart > 0 || intervalMinMinutes === 0
+                    ? `${intervalMinSecondsPart} sn`
+                    : ''}
+                  {' – '}
+                  {intervalMaxMinutes > 0 ? `${intervalMaxMinutes} dk ` : ''}
+                  {intervalMaxSecondsPart > 0 || intervalMaxMinutes === 0
+                    ? `${intervalMaxSecondsPart} sn`
+                    : ''}{' '}
+                  arası random beklenir. İlk mail hemen gider; sonrakiler sıraya girer.
                 </Typography>
               </Alert>
             )}

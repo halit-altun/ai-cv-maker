@@ -7,7 +7,7 @@ const { AppError } = require("../utils/app-error");
 const ALLOWED_SELF_REGISTER_ROLES = new Set(["user"]);
 
 const PUBLIC_USER_FIELDS =
-  "email fullName firstName lastName title contactEmail phone country city linkedinUrl portfolioUrl githubUrl autoSendOutreachAfterAnalysis preferredAiProvider gmailSendIntervalMinMinutes gmailSendIntervalMaxMinutes enableMailTracking profileImageUrl profileImagePublicId clientId role isActive emailVerified emailVerifiedAt createdAt updatedAt";
+  "email fullName firstName lastName title contactEmail phone country city linkedinUrl portfolioUrl githubUrl autoSendOutreachAfterAnalysis preferredAiProvider gmailSendIntervalMinMinutes gmailSendIntervalMaxMinutes gmailSendIntervalMinSeconds gmailSendIntervalMaxSeconds enableMailTracking profileImageUrl profileImagePublicId clientId role isActive emailVerified emailVerifiedAt createdAt updatedAt";
 
 function toPublicUser(user) {
   if (!user) {
@@ -32,6 +32,16 @@ function toPublicUser(user) {
     preferredAiProvider: user.preferredAiProvider || "gemini-free",
     gmailSendIntervalMinMinutes: user.gmailSendIntervalMinMinutes || 0,
     gmailSendIntervalMaxMinutes: user.gmailSendIntervalMaxMinutes || 0,
+    gmailSendIntervalMinSeconds: (() => {
+      const sec = Number(user.gmailSendIntervalMinSeconds);
+      if (Number.isFinite(sec) && sec > 0) return sec;
+      return (Number(user.gmailSendIntervalMinMinutes) || 0) * 60;
+    })(),
+    gmailSendIntervalMaxSeconds: (() => {
+      const sec = Number(user.gmailSendIntervalMaxSeconds);
+      if (Number.isFinite(sec) && sec > 0) return sec;
+      return (Number(user.gmailSendIntervalMaxMinutes) || 0) * 60;
+    })(),
     enableMailTracking: user.enableMailTracking !== false,
     profileImageUrl: user.profileImageUrl || "",
     profileImagePublicId: user.profileImagePublicId || "",
@@ -164,6 +174,8 @@ async function updateUserProfile(
     preferredAiProvider,
     gmailSendIntervalMinMinutes,
     gmailSendIntervalMaxMinutes,
+    gmailSendIntervalMinSeconds,
+    gmailSendIntervalMaxSeconds,
     enableMailTracking,
   } = {}
 ) {
@@ -190,21 +202,48 @@ async function updateUserProfile(
       updates.preferredAiProvider = provider;
     }
   }
-  
-  if (gmailSendIntervalMinMinutes !== undefined) {
-    const interval = Number(gmailSendIntervalMinMinutes);
-    if (Number.isFinite(interval) && interval >= 0 && interval <= 1440) {
-      updates.gmailSendIntervalMinMinutes = interval;
+
+  const MAX_SEC = 86400;
+  const hasSecondsPatch =
+    gmailSendIntervalMinSeconds !== undefined ||
+    gmailSendIntervalMaxSeconds !== undefined;
+
+  if (hasSecondsPatch) {
+    let minSec =
+      gmailSendIntervalMinSeconds !== undefined
+        ? Number(gmailSendIntervalMinSeconds)
+        : undefined;
+    let maxSec =
+      gmailSendIntervalMaxSeconds !== undefined
+        ? Number(gmailSendIntervalMaxSeconds)
+        : undefined;
+
+    if (minSec !== undefined && Number.isFinite(minSec) && minSec >= 0 && minSec <= MAX_SEC) {
+      updates.gmailSendIntervalMinSeconds = Math.floor(minSec);
+      updates.gmailSendIntervalMinMinutes = Math.floor(minSec / 60);
+    }
+    if (maxSec !== undefined && Number.isFinite(maxSec) && maxSec >= 0 && maxSec <= MAX_SEC) {
+      updates.gmailSendIntervalMaxSeconds = Math.floor(maxSec);
+      updates.gmailSendIntervalMaxMinutes = Math.floor(maxSec / 60);
+    }
+  } else {
+    if (gmailSendIntervalMinMinutes !== undefined) {
+      const interval = Number(gmailSendIntervalMinMinutes);
+      if (Number.isFinite(interval) && interval >= 0 && interval <= 1440) {
+        updates.gmailSendIntervalMinMinutes = interval;
+        updates.gmailSendIntervalMinSeconds = interval * 60;
+      }
+    }
+
+    if (gmailSendIntervalMaxMinutes !== undefined) {
+      const interval = Number(gmailSendIntervalMaxMinutes);
+      if (Number.isFinite(interval) && interval >= 0 && interval <= 1440) {
+        updates.gmailSendIntervalMaxMinutes = interval;
+        updates.gmailSendIntervalMaxSeconds = interval * 60;
+      }
     }
   }
-  
-  if (gmailSendIntervalMaxMinutes !== undefined) {
-    const interval = Number(gmailSendIntervalMaxMinutes);
-    if (Number.isFinite(interval) && interval >= 0 && interval <= 1440) {
-      updates.gmailSendIntervalMaxMinutes = interval;
-    }
-  }
-  
+
   if (enableMailTracking !== undefined) {
     updates.enableMailTracking = Boolean(enableMailTracking);
   }
@@ -242,7 +281,9 @@ async function updateUserProfile(
   // İstek aralığı değiştiyse bekleyen mailleri yeni değere göre yeniden planla
   if (
     updates.gmailSendIntervalMinMinutes !== undefined ||
-    updates.gmailSendIntervalMaxMinutes !== undefined
+    updates.gmailSendIntervalMaxMinutes !== undefined ||
+    updates.gmailSendIntervalMinSeconds !== undefined ||
+    updates.gmailSendIntervalMaxSeconds !== undefined
   ) {
     try {
       const { rescheduleUserPendingEmails } = require("./email-queue.service");

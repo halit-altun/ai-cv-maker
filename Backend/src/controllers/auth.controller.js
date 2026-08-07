@@ -238,6 +238,8 @@ async function updateMeHandler(req, res, next) {
       preferredAiProvider,
       gmailSendIntervalMinMinutes,
       gmailSendIntervalMaxMinutes,
+      gmailSendIntervalMinSeconds,
+      gmailSendIntervalMaxSeconds,
       enableMailTracking,
     } = req.body || {};
 
@@ -257,6 +259,8 @@ async function updateMeHandler(req, res, next) {
       preferredAiProvider,
       gmailSendIntervalMinMinutes,
       gmailSendIntervalMaxMinutes,
+      gmailSendIntervalMinSeconds,
+      gmailSendIntervalMaxSeconds,
       enableMailTracking,
     });
 

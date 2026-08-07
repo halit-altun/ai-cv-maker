@@ -253,6 +253,8 @@ export async function updateProfileRequest(payload: {
   githubUrl?: string;
   autoSendOutreachAfterAnalysis?: boolean;
   preferredAiProvider?: 'gemini-free' | 'gemini-pro' | 'openai';
+  gmailSendIntervalMinSeconds?: number;
+  gmailSendIntervalMaxSeconds?: number;
   gmailSendIntervalMinMinutes?: number;
   gmailSendIntervalMaxMinutes?: number;
   enableMailTracking?: boolean;
