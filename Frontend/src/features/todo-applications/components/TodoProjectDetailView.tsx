@@ -9,6 +9,11 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   FormControl,
   IconButton,
   InputLabel,
@@ -23,6 +28,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import {
   COMPANY_PAGE_TYPE_OPTIONS,
   type CompanyPageType,
@@ -41,6 +47,7 @@ import {
   deleteTodoProjectCvRequest,
   getTodoProjectCvRequest,
   listTodoItemsRequest,
+  updateTodoItemRequest,
   uploadTodoProjectCvRequest,
   type TodoApplicationItem,
   type TodoProjectCvMeta,
@@ -58,6 +65,15 @@ type DraftRow = {
   companyName: string;
 };
 
+type EditForm = {
+  id: string;
+  companyUrl: string;
+  pageType: CompanyPageType;
+  pageTypeOther: string;
+  emailDomainInput: string;
+  companyName: string;
+};
+
 function emptyDraft(): DraftRow {
   return {
     key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -66,6 +82,22 @@ function emptyDraft(): DraftRow {
     pageTypeOther: '',
     emailDomainInput: '',
     companyName: '',
+  };
+}
+
+function toPageType(value: string | undefined): CompanyPageType {
+  const found = COMPANY_PAGE_TYPE_OPTIONS.find((o) => o.value === value);
+  return (found?.value as CompanyPageType) || 'careers';
+}
+
+function itemToEditForm(item: TodoApplicationItem): EditForm {
+  return {
+    id: item.id,
+    companyUrl: item.companyUrl || '',
+    pageType: toPageType(String(item.pageType || 'careers')),
+    pageTypeOther: item.pageTypeOther || '',
+    emailDomainInput: item.emailDomainInput || '',
+    companyName: item.companyName || '',
   };
 }
 
@@ -86,6 +118,10 @@ export function TodoProjectDetailView() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
+  const [editForm, setEditForm] = useState<EditForm | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<TodoApplicationItem | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const loadMeta = useCallback(async () => {
     if (!projectId) return;
@@ -166,12 +202,59 @@ export function TodoProjectDetailView() {
     }
   };
 
-  const handleDeleteItem = async (id: string) => {
+  const handleOpenEdit = (item: TodoApplicationItem) => {
+    setError(null);
+    setEditForm(itemToEditForm(item));
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editForm) return;
+    const companyUrl = editForm.companyUrl.trim();
+    const emailDomainInput = editForm.emailDomainInput.trim().toLowerCase();
+    if (!companyUrl || !emailDomainInput) {
+      setError('Düzenlemede şirket URL ve ana domain zorunlu.');
+      return;
+    }
+    if (editForm.pageType === 'other' && !editForm.pageTypeOther.trim()) {
+      setError('"Diğer" sayfa tipi için açıklama girin.');
+      return;
+    }
+
+    setEditSaving(true);
+    setError(null);
+    setInfo(null);
     try {
-      await deleteTodoItemRequest(id);
-      setItems((prev) => prev.filter((i) => i.id !== id));
+      const updated = await updateTodoItemRequest(editForm.id, {
+        companyUrl,
+        pageType: editForm.pageType,
+        pageTypeOther: editForm.pageTypeOther.trim(),
+        emailDomainInput,
+        companyName: editForm.companyName.trim(),
+      });
+      setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+      setEditForm(null);
+      setInfo('Firma güncellendi.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Güncellenemedi.');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    setError(null);
+    try {
+      await deleteTodoItemRequest(deleteTarget.id);
+      setItems((prev) => prev.filter((i) => i.id !== deleteTarget.id));
+      if (editForm?.id === deleteTarget.id) setEditForm(null);
+      setDeleteTarget(null);
+      setInfo('Firma silindi.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Silinemedi.');
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -530,9 +613,22 @@ export function TodoProjectDetailView() {
                       />
                     </Box>
                   </Box>
-                  <IconButton size="small" onClick={() => void handleDeleteItem(item.id)}>
-                    <DeleteOutlineIcon fontSize="small" />
-                  </IconButton>
+                  <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0, alignItems: 'flex-start' }}>
+                    <IconButton
+                      size="small"
+                      aria-label="Düzenle"
+                      onClick={() => handleOpenEdit(item)}
+                    >
+                      <EditOutlinedIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      aria-label="Sil"
+                      onClick={() => setDeleteTarget(item)}
+                    >
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
                 </Box>
               ))}
             </Stack>
@@ -549,6 +645,140 @@ export function TodoProjectDetailView() {
         </Alert>
       </Stack>
       )}
+
+      <Dialog
+        open={Boolean(editForm)}
+        onClose={() => !editSaving && setEditForm(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Firmayı düzenle</DialogTitle>
+        <DialogContent>
+          {editForm && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                size="small"
+                label="Şirket URL"
+                value={editForm.companyUrl}
+                onChange={(e) =>
+                  setEditForm((prev) => (prev ? { ...prev, companyUrl: e.target.value } : prev))
+                }
+                fullWidth
+                required
+              />
+              <FormControl size="small" fullWidth>
+                <InputLabel id="edit-page-type-label">Sayfa tipi</InputLabel>
+                <Select
+                  labelId="edit-page-type-label"
+                  label="Sayfa tipi"
+                  value={editForm.pageType}
+                  onChange={(e) =>
+                    setEditForm((prev) =>
+                      prev
+                        ? { ...prev, pageType: e.target.value as CompanyPageType }
+                        : prev
+                    )
+                  }
+                >
+                  {COMPANY_PAGE_TYPE_OPTIONS.map((opt) => (
+                    <MenuItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {editForm.pageType === 'other' && (
+                <TextField
+                  size="small"
+                  label="Diğer sayfa tipi"
+                  value={editForm.pageTypeOther}
+                  onChange={(e) =>
+                    setEditForm((prev) =>
+                      prev ? { ...prev, pageTypeOther: e.target.value } : prev
+                    )
+                  }
+                  fullWidth
+                  required
+                />
+              )}
+              <TextField
+                size="small"
+                label="Ana domain"
+                value={editForm.emailDomainInput}
+                onChange={(e) =>
+                  setEditForm((prev) =>
+                    prev ? { ...prev, emailDomainInput: e.target.value } : prev
+                  )
+                }
+                fullWidth
+                required
+              />
+              <TextField
+                size="small"
+                label="Şirket adı (opsiyonel)"
+                value={editForm.companyName}
+                onChange={(e) =>
+                  setEditForm((prev) =>
+                    prev ? { ...prev, companyName: e.target.value } : prev
+                  )
+                }
+                fullWidth
+              />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setEditForm(null)}
+            disabled={editSaving}
+            sx={{ textTransform: 'none' }}
+          >
+            İptal
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => void handleSaveEdit()}
+            disabled={editSaving}
+            sx={{ textTransform: 'none' }}
+          >
+            {editSaving ? 'Kaydediliyor…' : 'Kaydet'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onClose={() => !deleteBusy && setDeleteTarget(null)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Firmayı sil?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {deleteTarget
+              ? `"${deleteTarget.companyName || deleteTarget.emailDomainInput}" kaydını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
+              : 'Bu kaydı silmek istediğinize emin misiniz?'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setDeleteTarget(null)}
+            disabled={deleteBusy}
+            sx={{ textTransform: 'none' }}
+          >
+            Vazgeç
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => void handleConfirmDelete()}
+            disabled={deleteBusy}
+            sx={{ textTransform: 'none' }}
+          >
+            {deleteBusy ? 'Siliniyor…' : 'Evet, sil'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

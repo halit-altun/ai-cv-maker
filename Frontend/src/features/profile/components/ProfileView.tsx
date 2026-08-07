@@ -574,7 +574,10 @@ export function ProfileView() {
             {(gmailSendIntervalMinMinutes > 0 || gmailSendIntervalMaxMinutes > 0) && (
               <Alert severity="success" sx={{ borderRadius: 2 }}>
                 <Typography variant="body2">
-                  <strong>Queue Aktif:</strong> Her mail arasında {gmailSendIntervalMinMinutes}-{gmailSendIntervalMaxMinutes} dakika arası random bir süre beklenir. İlk mail hemen gider, sonrakiler sıraya girer.
+                  <strong>Queue Aktif:</strong> Her mail arasında {gmailSendIntervalMinMinutes}-
+                  {gmailSendIntervalMaxMinutes} dakika arası random bir süre beklenir. İlk mail
+                  hemen gider, sonrakiler sıraya girer. Aralığı değiştirirseniz sıradaki mailler
+                  (devam eden analizden sonra) yeni değere göre yeniden planlanır.
                 </Typography>
               </Alert>
             )}

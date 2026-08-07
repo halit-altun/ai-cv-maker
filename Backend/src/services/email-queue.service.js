@@ -13,23 +13,115 @@ function getRandomInterval(minMinutes, maxMinutes) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+async function getUserIntervalMinutes(userId) {
+  const user = await User.findById(userId).select(
+    "gmailSendIntervalMinMinutes gmailSendIntervalMaxMinutes"
+  );
+  const minMinutes = Number(user?.gmailSendIntervalMinMinutes) || 0;
+  const maxMinutes = Number(user?.gmailSendIntervalMaxMinutes) || 0;
+  return {
+    minMinutes,
+    maxMinutes,
+    intervalMinutes: getRandomInterval(minMinutes, maxMinutes),
+  };
+}
+
 /**
- * Mail'i kuyruğa ekle
+ * Kullanıcının son "referans" zamanı: son gönderilen veya
+ * kuyruktaki en geç planlanan pending mail.
+ */
+async function getUserScheduleCursor(userId) {
+  const [lastSent, lastPending] = await Promise.all([
+    EmailQueue.findOne({ userId, status: "sent" })
+      .sort({ sentAt: -1 })
+      .select("sentAt")
+      .lean(),
+    EmailQueue.findOne({ userId, status: "pending" })
+      .sort({ scheduledAt: -1 })
+      .select("scheduledAt")
+      .lean(),
+  ]);
+
+  const sentAt = lastSent?.sentAt ? new Date(lastSent.sentAt) : null;
+  const pendingAt = lastPending?.scheduledAt ? new Date(lastPending.scheduledAt) : null;
+
+  if (sentAt && pendingAt) {
+    return sentAt > pendingAt ? sentAt : pendingAt;
+  }
+  return sentAt || pendingAt || null;
+}
+
+/**
+ * Profil istek aralığı değişince bekleyen mailleri yeni değere göre yeniden diz.
+ * İşlenmekte olan (processing) mail etkilenmez; sıradaki pending'ler yeni aralıkla planlanır.
+ */
+async function rescheduleUserPendingEmails(userId) {
+  if (!userId) return { rescheduled: 0 };
+
+  const { minMinutes, maxMinutes } = await getUserIntervalMinutes(userId);
+  const pending = await EmailQueue.find({ userId, status: "pending" }).sort({
+    scheduledAt: 1,
+    createdAt: 1,
+  });
+
+  if (!pending.length) {
+    return { rescheduled: 0, minMinutes, maxMinutes };
+  }
+
+  const lastSent = await EmailQueue.findOne({ userId, status: "sent" })
+    .sort({ sentAt: -1 })
+    .select("sentAt")
+    .lean();
+
+  const now = new Date();
+  let cursor = lastSent?.sentAt ? new Date(lastSent.sentAt) : null;
+
+  for (const item of pending) {
+    if (minMinutes === 0 && maxMinutes === 0) {
+      item.scheduledAt = now;
+      await item.save();
+      cursor = now;
+      continue;
+    }
+
+    const gapMinutes = getRandomInterval(minMinutes, maxMinutes);
+    const gapMs = Math.max(0, gapMinutes) * 60 * 1000;
+    let next = cursor ? new Date(cursor.getTime() + gapMs) : now;
+    if (next < now) next = now;
+    item.scheduledAt = next;
+    item.metadata = {
+      ...(item.metadata && typeof item.metadata === "object" ? item.metadata : {}),
+      rescheduledAt: now.toISOString(),
+      appliedIntervalMinutes: gapMinutes,
+      appliedIntervalRange: [minMinutes, maxMinutes],
+    };
+    await item.save();
+    cursor = next;
+  }
+
+  console.log(
+    `[EMAIL_QUEUE] Kullanıcı ${userId} için ${pending.length} pending mail yeniden planlandı (aralık ${minMinutes}-${maxMinutes} dk).`
+  );
+
+  return {
+    rescheduled: pending.length,
+    minMinutes,
+    maxMinutes,
+  };
+}
+
+/**
+ * Mail'i kuyruğa ekle — her seferinde güncel profil aralığını okur.
  */
 async function enqueueEmail(userId, emailData, metadata = {}) {
-  // Kullanıcının gmailSendInterval ayarlarını al
-  const user = await User.findById(userId).select("gmailSendIntervalMinMinutes gmailSendIntervalMaxMinutes");
-  const minMinutes = user?.gmailSendIntervalMinMinutes || 0;
-  const maxMinutes = user?.gmailSendIntervalMaxMinutes || 0;
-  const intervalMinutes = getRandomInterval(minMinutes, maxMinutes);
+  const { minMinutes, maxMinutes, intervalMinutes } = await getUserIntervalMinutes(userId);
 
-  // Eğer interval 0 ise (sınırsız), hemen gönder
   if (intervalMinutes === 0) {
     console.log(`[EMAIL_QUEUE] Interval 0, direkt gönderiliyor: ${emailData.to?.join(", ")}`);
     try {
       const result = await sendMail({
         ...emailData,
-        html: emailData.html || emailData.bodyHtml, // HTML varsa kullan
+        html: emailData.html || emailData.bodyHtml,
       });
       return {
         queued: false,
@@ -43,37 +135,28 @@ async function enqueueEmail(userId, emailData, metadata = {}) {
     }
   }
 
-  // Kullanıcının son gönderdiği mail'in zamanını bul
-  const lastSent = await EmailQueue.findOne({
-    userId,
-    status: "sent",
-  })
-    .sort({ sentAt: -1 })
-    .select("sentAt");
-
+  const cursor = await getUserScheduleCursor(userId);
   const now = new Date();
   let scheduledAt = now;
 
-  if (lastSent?.sentAt) {
-    const timeSinceLastEmail = now - new Date(lastSent.sentAt);
+  if (cursor) {
+    const timeSinceCursor = now - cursor;
     const requiredGapMs = intervalMinutes * 60 * 1000;
 
-    if (timeSinceLastEmail < requiredGapMs) {
-      // Henüz yeterli süre geçmemiş, scheduledAt'i ayarla
-      scheduledAt = new Date(new Date(lastSent.sentAt).getTime() + requiredGapMs);
+    if (timeSinceCursor < requiredGapMs) {
+      scheduledAt = new Date(cursor.getTime() + requiredGapMs);
       console.log(
-        `[EMAIL_QUEUE] Son mail ${Math.round(timeSinceLastEmail / 1000)}s önce gönderildi. Yeni mail ${new Date(scheduledAt).toLocaleString('tr-TR')} zamanına planlandı (${intervalMinutes} dk random interval [${minMinutes}-${maxMinutes}]).`
+        `[EMAIL_QUEUE] Cursor ${Math.round(timeSinceCursor / 1000)}s önce. Yeni mail ${scheduledAt.toLocaleString("tr-TR")} zamanına planlandı (${intervalMinutes} dk random [${minMinutes}-${maxMinutes}]).`
       );
     } else {
       console.log(
-        `[EMAIL_QUEUE] Son mail ${Math.round(timeSinceLastEmail / 1000)}s önce gönderildi. Yeterli süre geçti, hemen gönderilecek (random: ${intervalMinutes} dk).`
+        `[EMAIL_QUEUE] Cursor yeterince eski, hemen gönderilecek (random: ${intervalMinutes} dk).`
       );
     }
   } else {
     console.log(`[EMAIL_QUEUE] İlk mail, hemen gönderilecek.`);
   }
 
-  // Kuyruğa ekle
   const queueItem = new EmailQueue({
     userId,
     status: "pending",
@@ -81,7 +164,7 @@ async function enqueueEmail(userId, emailData, metadata = {}) {
     to: emailData.to,
     subject: emailData.subject,
     bodyText: emailData.text,
-    bodyHtml: emailData.html, // HTML with tracking pixel
+    bodyHtml: emailData.html,
     fromName: emailData.fromName,
     replyTo: emailData.replyTo,
     attachments: emailData.attachments,
@@ -90,13 +173,17 @@ async function enqueueEmail(userId, emailData, metadata = {}) {
     cvId: metadata.cvId,
     cvTitle: metadata.cvTitle,
     selectedCategories: metadata.selectedCategories,
-    metadata,
+    metadata: {
+      ...metadata,
+      appliedIntervalMinutes: intervalMinutes,
+      appliedIntervalRange: [minMinutes, maxMinutes],
+    },
   });
 
   await queueItem.save();
 
   console.log(
-    `[EMAIL_QUEUE] Mail kuyruğa eklendi: ${queueItem._id} | Alıcı: ${emailData.to?.join(", ")} | Planlanan: ${scheduledAt.toLocaleString('tr-TR')}`
+    `[EMAIL_QUEUE] Mail kuyruğa eklendi: ${queueItem._id} | Alıcı: ${emailData.to?.join(", ")} | Planlanan: ${scheduledAt.toLocaleString("tr-TR")}`
   );
 
   return {
@@ -109,18 +196,18 @@ async function enqueueEmail(userId, emailData, metadata = {}) {
 }
 
 /**
- * Kuyruktaki mail'leri işle (CRON job veya interval ile çağrılır)
+ * Kuyruktaki mail'leri işle.
+ * Gönderim öncesi güncel profil aralığına göre gerekirse erteler.
  */
 async function processEmailQueue() {
   const now = new Date();
 
-  // Gönderilmeyi bekleyen mail'leri al (scheduledAt geçmiş olanlar)
   const pendingEmails = await EmailQueue.find({
     status: "pending",
     scheduledAt: { $lte: now },
   })
-    .sort({ scheduledAt: 1, priority: -1 }) // Eski önce, yüksek öncelik önce
-    .limit(10); // Aynı anda max 10 mail işle
+    .sort({ scheduledAt: 1, priority: -1 })
+    .limit(10);
 
   if (pendingEmails.length === 0) {
     return { processed: 0 };
@@ -130,31 +217,67 @@ async function processEmailQueue() {
 
   let successCount = 0;
   let failCount = 0;
+  let deferredCount = 0;
 
   for (const item of pendingEmails) {
     try {
-      // Status'u processing yap
+      const { minMinutes, maxMinutes, intervalMinutes } = await getUserIntervalMinutes(
+        item.userId
+      );
+
+      if (intervalMinutes > 0) {
+        const lastSent = await EmailQueue.findOne({
+          userId: item.userId,
+          status: "sent",
+        })
+          .sort({ sentAt: -1 })
+          .select("sentAt")
+          .lean();
+
+        if (lastSent?.sentAt) {
+          const requiredGapMs = intervalMinutes * 60 * 1000;
+          const elapsed = Date.now() - new Date(lastSent.sentAt).getTime();
+          if (elapsed < requiredGapMs) {
+            item.scheduledAt = new Date(
+              new Date(lastSent.sentAt).getTime() + requiredGapMs
+            );
+            item.metadata = {
+              ...(item.metadata && typeof item.metadata === "object" ? item.metadata : {}),
+              deferredByLiveInterval: true,
+              appliedIntervalMinutes: intervalMinutes,
+              appliedIntervalRange: [minMinutes, maxMinutes],
+            };
+            await item.save();
+            deferredCount += 1;
+            console.log(
+              `[EMAIL_QUEUE_PROCESSOR] Mail ertelendi (güncel aralık ${intervalMinutes} dk): ${item._id} → ${item.scheduledAt.toLocaleString("tr-TR")}`
+            );
+            continue;
+          }
+        }
+      }
+
       item.status = "processing";
       item.processedAt = new Date();
       await item.save();
 
-      // Mail gönder
-      const result = await sendMail({
+      await sendMail({
         to: item.to,
         subject: item.subject,
         text: item.bodyText,
-        html: item.bodyHtml, // HTML with tracking pixel
+        html: item.bodyHtml,
         fromName: item.fromName,
         replyTo: item.replyTo,
         attachments: item.attachments,
       });
 
-      // Başarılı
       item.status = "sent";
       item.sentAt = new Date();
       await item.save();
 
-      console.log(`[EMAIL_QUEUE_PROCESSOR] Mail gönderildi: ${item._id} | Alıcı: ${item.to?.join(", ")}`);
+      console.log(
+        `[EMAIL_QUEUE_PROCESSOR] Mail gönderildi: ${item._id} | Alıcı: ${item.to?.join(", ")}`
+      );
       successCount++;
     } catch (error) {
       console.error(`[EMAIL_QUEUE_PROCESSOR] Mail gönderimi hatası: ${item._id}`, error);
@@ -167,7 +290,6 @@ async function processEmailQueue() {
         failCount++;
       } else {
         item.status = "pending";
-        // 5 dakika sonra tekrar dene
         item.scheduledAt = new Date(Date.now() + 5 * 60 * 1000);
       }
 
@@ -176,19 +298,17 @@ async function processEmailQueue() {
   }
 
   console.log(
-    `[EMAIL_QUEUE_PROCESSOR] İşlem tamamlandı: ${successCount} başarılı, ${failCount} başarısız.`
+    `[EMAIL_QUEUE_PROCESSOR] İşlem tamamlandı: ${successCount} başarılı, ${failCount} başarısız, ${deferredCount} ertelendi.`
   );
 
   return {
     processed: pendingEmails.length,
     success: successCount,
     failed: failCount,
+    deferred: deferredCount,
   };
 }
 
-/**
- * Kullanıcının kuyrukta bekleyen mail sayısını al
- */
 async function getUserPendingEmailCount(userId) {
   return await EmailQueue.countDocuments({
     userId,
@@ -196,9 +316,6 @@ async function getUserPendingEmailCount(userId) {
   });
 }
 
-/**
- * Kullanıcının son gönderdiği mail'in zamanını al
- */
 async function getUserLastEmailTime(userId) {
   const lastSent = await EmailQueue.findOne({
     userId,
@@ -210,26 +327,19 @@ async function getUserLastEmailTime(userId) {
   return lastSent?.sentAt || null;
 }
 
-/**
- * Kullanıcının bir sonraki mail gönderebileceği zamanı hesapla
- */
 async function getUserNextAvailableTime(userId) {
-  const user = await User.findById(userId).select("gmailSendIntervalMinMinutes gmailSendIntervalMaxMinutes");
-  const minMinutes = user?.gmailSendIntervalMinMinutes || 0;
-  const maxMinutes = user?.gmailSendIntervalMaxMinutes || 0;
-  const intervalMinutes = getRandomInterval(minMinutes, maxMinutes);
+  const { intervalMinutes } = await getUserIntervalMinutes(userId);
 
   if (intervalMinutes === 0) {
-    return new Date(); // Hemen gönderebilir
+    return new Date();
   }
 
   const lastEmailTime = await getUserLastEmailTime(userId);
   if (!lastEmailTime) {
-    return new Date(); // İlk mail, hemen gönderebilir
+    return new Date();
   }
 
-  const nextAvailable = new Date(lastEmailTime.getTime() + intervalMinutes * 60 * 1000);
-  return nextAvailable;
+  return new Date(lastEmailTime.getTime() + intervalMinutes * 60 * 1000);
 }
 
 module.exports = {
@@ -238,4 +348,6 @@ module.exports = {
   getUserPendingEmailCount,
   getUserLastEmailTime,
   getUserNextAvailableTime,
+  rescheduleUserPendingEmails,
+  getUserIntervalMinutes,
 };

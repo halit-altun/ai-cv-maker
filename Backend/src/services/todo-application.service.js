@@ -11,14 +11,16 @@ const {
   normalizeEmailDomainInput,
 } = require("./todo-email-prefixes");
 const {
-  generateColdEmailForCompany,
-  resolveMailLanguage,
-} = require("./todo-cold-email.service");
-const {
   sendCompanyOutreachEmails,
   createAnalysisOnlyLog,
   createAiErrorLog,
 } = require("./outreach.service");
+const { resolveMailLanguage } = require("./todo-cold-email.service");
+const {
+  runFullOptimizationBundle,
+  extractPdfTextFromBase64,
+  renderOptimizedCvPdfViaFrontend,
+} = require("./company-based");
 
 let processingLock = false;
 
@@ -89,6 +91,10 @@ function mapJob(doc, { includePdf = false } = {}) {
       hasContent: Boolean(settings.pdfAttachment.contentBase64),
       contentBase64: undefined,
     };
+  }
+  if (settings.cvText) {
+    settings.cvText = undefined;
+    settings.hasCvText = true;
   }
 
   return {
@@ -282,21 +288,72 @@ function mapCvMeta(settingsDoc) {
       cvTitle: "",
       uploadedAt: null,
       contentType: "",
+      bulkSendHistoryFilter: "all",
     };
   }
   const hasCv = Boolean(settingsDoc.pdfAttachment?.contentBase64);
+  const filter = String(settingsDoc.bulkSendHistoryFilter || "all");
   return {
     hasCv,
     cvFileName: settingsDoc.cvFileName || settingsDoc.pdfAttachment?.filename || "",
     cvTitle: settingsDoc.cvTitle || "",
     uploadedAt: settingsDoc.uploadedAt || null,
     contentType: settingsDoc.pdfAttachment?.contentType || "application/pdf",
+    bulkSendHistoryFilter: ["all", "sent", "unsent"].includes(filter)
+      ? filter
+      : "all",
   };
 }
 
 async function getTodoProjectSettings(clientId, projectId) {
   await getProjectOrThrow(clientId, projectId);
   const doc = await TodoProjectSettings.findOne({ clientId, projectId }).lean();
+  return mapCvMeta(doc);
+}
+
+async function updateTodoProjectPrefs(clientId, userId, projectId, patch = {}) {
+  await getProjectOrThrow(clientId, projectId);
+
+  const updates = {};
+  if (patch.bulkSendHistoryFilter !== undefined) {
+    const filter = String(patch.bulkSendHistoryFilter || "all");
+    if (!["all", "sent", "unsent"].includes(filter)) {
+      throw new AppError(
+        "Geçersiz gönderim filtresi. all | sent | unsent olmalı.",
+        400,
+        "BULK_SEND_FILTER_INVALID"
+      );
+    }
+    updates.bulkSendHistoryFilter = filter;
+  }
+
+  if (!Object.keys(updates).length) {
+    return getTodoProjectSettings(clientId, projectId);
+  }
+
+  const doc = await TodoProjectSettings.findOneAndUpdate(
+    { clientId, projectId },
+    {
+      $set: {
+        ...updates,
+        clientId,
+        userId,
+        projectId,
+      },
+      $setOnInsert: {
+        cvFileName: "",
+        cvTitle: "",
+        pdfAttachment: {
+          filename: "",
+          contentBase64: "",
+          contentType: "application/pdf",
+        },
+        uploadedAt: null,
+      },
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  ).lean();
+
   return mapCvMeta(doc);
 }
 
@@ -419,7 +476,7 @@ function buildSettingsSnapshot(body = {}, user = {}) {
     shouldGenerateCoverLetter: Boolean(body.shouldGenerateCoverLetter),
     shouldGenerateLinkedInMessage: Boolean(body.shouldGenerateLinkedInMessage),
     outreachCvAttachmentSource:
-      body.outreachCvAttachmentSource === "optimized" ? "optimized" : "original",
+      body.outreachCvAttachmentSource === "original" ? "original" : "optimized",
     cvId: body.cvId || null,
     cvTitle: String(body.cvTitle || "").trim(),
     cvFileName: String(body.cvFileName || "").trim(),
@@ -540,6 +597,30 @@ async function startTodoJob(clientId, userId, body = {}) {
   }
 
   const settings = buildSettingsSnapshot(bodyWithCv, user);
+
+  // Company-based ile aynı: CV metnini bir kez çıkar (her firma için yeniden parse etme)
+  if (settings.pdfAttachment?.contentBase64) {
+    try {
+      settings.cvText = await extractPdfTextFromBase64(
+        settings.pdfAttachment.contentBase64
+      );
+    } catch (err) {
+      throw new AppError(
+        err instanceof Error
+          ? `CV PDF okunamadı: ${err.message}`
+          : "CV PDF okunamadı.",
+        400,
+        "CV_TEXT_EXTRACT_FAILED"
+      );
+    }
+    if (!String(settings.cvText || "").trim()) {
+      throw new AppError(
+        "CV PDF’den metin çıkarılamadı.",
+        400,
+        "CV_TEXT_EMPTY"
+      );
+    }
+  }
 
   const jobItems = sourceItems.map((item) => ({
     sourceItemId: item._id || null,
@@ -746,19 +827,61 @@ async function processSingleJobItem(job, item) {
     fallback: settings.cvLanguage || "turkish",
   });
 
-  let cold;
-  try {
-    cold = await generateColdEmailForCompany({
-      pageText: fetchResult.text,
-      companyUrl: item.companyUrl,
-      companyName: item.companyName,
-      pageType: item.pageType,
-      pageTypeOther: item.pageTypeOther,
-      targetPosition: settings.targetPosition,
-      language,
-      settings,
-      provider: user.preferredAiProvider || "gemini-free",
+  let cvText = String(settings.cvText || "").trim();
+  if (!cvText && settings.pdfAttachment?.contentBase64) {
+    cvText = await extractPdfTextFromBase64(settings.pdfAttachment.contentBase64);
+    settings.cvText = cvText;
+    job.settings.cvText = cvText;
+  }
+  if (!cvText) {
+    throw Object.assign(new Error("CV metni yok — proje CV’si gerekli."), {
+      code: "CV_TEXT_REQUIRED",
     });
+  }
+
+  const pageTypeLabel =
+    item.pageType === "other"
+      ? String(item.pageTypeOther || "other").trim() || "other"
+      : item.pageType || "careers";
+
+  const pageText =
+    String(fetchResult.text || "").length > 12000
+      ? `${String(fetchResult.text).slice(0, 12000)}\n…[truncated]`
+      : String(fetchResult.text || "");
+
+  let bundle;
+  try {
+    bundle = await runFullOptimizationBundle(
+      {
+        cvText,
+        cvLanguage: settings.cvLanguage === "english" ? "english" : "turkish",
+        adaptationSource: "company",
+        companyPages: [
+          {
+            url: item.companyUrl,
+            pageType: item.pageType,
+            description: pageTypeLabel,
+            pageText,
+          },
+        ],
+        targetPosition: settings.targetPosition || "",
+        keywordTargetSections: {
+          about: settings.aiSettings?.about !== false,
+          workExperience: settings.aiSettings?.workExperience !== false,
+          skills: settings.aiSettings?.skills !== false,
+        },
+        generateCoverLetter: false,
+        generateLinkedInMessage: false,
+        generateColdEmail: true,
+        coldEmailLanguage: language,
+        recipientCompanyName: item.companyName || undefined,
+        outreachLinkedinUrl: settings.linkedinUrl || undefined,
+        outreachPortfolioUrl: settings.portfolioUrl || undefined,
+        outreachWebsiteUrl: settings.websiteUrl || undefined,
+        outreachPhone: settings.phone || undefined,
+      },
+      { provider: user.preferredAiProvider || "gemini-free" }
+    );
   } catch (err) {
     await createAiErrorLog({
       clientId: job.clientId,
@@ -777,10 +900,18 @@ async function processSingleJobItem(job, item) {
     });
   }
 
-  item.companyName = cold.companyName || item.companyName;
-  item.coldEmailSubject = cold.subject;
-  item.coldEmailBody = cold.body;
-  item.adaptationNotes = cold.adaptationNotes || "";
+  item.companyName = bundle.companyInfo?.name || item.companyName;
+  if (bundle.coldEmail) {
+    item.coldEmailSubject = bundle.coldEmail.subject;
+    item.coldEmailBody = bundle.coldEmail.body;
+  } else {
+    throw Object.assign(new Error("Cold mail üretilemedi."), {
+      code: "COLD_EMAIL_EMPTY",
+    });
+  }
+  item.adaptationNotes = bundle.adaptationNotes || "";
+  item.detectedLanguage =
+    bundle.companyInfo?.detectedLanguage || item.detectedLanguage;
 
   const domain = normalizeEmailDomainInput(item.emailDomainInput);
   const candidates = buildRecipientEmails({
@@ -834,14 +965,30 @@ async function processSingleJobItem(job, item) {
   await job.save();
 
   const senderName = resolveSenderName(user);
-  const pdf =
-    settings.pdfAttachment?.contentBase64
-      ? {
-          filename: settings.pdfAttachment.filename || "CV.pdf",
-          contentBase64: settings.pdfAttachment.contentBase64,
-          contentType: settings.pdfAttachment.contentType || "application/pdf",
-        }
-      : null;
+
+  // Company-based ile aynı: varsayılan optimize PDF; original seçildiyse proje CV
+  let pdf = null;
+  const wantOptimized = settings.outreachCvAttachmentSource !== "original";
+  if (wantOptimized && bundle.adaptedCvData) {
+    try {
+      pdf = await renderOptimizedCvPdfViaFrontend(bundle.adaptedCvData, {
+        isEnglish: settings.cvLanguage === "english",
+      });
+      item.cvFileName = pdf.filename || item.cvFileName;
+    } catch (pdfErr) {
+      console.error(
+        "[TODO_JOB] Optimize PDF render başarısız, orijinal CV kullanılacak:",
+        pdfErr
+      );
+    }
+  }
+  if (!pdf && settings.pdfAttachment?.contentBase64) {
+    pdf = {
+      filename: settings.pdfAttachment.filename || "CV.pdf",
+      contentBase64: settings.pdfAttachment.contentBase64,
+      contentType: settings.pdfAttachment.contentType || "application/pdf",
+    };
+  }
 
   const trustedEmail =
     settings.includePrimaryEmailInSend !== false &&
@@ -862,7 +1009,7 @@ async function processSingleJobItem(job, item) {
     userId: job.userId,
     cvId: settings.cvId,
     cvTitle: settings.cvTitle,
-    cvFileName: settings.cvFileName,
+    cvFileName: item.cvFileName || settings.cvFileName,
     selectedCategories: settings.selectedEmailPrefixCategories,
     templateType: "cold_email",
     targetPosition: settings.targetPosition,
@@ -1141,6 +1288,7 @@ module.exports = {
   getProjectTodoSummary,
   getProjectCompanyResults,
   getTodoProjectSettings,
+  updateTodoProjectPrefs,
   upsertTodoProjectCv,
   clearTodoProjectCv,
   getTodoProjectCvAttachment,

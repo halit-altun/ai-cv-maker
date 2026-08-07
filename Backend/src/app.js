@@ -8,6 +8,7 @@ const dashboardRoutes = require("./routes/dashboard.routes");
 const outreachRoutes = require("./routes/outreach.routes");
 const outreachProjectRoutes = require("./routes/outreach-project.routes");
 const todoApplicationRoutes = require("./routes/todo-application.routes");
+const companyBasedRoutes = require("./routes/company-based.routes");
 const aiRoutes = require("./routes/ai.routes");
 const trackingRoutes = require("./routes/tracking.routes");
 const mailTrackingRoutes = require("./routes/mail-tracking.routes");
@@ -84,6 +85,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/outreach", outreachRoutes);
 app.use("/api/outreach-projects", outreachProjectRoutes);
 app.use("/api/todo-applications", todoApplicationRoutes);
+app.use("/api/company-based", companyBasedRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/track", trackingRoutes); // Tracking pixel (no auth required)
 app.use("/api/mail-tracking", mailTrackingRoutes); // Mail tracking API (auth required)

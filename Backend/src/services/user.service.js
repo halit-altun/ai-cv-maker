@@ -239,6 +239,19 @@ async function updateUserProfile(
     throw new AppError("Kullanıcı bulunamadı.", 404, "USER_NOT_FOUND");
   }
 
+  // İstek aralığı değiştiyse bekleyen mailleri yeni değere göre yeniden planla
+  if (
+    updates.gmailSendIntervalMinMinutes !== undefined ||
+    updates.gmailSendIntervalMaxMinutes !== undefined
+  ) {
+    try {
+      const { rescheduleUserPendingEmails } = require("./email-queue.service");
+      await rescheduleUserPendingEmails(userId);
+    } catch (err) {
+      console.error("[USER] Pending mail yeniden planlama hatası:", err);
+    }
+  }
+
   return toPublicUser(updated);
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -38,18 +38,57 @@ import {
 import {
   cancelTodoJobRequest,
   getTodoJobRequest,
+  getTodoProjectCompanyResultsRequest,
   getTodoProjectSummaryRequest,
   listTodoItemsRequest,
   pauseTodoJobRequest,
   resumeTodoJobRequest,
   startTodoJobRequest,
+  updateTodoProjectSettingsRequest,
   type TodoApplicationItem,
   type TodoApplicationJob,
   type TodoProjectCvMeta,
+  type TodoSendHistoryFilter,
 } from '@/lib/todo-applications/api';
 import { TodoJobStatusPanel } from '@/features/todo-applications';
 import Link from 'next/link';
 import { bulkApplicationCopy } from '../constants/copy';
+
+type SendHistoryFilter = TodoSendHistoryFilter;
+
+function buildPreviouslySentKeys(
+  companies: Array<{
+    sourceItemId?: string | null;
+    emailDomainInput?: string;
+    companyUrl?: string;
+    sentCount?: number;
+    queuedCount?: number;
+  }>
+): { itemIds: Set<string>; domains: Set<string> } {
+  const itemIds = new Set<string>();
+  const domains = new Set<string>();
+  for (const c of companies) {
+    const mailed = (c.sentCount || 0) > 0 || (c.queuedCount || 0) > 0;
+    if (!mailed) continue;
+    if (c.sourceItemId) itemIds.add(String(c.sourceItemId));
+    const domain = String(c.emailDomainInput || '')
+      .trim()
+      .toLowerCase();
+    if (domain) domains.add(domain);
+  }
+  return { itemIds, domains };
+}
+
+function wasPreviouslySent(
+  item: TodoApplicationItem,
+  sentKeys: { itemIds: Set<string>; domains: Set<string> }
+): boolean {
+  if (sentKeys.itemIds.has(item.id)) return true;
+  const domain = String(item.emailDomainInput || '')
+    .trim()
+    .toLowerCase();
+  return Boolean(domain && sentKeys.domains.has(domain));
+}
 
 export function BulkApplicationView() {
   const { colors, fonts } = dashboardTokens;
@@ -62,6 +101,11 @@ export function BulkApplicationView() {
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [cvMeta, setCvMeta] = useState<TodoProjectCvMeta | null>(null);
+  const [sendFilter, setSendFilter] = useState<SendHistoryFilter>('all');
+  const [sentKeys, setSentKeys] = useState<{ itemIds: Set<string>; domains: Set<string> }>({
+    itemIds: new Set(),
+    domains: new Set(),
+  });
 
   const [targetPosition, setTargetPosition] = useState('');
   const [cvLanguage, setCvLanguage] = useState<'turkish' | 'english'>('turkish');
@@ -103,24 +147,91 @@ export function BulkApplicationView() {
       setSelectedItemIds([]);
       setActiveJob(null);
       setCvMeta(null);
+      setSentKeys({ itemIds: new Set(), domains: new Set() });
       return;
     }
     setItemsLoading(true);
     try {
-      const [list, summary] = await Promise.all([
+      const [list, summary, results] = await Promise.all([
         listTodoItemsRequest(pid),
         getTodoProjectSummaryRequest(pid),
+        getTodoProjectCompanyResultsRequest(pid, { limit: 30 }),
       ]);
+      const keys = buildPreviouslySentKeys(results.companies || []);
+      const savedFilter = (summary.cv?.bulkSendHistoryFilter ||
+        'all') as SendHistoryFilter;
+      const filter: SendHistoryFilter = ['all', 'sent', 'unsent'].includes(savedFilter)
+        ? savedFilter
+        : 'all';
       setItems(list);
-      setSelectedItemIds(list.map((i) => i.id));
+      setSentKeys(keys);
       setCvMeta(summary.cv || null);
       setActiveJob(summary.activeJob || summary.recentJobs[0] || null);
+      setSendFilter(filter);
+      const visible =
+        filter === 'all'
+          ? list
+          : list.filter((item) => {
+              const sent = wasPreviouslySent(item, keys);
+              return filter === 'sent' ? sent : !sent;
+            });
+      setSelectedItemIds(visible.map((i) => i.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'To Do listesi alınamadı.');
     } finally {
       setItemsLoading(false);
     }
   }, []);
+
+  const filteredItems = useMemo(() => {
+    if (sendFilter === 'all') return items;
+    return items.filter((item) => {
+      const sent = wasPreviouslySent(item, sentKeys);
+      return sendFilter === 'sent' ? sent : !sent;
+    });
+  }, [items, sendFilter, sentKeys]);
+
+  const sentCount = useMemo(
+    () => items.filter((item) => wasPreviouslySent(item, sentKeys)).length,
+    [items, sentKeys]
+  );
+  const unsentCount = items.length - sentCount;
+
+  const applyFilterSelection = useCallback(
+    (filter: SendHistoryFilter, list: TodoApplicationItem[], keys: typeof sentKeys) => {
+      const visible =
+        filter === 'all'
+          ? list
+          : list.filter((item) => {
+              const sent = wasPreviouslySent(item, keys);
+              return filter === 'sent' ? sent : !sent;
+            });
+      setSelectedItemIds(visible.map((i) => i.id));
+    },
+    []
+  );
+
+  const handleSendFilterChange = async (next: SendHistoryFilter) => {
+    setSendFilter(next);
+    applyFilterSelection(next, items, sentKeys);
+    if (!projectId) return;
+    try {
+      const cv = await updateTodoProjectSettingsRequest(projectId, {
+        bulkSendHistoryFilter: next,
+      });
+      setCvMeta((prev) => ({
+        ...(prev || {
+          hasCv: false,
+          cvFileName: '',
+          cvTitle: '',
+        }),
+        ...cv,
+        bulkSendHistoryFilter: next,
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Filtre tercihi kaydedilemedi.');
+    }
+  };
 
   useEffect(() => {
     void loadProjects();
@@ -317,7 +428,9 @@ export function BulkApplicationView() {
             To Do firma listesi
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {itemsLoading ? 'Yükleniyor…' : `${items.length} kayıt · ${selectedItemIds.length} seçili`}
+            {itemsLoading
+              ? 'Yükleniyor…'
+              : `${filteredItems.length} görünür · ${selectedItemIds.length} seçili · toplam ${items.length}`}
           </Typography>
 
           {!items.length ? (
@@ -333,6 +446,25 @@ export function BulkApplicationView() {
           ) : (
             <>
               <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                <InputLabel>Gönderim filtresi</InputLabel>
+                <Select
+                  label="Gönderim filtresi"
+                  value={sendFilter}
+                  onChange={(e) =>
+                    void handleSendFilterChange(e.target.value as SendHistoryFilter)
+                  }
+                >
+                  <MenuItem value="all">Hepsi ({items.length})</MenuItem>
+                  <MenuItem value="sent">
+                    Daha önce gönderilenler ({sentCount})
+                  </MenuItem>
+                  <MenuItem value="unsent">
+                    Daha önce gönderilmeyenler ({unsentCount})
+                  </MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth size="small" sx={{ mb: 2 }}>
                 <InputLabel>Firmalar</InputLabel>
                 <Select
                   multiple
@@ -347,28 +479,42 @@ export function BulkApplicationView() {
                   }
                   input={<OutlinedInput label="Firmalar" />}
                   renderValue={(selected) =>
-                    `${selected.length} / ${items.length} seçili`
+                    `${selected.length} / ${filteredItems.length} seçili`
                   }
                 >
-                  {items.map((item) => (
-                    <MenuItem key={item.id} value={item.id}>
-                      <Checkbox checked={selectedItemIds.includes(item.id)} />
-                      <ListItemText
-                        primary={item.companyName || item.emailDomainInput}
-                        secondary={item.companyUrl}
-                      />
-                    </MenuItem>
-                  ))}
+                  {filteredItems.map((item) => {
+                    const previouslySent = wasPreviouslySent(item, sentKeys);
+                    return (
+                      <MenuItem key={item.id} value={item.id}>
+                        <Checkbox checked={selectedItemIds.includes(item.id)} />
+                        <ListItemText
+                          primary={item.companyName || item.emailDomainInput}
+                          secondary={
+                            previouslySent
+                              ? `${item.companyUrl} · daha önce gönderildi`
+                              : item.companyUrl
+                          }
+                        />
+                      </MenuItem>
+                    );
+                  })}
                 </Select>
               </FormControl>
 
-              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+              {sendFilter === 'sent' && selectedItemIds.length > 0 && !forceResend && (
+                <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+                  Daha önce gönderilen firmalara tekrar mail için aşağıda “Bu domain’e daha
+                  önce mail atıldıysa yine de gönder (force)” seçeneğini açmanız gerekebilir.
+                </Alert>
+              )}
+
+              <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                 <Button
                   size="small"
                   sx={{ textTransform: 'none' }}
-                  onClick={() => setSelectedItemIds(items.map((i) => i.id))}
+                  onClick={() => setSelectedItemIds(filteredItems.map((i) => i.id))}
                 >
-                  Tümünü seç
+                  Görünenleri seç
                 </Button>
                 <Button
                   size="small"
@@ -380,13 +526,14 @@ export function BulkApplicationView() {
               </Box>
 
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                {items
+                {filteredItems
                   .filter((i) => selectedItemIds.includes(i.id))
                   .slice(0, 20)
                   .map((item) => (
                     <Chip
                       key={item.id}
                       size="small"
+                      color={wasPreviouslySent(item, sentKeys) ? 'warning' : 'default'}
                       label={item.companyName || item.emailDomainInput}
                       onDelete={() =>
                         setSelectedItemIds((prev) => prev.filter((id) => id !== item.id))
@@ -533,7 +680,7 @@ export function BulkApplicationView() {
                 onChange={(e) => setForceResend(e.target.checked)}
               />
             }
-            label="Daha önce mail atılan domain’e tekrar izin ver"
+            label="Bu domain’e daha önce mail atıldıysa yine de gönder (force)"
             sx={{ mb: 2 }}
           />
 

@@ -16,6 +16,7 @@ const {
   getProjectCvHandler,
   uploadProjectCvHandler,
   deleteProjectCvHandler,
+  updateProjectPrefsHandler,
 } = require("../controllers/todo-application.controller");
 const { requireAuth } = require("../middlewares/auth.middleware");
 const { requireClientId } = require("../middlewares/client-id.middleware");
@@ -37,6 +38,7 @@ router.get("/projects/:projectId/company-results", projectCompanyResultsHandler)
 router.get("/projects/:projectId/cv", getProjectCvHandler);
 router.put("/projects/:projectId/cv", uploadProjectCvHandler);
 router.delete("/projects/:projectId/cv", deleteProjectCvHandler);
+router.patch("/projects/:projectId/settings", updateProjectPrefsHandler);
 
 /** Arka plan işleri */
 router.post("/jobs", startJobHandler);

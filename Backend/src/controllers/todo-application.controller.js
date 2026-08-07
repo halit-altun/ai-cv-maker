@@ -11,6 +11,7 @@ const {
   getProjectTodoSummary,
   getProjectCompanyResults,
   getTodoProjectSettings,
+  updateTodoProjectPrefs,
   upsertTodoProjectCv,
   clearTodoProjectCv,
 } = require("../services/todo-application.service");
@@ -157,6 +158,28 @@ async function getProjectCvHandler(req, res, next) {
   }
 }
 
+async function updateProjectPrefsHandler(req, res, next) {
+  try {
+    const cv = await updateTodoProjectPrefs(
+      req.clientId,
+      req.user?.id,
+      req.params.projectId,
+      req.body || {}
+    );
+    return res.json({
+      ok: true,
+      message: "Proje tercihleri kaydedildi.",
+      cv,
+      settings: {
+        bulkSendHistoryFilter: cv.bulkSendHistoryFilter,
+      },
+    });
+  } catch (error) {
+    if (sendError(res, error)) return undefined;
+    return next(error);
+  }
+}
+
 async function uploadProjectCvHandler(req, res, next) {
   try {
     const cv = await upsertTodoProjectCv(
@@ -256,6 +279,7 @@ module.exports = {
   resumeJobHandler,
   cancelJobHandler,
   getProjectCvHandler,
+  updateProjectPrefsHandler,
   uploadProjectCvHandler,
   deleteProjectCvHandler,
 };

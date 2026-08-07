@@ -43,6 +43,15 @@ const todoProjectSettingsSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    /**
+     * Toplu başvuru firma listesi filtresi:
+     * all | sent | unsent
+     */
+    bulkSendHistoryFilter: {
+      type: String,
+      enum: ["all", "sent", "unsent"],
+      default: "all",
+    },
   },
   {
     timestamps: true,

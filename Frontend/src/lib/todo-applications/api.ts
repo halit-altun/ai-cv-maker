@@ -159,12 +159,15 @@ export type TodoJobStartPayload = {
   sendMail?: boolean;
 };
 
+export type TodoSendHistoryFilter = 'all' | 'sent' | 'unsent';
+
 export type TodoProjectCvMeta = {
   hasCv: boolean;
   cvFileName: string;
   cvTitle: string;
   uploadedAt?: string | null;
   contentType?: string;
+  bulkSendHistoryFilter?: TodoSendHistoryFilter;
 };
 
 export type TodoProjectSummary = {
@@ -316,6 +319,30 @@ export async function getTodoProjectCvRequest(
   };
 }
 
+export async function updateTodoProjectSettingsRequest(
+  projectId: string,
+  patch: { bulkSendHistoryFilter?: TodoSendHistoryFilter }
+): Promise<TodoProjectCvMeta> {
+  const response = await authFetch(
+    `/api/todo-applications/projects/${encodeURIComponent(projectId)}/settings`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }
+  );
+  const data = await parseJson(response);
+  if (!response.ok || data.ok === false) {
+    throwApiError(data, 'Proje tercihleri kaydedilemedi.');
+  }
+  return (data.cv as TodoProjectCvMeta) || {
+    hasCv: false,
+    cvFileName: '',
+    cvTitle: '',
+    bulkSendHistoryFilter: patch.bulkSendHistoryFilter || 'all',
+  };
+}
+
 export async function uploadTodoProjectCvRequest(
   projectId: string,
   payload: {
@@ -359,7 +386,8 @@ export async function deleteTodoProjectCvRequest(
 }
 
 export async function getTodoProjectCompanyResultsRequest(
-  projectId: string
+  projectId: string,
+  options?: { limit?: number }
 ): Promise<{
   companies: Array<
     TodoJobItem & {
@@ -380,8 +408,11 @@ export async function getTodoProjectCompanyResultsRequest(
   };
   cv?: TodoProjectCvMeta;
 }> {
+  const qs = new URLSearchParams();
+  if (options?.limit != null) qs.set('limit', String(options.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
   const response = await authFetch(
-    `/api/todo-applications/projects/${encodeURIComponent(projectId)}/company-results`,
+    `/api/todo-applications/projects/${encodeURIComponent(projectId)}/company-results${suffix}`,
     { method: 'GET', headers: { 'Content-Type': 'application/json' } }
   );
   const data = await parseJson(response);
