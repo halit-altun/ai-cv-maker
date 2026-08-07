@@ -16,21 +16,28 @@ const { isDatabaseUnavailableError } = require("./utils/db-error");
 
 const app = express();
 
-/** Comma-separated origins, e.g. https://app.example.com,http://localhost:3010 */
+/** Comma-separated origins, e.g. https://cv-ai-maker.netlify.app,http://localhost:3010 */
 const frontendOrigins = String(process.env.FRONTEND_URL || "http://localhost:3010")
   .split(",")
-  .map((value) => value.trim())
+  .map((value) => value.trim().replace(/\/$/, ""))
   .filter(Boolean);
+
+console.log("[CORS] Allowed origins:", frontendOrigins.join(", ") || "(none)");
 
 app.use(express.json({ limit: "12mb" }));
 app.use(cookieParser());
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || frontendOrigins.includes(origin)) {
+      if (!origin) {
         return callback(null, true);
       }
-      return callback(new Error(`CORS blocked for origin: ${origin}`));
+      const normalized = origin.replace(/\/$/, "");
+      if (frontendOrigins.includes(normalized)) {
+        return callback(null, true);
+      }
+      console.warn(`[CORS] Blocked origin: ${origin}`);
+      return callback(null, false);
     },
     credentials: true,
     exposedHeaders: ["X-Client-Id"],
