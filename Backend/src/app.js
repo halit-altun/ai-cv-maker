@@ -65,6 +65,7 @@ app.set("trust proxy", 1);
 app.use(attachClientId);
 
 app.get("/health", (_req, res) => {
+  const bootState = require("./boot-state");
   const dbState = mongoose.connection.readyState;
   const states = {
     0: "disconnected",
@@ -72,10 +73,13 @@ app.get("/health", (_req, res) => {
     2: "connecting",
     3: "disconnecting",
   };
-
-  res.json({
-    ok: true,
+  const ok = bootState.ready && dbState === 1;
+  res.status(ok ? 200 : 503).json({
+    ok,
+    ready: bootState.ready,
+    error: bootState.error,
     db: states[dbState] ?? "unknown",
+    port: Number(process.env.PORT) || 3001,
   });
 });
 

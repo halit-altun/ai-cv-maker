@@ -3,6 +3,7 @@ const dns = require("dns");
 const http = require("http");
 const mongoose = require("mongoose");
 const app = require("./src/app");
+const bootState = require("./src/boot-state");
 const User = require("./src/models/user.model");
 const Cv = require("./src/models/cv.model");
 const RefreshToken = require("./src/models/refresh-token.model");
@@ -23,16 +24,6 @@ dns.setServers(["8.8.8.8", "1.1.1.1"]);
 const port = Number(process.env.PORT) || 3001;
 const uri = process.env.MONGODB_URI;
 
-if (!uri) {
-  console.error("MONGODB_URI .env dosyasında tanımlı değil.");
-  process.exit(1);
-}
-
-if (!process.env.JWT_SECRET) {
-  console.error("JWT_SECRET .env dosyasında tanımlı değil.");
-  process.exit(1);
-}
-
 async function syncIndexes() {
   await Promise.all([
     User.syncIndexes(),
@@ -50,16 +41,8 @@ async function syncIndexes() {
   console.log("Model indexleri senkronize edildi.");
 }
 
-async function main() {
-  await mongoose.connect(uri, {
-    serverSelectionTimeoutMS: 15000,
-  });
-  console.log("MongoDB bağlantısı kuruldu.");
-  console.log(`Veritabanı: ${mongoose.connection.name}`);
-  await syncIndexes();
-
-  // Email queue processor'ı başlat (her 30 saniyede bir çalışır)
-  const EMAIL_QUEUE_INTERVAL_MS = 30_000; // 30 saniye
+function startBackgroundProcessors() {
+  const EMAIL_QUEUE_INTERVAL_MS = 30_000;
   setInterval(async () => {
     try {
       await processEmailQueue();
@@ -69,7 +52,6 @@ async function main() {
   }, EMAIL_QUEUE_INTERVAL_MS);
   console.log(`Email queue processor başlatıldı (interval: ${EMAIL_QUEUE_INTERVAL_MS / 1000}s).`);
 
-  // To Do / Toplu başvuru job processor (sayfa kapansa da devam eder)
   const TODO_JOB_INTERVAL_MS = 20_000;
   setInterval(async () => {
     try {
@@ -81,36 +63,68 @@ async function main() {
   console.log(
     `To Do application processor başlatıldı (interval: ${TODO_JOB_INTERVAL_MS / 1000}s).`
   );
+}
 
-  const server = http.createServer(app);
-  // Container/Northflank: tüm arayüzlerde dinle (localhost-only Connection refused önler)
-  server.listen(port, "0.0.0.0", () => {
-    console.log(`Sunucu 0.0.0.0:${port} adresinde dinliyor.`);
-    try {
-      const {
-        getTrackingPublicBaseUrl,
-        isLocalTrackingBase,
-      } = require("./src/services/mail-tracking.service");
-      const base = getTrackingPublicBaseUrl();
-      if (isLocalTrackingBase(base)) {
-        console.warn(
-          "[MAIL_TRACKING] TRACKING_PUBLIC_BASE_URL tanımlı değil (localhost). Gmail açılışları kayda GEÇMEZ."
-        );
-        console.warn(
-          "[MAIL_TRACKING] Çözüm: ngrok http " +
-            port +
-            "  →  .env'e TRACKING_PUBLIC_BASE_URL=https://xxxx.ngrok-free.app"
-        );
-      } else {
-        console.log(`[MAIL_TRACKING] Public base: ${base}`);
-      }
-    } catch {
-      /* ignore */
-    }
+async function initDatabase() {
+  if (!uri) {
+    throw new Error("MONGODB_URI tanımlı değil (Northflank Environment).");
+  }
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET tanımlı değil (Northflank Environment).");
+  }
+
+  await mongoose.connect(uri, {
+    serverSelectionTimeoutMS: 15000,
   });
+  console.log("MongoDB bağlantısı kuruldu.");
+  console.log(`Veritabanı: ${mongoose.connection.name}`);
+  await syncIndexes();
+  startBackgroundProcessors();
+  bootState.ready = true;
+  bootState.error = null;
+}
+
+async function main() {
+  // Önce portu aç — yoksa Envoy "Connection refused" verir; /health gerçek hatayı gösterir
+  const server = http.createServer(app);
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "0.0.0.0", () => {
+      console.log(`Sunucu 0.0.0.0:${port} adresinde dinliyor.`);
+      resolve();
+    });
+  });
+
+  try {
+    const {
+      getTrackingPublicBaseUrl,
+      isLocalTrackingBase,
+    } = require("./src/services/mail-tracking.service");
+    const base = getTrackingPublicBaseUrl();
+    if (isLocalTrackingBase(base)) {
+      console.warn(
+        "[MAIL_TRACKING] TRACKING_PUBLIC_BASE_URL tanımlı değil (localhost). Gmail açılışları kayda GEÇMEZ."
+      );
+    } else {
+      console.log(`[MAIL_TRACKING] Public base: ${base}`);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    await initDatabase();
+  } catch (err) {
+    bootState.ready = false;
+    bootState.error = err.message || String(err);
+    console.error("Başlatma hatası (process ayakta, /health hata döner):", bootState.error);
+    console.error(
+      "Kontrol: Environment MONGODB_URI + JWT_SECRET; Atlas Network Access 0.0.0.0/0"
+    );
+  }
 }
 
 main().catch((err) => {
-  console.error("Başlatma hatası:", err.message);
+  console.error("Kritik başlatma hatası:", err.message);
   process.exit(1);
 });
