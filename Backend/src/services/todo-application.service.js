@@ -4,6 +4,7 @@ const TodoProjectSettings = require("../models/todo-project-settings.model");
 const MailTracking = require("../models/mail-tracking.model");
 const User = require("../models/user.model");
 const { AppError } = require("../utils/app-error");
+const { isValidPdfBuffer } = require("../utils/email-attachment.utils");
 const { getProjectOrThrow } = require("./outreach-project.service");
 const { fetchPageText } = require("./todo-page-fetch.service");
 const {
@@ -369,6 +370,15 @@ async function upsertTodoProjectCv(clientId, userId, projectId, payload = {}) {
   }
   if (contentBase64.length > 11_000_000) {
     throw new AppError("CV eki çok büyük (max ~8MB).", 400, "ATTACHMENT_TOO_LARGE");
+  }
+
+  const pdfBuf = Buffer.from(contentBase64, "base64");
+  if (!isValidPdfBuffer(pdfBuf)) {
+    throw new AppError(
+      "Yüklenen dosya geçerli bir PDF değil.",
+      400,
+      "INVALID_PDF_ATTACHMENT"
+    );
   }
 
   let filename = String(payload.filename || payload.cvFileName || "CV.pdf").trim() || "CV.pdf";

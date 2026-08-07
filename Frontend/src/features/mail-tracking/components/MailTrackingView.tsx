@@ -41,6 +41,10 @@ import {
 } from '@/lib/mail-tracking/api';
 import { listOutreachProjectsRequest } from '@/lib/projects/api';
 import { dashboardTokens } from '@/features/dashboard/styles/dashboardTokens';
+import {
+  ListTablePagination,
+  useServerListPagination,
+} from '@/shared/list-pagination';
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -100,6 +104,12 @@ export function MailTrackingView() {
   /** Tek gün — gönderim tarihi (YYYY-MM-DD) */
   const [sentDateFilter, setSentDateFilter] = useState('');
 
+  const {
+    skip,
+    limit,
+    buildTablePaginationProps,
+  } = useServerListPagination([statusFilter, projectFilter, companyFilter, sentDateFilter]);
+
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [selected, setSelected] = useState<MailTrackingItem | null>(null);
@@ -113,7 +123,8 @@ export function MailTrackingView() {
     try {
       const [list, summary, projectList] = await Promise.all([
         listMailTrackingsRequest({
-          limit: 100,
+          limit,
+          skip,
           status: statusFilter || undefined,
           projectId: projectFilter || undefined,
           company: companyFilter.trim() || undefined,
@@ -136,7 +147,7 @@ export function MailTrackingView() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, projectFilter, companyFilter, sentDateFilter]);
+  }, [statusFilter, projectFilter, companyFilter, sentDateFilter, limit, skip]);
 
   useEffect(() => {
     void loadData();
@@ -402,11 +413,7 @@ export function MailTrackingView() {
               ))}
             </TableBody>
           </Table>
-          <Box sx={{ px: 2, py: 1.5 }}>
-            <Typography variant="caption" color="text.secondary">
-              {total} kayıt
-            </Typography>
-          </Box>
+          <ListTablePagination {...buildTablePaginationProps(total)} />
         </Box>
       )}
 

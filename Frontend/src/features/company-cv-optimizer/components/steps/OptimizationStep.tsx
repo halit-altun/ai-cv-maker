@@ -26,6 +26,7 @@ import VerifiedIcon from '@mui/icons-material/Verified';
 import type { CompanyCvOptimizerState } from '../../types';
 import { GlassCard } from '../shell/GlassCard';
 import { dashboardTokens } from '@/features/dashboard/styles/dashboardTokens';
+import { ListTablePagination, useListPagination } from '@/shared/list-pagination';
 
 type OptimizationStepProps = Pick<
   CompanyCvOptimizerState,
@@ -90,6 +91,9 @@ export function OptimizationStep({
           status: 'missing' as const,
         },
       ];
+
+  const { pageItems: pagedComparisonRows, tablePaginationProps: comparisonPagination } =
+    useListPagination(comparisonRows, [analysisResult]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 2 }}>
@@ -300,7 +304,7 @@ export function OptimizationStep({
               </TableRow>
             </TableHead>
             <TableBody>
-              {comparisonRows.map((row, index) => (
+              {pagedComparisonRows.map((row, index) => (
                 <TableRow key={index} hover>
                   <TableCell>
                     <Typography fontWeight={600} fontSize="0.875rem">
@@ -333,6 +337,9 @@ export function OptimizationStep({
               ))}
             </TableBody>
           </Table>
+          {comparisonRows.length > 0 ? (
+            <ListTablePagination {...comparisonPagination} />
+          ) : null}
         </Box>
       </GlassCard>
 

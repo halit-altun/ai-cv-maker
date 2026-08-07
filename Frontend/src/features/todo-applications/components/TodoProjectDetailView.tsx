@@ -55,6 +55,7 @@ import {
 import { fileToBase64 } from '@/lib/outreach/api';
 import { todoApplicationsCopy } from '../constants/copy';
 import { TodoCompanyResultsPanel } from './TodoCompanyResultsPanel';
+import { ListTablePagination, useListPagination } from '@/shared/list-pagination';
 
 type DraftRow = {
   key: string;
@@ -122,6 +123,11 @@ export function TodoProjectDetailView() {
   const [editSaving, setEditSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TodoApplicationItem | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+
+  const { pageItems: pagedItems, tablePaginationProps: itemsPagination } = useListPagination(
+    items,
+    [projectId]
+  );
 
   const loadMeta = useCallback(async () => {
     if (!projectId) return;
@@ -581,7 +587,7 @@ export function TodoProjectDetailView() {
             </Typography>
           ) : (
             <Stack spacing={1}>
-              {items.map((item) => (
+              {pagedItems.map((item) => (
                 <Box
                   key={item.id}
                   sx={{
@@ -631,6 +637,7 @@ export function TodoProjectDetailView() {
                   </Stack>
                 </Box>
               ))}
+              <ListTablePagination {...itemsPagination} />
             </Stack>
           )}
         </GlassCard>

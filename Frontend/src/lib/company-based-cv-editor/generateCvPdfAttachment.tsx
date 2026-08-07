@@ -68,6 +68,11 @@ export async function generateOptimizedCvPdfAttachment(
     throw new Error('Optimize CV PDF oluşturulamadı.');
   }
 
+  // %PDF → base64 "JVBERi" ile başlar; bozuk blob'u erken yakala
+  if (!contentBase64.startsWith('JVBERi')) {
+    throw new Error('Üretilen CV eki geçerli PDF değil.');
+  }
+
   return {
     filename: buildOptimizedFileName(data),
     contentBase64,

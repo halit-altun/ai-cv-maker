@@ -25,6 +25,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import type { TodoApplicationJob } from '@/lib/todo-applications/api';
 import { dashboardTokens } from '@/features/dashboard/styles/dashboardTokens';
 import { GlassCard } from '@/features/company-cv-optimizer/components/shell/GlassCard';
+import { ListTablePagination, useListPagination } from '@/shared/list-pagination';
 
 function formatDateTime(value?: string | null): string {
   if (!value) return '—';
@@ -122,6 +123,8 @@ export function TodoJobStatusPanel({
   onOpenCompany,
 }: TodoJobStatusPanelProps) {
   const { colors, fonts } = dashboardTokens;
+  const jobItems = job?.items || [];
+  const { pageItems, tablePaginationProps } = useListPagination(jobItems, [job?.id]);
 
   if (!job) {
     return (
@@ -315,7 +318,7 @@ export function TodoJobStatusPanel({
           </TableRow>
         </TableHead>
         <TableBody>
-          {(job.items || []).map((item) => (
+          {pageItems.map((item) => (
             <TableRow
               key={item.id}
               hover={Boolean(onOpenCompany)}
@@ -424,6 +427,7 @@ export function TodoJobStatusPanel({
           ))}
         </TableBody>
       </Table>
+      {jobItems.length > 0 ? <ListTablePagination {...tablePaginationProps} /> : null}
     </GlassCard>
   );
 }

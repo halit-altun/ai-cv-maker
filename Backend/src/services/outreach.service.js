@@ -1,6 +1,5 @@
 const OutreachLog = require("../models/outreach-log.model");
 const MailTracking = require("../models/mail-tracking.model");
-const { sendMail } = require("./email.service");
 const { enqueueEmail } = require("./email-queue.service");
 const { createMailTracking, generateTrackingPixelHtml } = require("./mail-tracking.service");
 const { createEmailHtmlTemplate } = require("../utils/email-template");
@@ -9,6 +8,7 @@ const {
   isVerifyEnabled,
   pickValidRecipient,
 } = require("./email-verifier.service");
+const { buildPdfAttachmentFromBase64, stripDataUriBase64 } = require("../utils/email-attachment.utils");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -89,18 +89,27 @@ async function countTodayRecipientSends(clientId) {
 
 function buildPdfAttachment(attachment) {
   if (!attachment || !attachment.contentBase64) return null;
-  const filename = String(attachment.filename || "CV.pdf").trim() || "CV.pdf";
-  const contentType = String(attachment.contentType || "application/pdf");
-  const raw = String(attachment.contentBase64).replace(/^data:[^;]+;base64,/, "");
+  const raw = stripDataUriBase64(attachment.contentBase64);
   // ~8MB base64 ~ 6MB binary
   if (raw.length > 11_000_000) {
     throw new AppError("CV eki çok büyük (max ~8MB).", 400, "ATTACHMENT_TOO_LARGE");
   }
-  return {
-    filename: filename.endsWith(".pdf") ? filename : `${filename}.pdf`,
-    content: Buffer.from(raw, "base64"),
-    contentType,
-  };
+  try {
+    return buildPdfAttachmentFromBase64({
+      filename: attachment.filename,
+      contentBase64: raw,
+      contentType: attachment.contentType,
+    });
+  } catch (err) {
+    if (err && err.code === "INVALID_PDF_ATTACHMENT") {
+      throw new AppError(
+        "CV eki bozuk veya geçersiz PDF. Lütfen tekrar üretin / yükleyin.",
+        400,
+        "INVALID_PDF_ATTACHMENT"
+      );
+    }
+    throw err;
+  }
 }
 
 /**

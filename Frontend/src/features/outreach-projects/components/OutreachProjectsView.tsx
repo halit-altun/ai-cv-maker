@@ -44,6 +44,7 @@ import {
   type ProjectDashboardRange,
 } from '@/lib/projects/api';
 import { dashboardTokens } from '@/features/dashboard/styles/dashboardTokens';
+import { ListTablePagination, useListPagination } from '@/shared/list-pagination';
 
 function formatDateTime(value?: string | null): string {
   if (!value) return '—';
@@ -273,6 +274,9 @@ export function OutreachProjectsView() {
     });
   }, [dashboard?.companies, companySearch]);
 
+  const { pageItems: pagedCompanies, tablePaginationProps: companyPagination } =
+    useListPagination(filteredCompanies, [companySearch, selectedId, rangePreset]);
+
   return (
     <Box sx={{ maxWidth: 1100, mx: 'auto', px: { xs: 2, md: 0 }, py: 3 }}>
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
@@ -482,7 +486,8 @@ export function OutreachProjectsView() {
                   “{companySearch.trim()}” ile eşleşen şirket yok.
                 </Alert>
               ) : (
-                filteredCompanies.map((company) => (
+                <>
+                {pagedCompanies.map((company) => (
                 <Accordion
                   key={company.domain}
                   disableGutters
@@ -569,7 +574,9 @@ export function OutreachProjectsView() {
                     </Table>
                   </AccordionDetails>
                 </Accordion>
-                ))
+                ))}
+                <ListTablePagination {...companyPagination} />
+                </>
               )}
             </Stack>
           )}

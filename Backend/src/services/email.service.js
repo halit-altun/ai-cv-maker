@@ -1,5 +1,6 @@
 const nodemailer = require("nodemailer");
 const { PLATFORM_BRAND_NAME } = require("../config/platform-brand");
+const { normalizeAttachmentsForSend } = require("../utils/email-attachment.utils");
 
 function createTransporter() {
   const host = process.env.SMTP_HOST;
@@ -39,12 +40,23 @@ function buildFromAddress(fromName) {
 async function sendMail({ to, subject, text, html, fromName, replyTo, attachments }) {
   const transporter = createTransporter();
   const from = buildFromAddress(fromName);
+  let normalizedAttachments;
+  try {
+    normalizedAttachments = normalizeAttachmentsForSend(attachments);
+  } catch (err) {
+    console.error("[email] Geçersiz PDF eki:", err.message);
+    throw err;
+  }
 
   if (!transporter) {
     console.warn(`[email] SMTP yok — mail loglandı: ${subject} -> ${to}`);
     console.warn(text);
-    if (Array.isArray(attachments) && attachments.length) {
-      console.warn(`[email] attachment(s): ${attachments.map((a) => a.filename).join(", ")}`);
+    if (normalizedAttachments?.length) {
+      console.warn(
+        `[email] attachment(s): ${normalizedAttachments
+          .map((a) => `${a.filename} (${a.content.length} bytes)`)
+          .join(", ")}`
+      );
     }
     return { sent: false, logged: true };
   }
@@ -56,7 +68,7 @@ async function sendMail({ to, subject, text, html, fromName, replyTo, attachment
     subject,
     text,
     html,
-    attachments: Array.isArray(attachments) ? attachments : undefined,
+    attachments: normalizedAttachments,
     priority: "normal",
   });
 

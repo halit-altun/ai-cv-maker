@@ -25,6 +25,7 @@ import {
   type OutreachCompanyGroup,
 } from '@/lib/outreach/api';
 import { dashboardTokens } from '@/features/dashboard/styles/dashboardTokens';
+import { ListTablePagination, useListPagination } from '@/shared/list-pagination';
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -205,6 +206,10 @@ export function OutreachLogsView() {
     });
   }, [companies, focusDomain]);
 
+  const { pageItems: pagedCompanies, tablePaginationProps } = useListPagination(sorted, [
+    focusDomain,
+  ]);
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Box>
@@ -254,7 +259,7 @@ export function OutreachLogsView() {
       )}
 
       <Stack spacing={2}>
-        {sorted.map((company) => (
+        {pagedCompanies.map((company) => (
           <Accordion
             key={company.domain}
             defaultExpanded={company.domain === focusDomain}
@@ -533,6 +538,7 @@ export function OutreachLogsView() {
             </AccordionDetails>
           </Accordion>
         ))}
+        {sorted.length > 0 ? <ListTablePagination {...tablePaginationProps} /> : null}
       </Stack>
     </Box>
   );

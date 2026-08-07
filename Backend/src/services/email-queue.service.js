@@ -1,6 +1,7 @@
 const EmailQueue = require("../models/email-queue.model");
 const User = require("../models/user.model");
 const { sendMail } = require("./email.service");
+const { serializeAttachmentsForQueue } = require("../utils/email-attachment.utils");
 
 const MAX_INTERVAL_SECONDS = 86400; // 24 saat
 
@@ -169,6 +170,8 @@ async function enqueueEmail(userId, emailData, metadata = {}) {
       const result = await sendMail({
         ...emailData,
         html: emailData.html || emailData.bodyHtml,
+        // Buffer veya contentBase64 — sendMail normalize eder
+        attachments: emailData.attachments,
       });
       return {
         queued: false,
@@ -204,6 +207,27 @@ async function enqueueEmail(userId, emailData, metadata = {}) {
     console.log(`[EMAIL_QUEUE] İlk mail, hemen gönderilecek.`);
   }
 
+  // Kritik: nodemailer Buffer (`content`) Mongoose şemasında yok → contentBase64 olarak sakla
+  let queueAttachments = [];
+  try {
+    queueAttachments = serializeAttachmentsForQueue(emailData.attachments);
+  } catch (attErr) {
+    console.error("[EMAIL_QUEUE] Ek serileştirme hatası:", attErr.message);
+    throw attErr;
+  }
+
+  if (Array.isArray(emailData.attachments) && emailData.attachments.length && !queueAttachments.length) {
+    throw new Error("CV eki kuyruğa yazılamadı (boş/geçersiz PDF).");
+  }
+
+  if (queueAttachments.length) {
+    console.log(
+      `[EMAIL_QUEUE] Ek(ler) kaydedildi: ${queueAttachments
+        .map((a) => `${a.filename} (~${Math.round((a.contentBase64?.length || 0) * 0.75)} bytes)`)
+        .join(", ")}`
+    );
+  }
+
   const queueItem = new EmailQueue({
     userId,
     status: "pending",
@@ -214,7 +238,7 @@ async function enqueueEmail(userId, emailData, metadata = {}) {
     bodyHtml: emailData.html,
     fromName: emailData.fromName,
     replyTo: emailData.replyTo,
-    attachments: emailData.attachments,
+    attachments: queueAttachments,
     companyName: metadata.companyName,
     domain: metadata.domain,
     cvId: metadata.cvId,
@@ -224,6 +248,7 @@ async function enqueueEmail(userId, emailData, metadata = {}) {
       ...metadata,
       appliedIntervalSeconds: intervalSeconds,
       appliedIntervalRangeSeconds: [minSeconds, maxSeconds],
+      attachmentCount: queueAttachments.length,
     },
   });
 
@@ -307,6 +332,20 @@ async function processEmailQueue() {
       item.processedAt = new Date();
       await item.save();
 
+      const expectedAtt =
+        Number(item.metadata?.attachmentCount) ||
+        (Array.isArray(item.attachments) ? item.attachments.length : 0);
+      const hasUsableAtt =
+        Array.isArray(item.attachments) &&
+        item.attachments.some((a) => a && String(a.contentBase64 || "").trim().length > 100);
+
+      if (expectedAtt > 0 && !hasUsableAtt) {
+        throw new Error(
+          "Kuyruktaki CV eki boş/bozuk (eski kayıt). Bu mail yeniden gönderilmeli — yeni gönderimlerde ek düzgün saklanır."
+        );
+      }
+
+      // contentBase64 → Buffer (nodemailer); sendMail içinde normalize edilir
       await sendMail({
         to: item.to,
         subject: item.subject,
@@ -321,8 +360,18 @@ async function processEmailQueue() {
       item.sentAt = new Date();
       await item.save();
 
+      const attInfo = Array.isArray(item.attachments)
+        ? item.attachments
+            .map((a) => {
+              const approx = a?.contentBase64
+                ? Math.round(String(a.contentBase64).length * 0.75)
+                : 0;
+              return `${a?.filename || "?"} (${approx}b)`;
+            })
+            .join(", ")
+        : "yok";
       console.log(
-        `[EMAIL_QUEUE_PROCESSOR] Mail gönderildi: ${item._id} | Alıcı: ${item.to?.join(", ")}`
+        `[EMAIL_QUEUE_PROCESSOR] Mail gönderildi: ${item._id} | Alıcı: ${item.to?.join(", ")} | Ek: ${attInfo}`
       );
       successCount++;
     } catch (error) {

@@ -32,6 +32,7 @@ import {
 } from '@/lib/todo-applications/api';
 import { dashboardTokens } from '@/features/dashboard/styles/dashboardTokens';
 import { GlassCard } from '@/features/company-cv-optimizer/components/shell/GlassCard';
+import { ListTablePagination, useListPagination } from '@/shared/list-pagination';
 
 type CompanyResult = TodoJobItem & {
   jobId?: string;
@@ -154,6 +155,12 @@ export function TodoCompanyResultsPanel({ projectId }: TodoCompanyResultsPanelPr
     });
   }, [companies, filter, search]);
 
+  const { pageItems, tablePaginationProps } = useListPagination(filtered, [
+    filter,
+    search,
+    projectId,
+  ]);
+
   return (
     <>
       <GlassCard sx={{ p: 3 }}>
@@ -251,7 +258,7 @@ export function TodoCompanyResultsPanel({ projectId }: TodoCompanyResultsPanelPr
               </TableRow>
             </TableHead>
             <TableBody>
-              {filtered.map((c) => (
+              {pageItems.map((c) => (
                 <TableRow
                   key={c.id}
                   hover
@@ -294,6 +301,9 @@ export function TodoCompanyResultsPanel({ projectId }: TodoCompanyResultsPanelPr
               ))}
             </TableBody>
           </Table>
+          {filtered.length > 0 ? (
+            <ListTablePagination {...tablePaginationProps} />
+          ) : null}
         )}
       </GlassCard>
 
