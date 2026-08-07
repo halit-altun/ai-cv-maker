@@ -404,6 +404,28 @@ export function TodoCompanyResultsPanel({ projectId }: TodoCompanyResultsPanelPr
                   </Typography>
                 </Box>
 
+                {selected.linkedinMessage ? (
+                  <Box>
+                    <Typography fontWeight={600} sx={{ mb: 0.5 }}>
+                      LinkedIn soğuk mesaj
+                    </Typography>
+                    <Typography
+                      component="pre"
+                      variant="body2"
+                      sx={{
+                        whiteSpace: 'pre-wrap',
+                        fontFamily: 'inherit',
+                        p: 2,
+                        borderRadius: 2,
+                        bgcolor: colors.surfaceContainerLow,
+                        border: `1px solid ${colors.outlineVariant}`,
+                      }}
+                    >
+                      {selected.linkedinMessage}
+                    </Typography>
+                  </Box>
+                ) : null}
+
                 <Box>
                   <Typography fontWeight={600} sx={{ mb: 1 }}>
                     Alıcılar

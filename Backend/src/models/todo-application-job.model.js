@@ -66,6 +66,8 @@ const jobItemSchema = new mongoose.Schema(
     },
     coldEmailSubject: { type: String, default: "" },
     coldEmailBody: { type: String, default: "" },
+    /** LinkedIn soğuk mesaj (opsiyonel AI üretimi) */
+    linkedinMessage: { type: String, default: "" },
     /** AI’nin firmaya göre ne uyarladığı kısa özeti */
     adaptationNotes: { type: String, default: "" },
     /** Gönderimde kullanılan CV dosya adı (proje CV snapshot) */
@@ -164,6 +166,8 @@ const todoApplicationJobSchema = new mongoose.Schema(
       },
       shouldGenerateCoverLetter: { type: Boolean, default: false },
       shouldGenerateLinkedInMessage: { type: Boolean, default: false },
+      includeCvPhoto: { type: Boolean, default: false },
+      profileImageUrl: { type: String, default: "" },
       outreachCvAttachmentSource: {
         type: String,
         enum: ["optimized", "original"],

@@ -19,6 +19,20 @@ body {
   break-inside: avoid;
 }
 
+/* Yazdırma / PDF benzeri çok sayfa: 1. sayfa mevcut padding, 2+ üstte 25px */
+@media print {
+  @page {
+    margin-top: 25px;
+    margin-bottom: 12mm;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  @page :first {
+    margin-top: 0;
+  }
+}
+
 /* CareerAI — Optimize CTA shimmer */
 @keyframes career-ai-shimmer {
   0% {

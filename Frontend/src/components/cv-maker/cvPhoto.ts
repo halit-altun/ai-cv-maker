@@ -17,6 +17,12 @@ export const CV_PHOTO_SIZE_MAX_PT = CV_PHOTO_SIZE_PT;
 /** Match preview `.cv-page` padding: 20mm */
 export const CV_PAGE_PADDING_PT = Math.round((20 * 72) / 25.4); // ≈ 57
 
+/**
+ * 2. (ve sonraki) sayfada akan içeriğin üst boşluğu.
+ * react-pdf wrap’te View paddingTop yalnızca 1. sayfada uygulanır; sıfırdan başlamasın.
+ */
+export const CV_CONTINUATION_PAGE_TOP_PT = 25;
+
 /** Where the photo bottom sits (above info). */
 export const CV_PHOTO_BOTTOM_ALIGN_PT = 48;
 

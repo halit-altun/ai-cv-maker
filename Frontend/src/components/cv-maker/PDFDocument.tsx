@@ -26,6 +26,7 @@ import {
 import {
   resolveCvPhotoSizePt,
   CV_PAGE_PADDING_PT,
+  CV_CONTINUATION_PAGE_TOP_PT,
   CV_PHOTO_FRAME_COLOR,
   CV_PHOTO_FRAME_WIDTH_PT,
   CV_IDENTITY_BEFORE_CONTACT_PT,
@@ -138,6 +139,11 @@ const createStyles = (
     /** Same 20mm inset as preview `.cv-page` */
     pageContent: {
       padding: CV_PAGE_PADDING_PT,
+    },
+    /** 2+ sayfa üst boşluğu (wrap sonrası paddingTop uygulanmadığı için) */
+    continuationPageTopSpacer: {
+      height: CV_CONTINUATION_PAGE_TOP_PT,
+      width: '100%',
     },
     header: {
       marginBottom: 12,
@@ -517,6 +523,15 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        {/* Wrap ile gelen 2+ sayfada içerik üstten 25pt boşlukla başlar */}
+        <View
+          fixed
+          render={({ pageNumber }) =>
+            pageNumber > 1 ? (
+              <View style={styles.continuationPageTopSpacer} />
+            ) : null
+          }
+        />
         {/* Page-absolute layers — same geometry as preview (padding + offsets) */}
         {showPhoto ? (
           <View

@@ -12,6 +12,7 @@ const companyBasedRoutes = require("./routes/company-based.routes");
 const aiRoutes = require("./routes/ai.routes");
 const trackingRoutes = require("./routes/tracking.routes");
 const mailTrackingRoutes = require("./routes/mail-tracking.routes");
+const clientUiPreferencesRoutes = require("./routes/client-ui-preferences.routes");
 const { attachClientId } = require("./middlewares/client-id.middleware");
 const { isAppError } = require("./utils/app-error");
 const { isDatabaseUnavailableError } = require("./utils/db-error");
@@ -112,6 +113,7 @@ app.use("/api/company-based", companyBasedRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/track", trackingRoutes); // Tracking pixel (no auth required)
 app.use("/api/mail-tracking", mailTrackingRoutes); // Mail tracking API (auth required)
+app.use("/api/client-preferences", clientUiPreferencesRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

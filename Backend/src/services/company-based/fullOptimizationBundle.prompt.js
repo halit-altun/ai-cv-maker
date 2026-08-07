@@ -10,6 +10,8 @@ function buildFullOptimizationBundlePrompt(request) {
   const wantLinkedIn = Boolean(request.generateLinkedInMessage);
   const wantCold = Boolean(request.generateColdEmail);
   const coldLang = request.coldEmailLanguage === "english" ? "English" : "Turkish";
+  /** LinkedIn: cold mail dili varsa onu kullan (toplu outreach tutarlılığı) */
+  const linkedInLang = wantCold ? coldLang : lang;
   const companyKeywords = Array.isArray(request.companyInfo?.extractedKeywords)
     ? request.companyInfo.extractedKeywords.filter(Boolean)
     : [];
@@ -132,7 +134,11 @@ Return ONLY this JSON shape:
     "negativeMismatches": [{ "label": "...", "gap": "Bu ilan için uygun değil çünkü ...", "evidence": "" }]
   },
   "coverLetter": ${wantCover ? '"full cover letter body WITHOUT signature"' : '""'},
-  "linkedinMessage": ${wantLinkedIn ? '"50-70 word LinkedIn body WITHOUT signature"' : '""'},
+  "linkedinMessage": ${
+    wantLinkedIn
+      ? `"60-90 word LinkedIn cold-outreach body in ${linkedInLang} WITHOUT signature"`
+      : '""'
+  },
   "coldEmail": ${
     wantCold
       ? '{ "subject": "...", "body": "full cold email WITH signature lines" }'
@@ -176,7 +182,16 @@ CRITICAL RULES:
    - Skills/languages/education: NEVER force-weave for this purpose.
 5) recommendations ALWAYS Turkish.
 6) Cover letter (if YES): 250-350 words total intent, 3-4 paragraphs, ${lang}, no signature, no markdown. Use only target keywords grounded in CV.
-7) LinkedIn (if YES): body 50-70 words, ${lang}, no signature.
+7) LinkedIn cold outreach (if YES) — ${linkedInLang}, plain text, NO markdown, NO signature/contact block (app appends it):
+   LENGTH: 60-90 words body (hard). Aim ~400-600 characters; mobile-readable without scroll.
+   FORMAT: Short paragraphs with blank lines between them; corporate-letter tone avoided; not an email essay.
+   GREETING: First line exactly "Merhaba," (TR) or "Hello," (EN). No invented person name. Optional: "Merhaba [Company] Ekibi," / "Hello [Company] team," ONLY if company name is known.
+   A→Z FLOW (required):
+     (A) Opening & context: 1 grounded sentence showing interest in THIS company's work (tech focus / sector / growth / recent focus) — ONLY from target pages/profile. No fake flattery.
+     (B) Value proposition: 1-2 sentences summarizing the candidate (role + stack from CV) and how they can help THIS company's focus. Prefer real CV∩company overlap; never claim company-domain tech absent from CV.
+     (C) CTA: Soft ask to review profile/CV fit and a short chat — NOT pushy interview demand. Do NOT say "I am looking for a job at your company"; frame as sharing how you can contribute.
+   FORBIDDEN: long biography, fake praise, link/PDF bombardment, listing multiple URLs, "please interview me" pressure, inventing company products/clients/awards.
+   Do NOT mention attaching a PDF filename in the body.
 8) Cold email (if YES): language ${coldLang}, max ~150 words, greeting + short body + Best regards/Saygılarımla + name/title/email/phone/links if known.
    RESEARCHED / COMPANY-FIT VIBE (REQUIRED) + ZERO HALLUCINATION:
    - Reader must feel you looked at THIS company (not a mass blast).
@@ -208,6 +223,7 @@ CRITICAL RULES:
       wantLinkedIn,
       wantCold,
       coldLang,
+      linkedInLang,
       kwAbout,
       kwExp,
       kwSkills,

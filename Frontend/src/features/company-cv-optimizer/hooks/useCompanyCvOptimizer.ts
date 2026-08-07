@@ -37,6 +37,7 @@ import {
 } from '@/components/cv-maker/cvTypography';
 import { CV_PHOTO_SIZE_PT } from '@/components/cv-maker/cvPhoto';
 import {
+  EMAIL_PREFIX_CATEGORIES,
   buildRecipientEmails,
   extractDomainFromUrl,
   isExclusiveEmailCategory,
@@ -58,6 +59,12 @@ import {
 } from '@/lib/projects/api';
 import { generateOptimizedCvPdfAttachment } from '@/lib/company-based-cv-editor/generateCvPdfAttachment';
 import { authFetch } from '@/lib/auth/authFetch';
+import {
+  getClientUiPreferencesRequest,
+  updateClientUiPreferencesRequest,
+} from '@/lib/client-preferences/api';
+
+const EMAIL_CATEGORY_IDS = new Set(EMAIL_PREFIX_CATEGORIES.map((c) => c.id));
 
 export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
@@ -145,7 +152,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   const [includeCvPhoto, setIncludeCvPhoto] = useState(false);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
   const [cvRestoredFromCache, setCvRestoredFromCache] = useState(false);
+  const [prefsReady, setPrefsReady] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const prefsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Outreach projeleri — GET; en son seçilen varsayılan
   useEffect(() => {
@@ -277,61 +286,176 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     });
   }, [cvFile, cvLanguage]);
 
-  // Geçici DB (localStorage): analiz tercihlerini her yeni analizde hazır tutar.
+  // Client bazlı tercihler (toplu + company-based ortak)
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(ANALYSIS_PREFS_STORAGE_KEY);
-      if (!raw) return;
-
-      const parsed = JSON.parse(raw) as {
-        targetPosition?: string;
-        manualMustMentionTopicsText?: string;
-        manualMustNotMentionTopicsText?: string;
-        coverLetterRecipientName?: string;
-        coverLetterCompanyName?: string;
-      };
-
-      if (typeof parsed.targetPosition === 'string') {
-        setTargetPosition(parsed.targetPosition);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const prefs = await getClientUiPreferencesRequest();
+        if (cancelled) return;
+        setTargetPosition(prefs.targetPosition || '');
+        setManualMustMentionTopicsText(prefs.manualMustMentionTopicsText || '');
+        setManualMustNotMentionTopicsText(prefs.manualMustNotMentionTopicsText || '');
+        setCoverLetterRecipientName(prefs.coverLetterRecipientName || '');
+        setCoverLetterCompanyName(prefs.coverLetterCompanyName || '');
+        const cached = await loadCachedCompanyCvPdf().catch(() => null);
+        if (cancelled) return;
+        if (cached?.file) {
+          // IndexedDB CV dili öncelikli; cache effect ile çift set zararsız
+          setCvFile((prev) => prev || cached.file);
+          setCvLanguage(cached.cvLanguage);
+          setCvRestoredFromCache(true);
+        } else {
+          setCvLanguage(prefs.cvLanguage === 'english' ? 'english' : 'turkish');
+        }
+        setOutreachEmailLanguageMode(
+          prefs.outreachEmailLanguageMode === 'turkish' ||
+            prefs.outreachEmailLanguageMode === 'english'
+            ? prefs.outreachEmailLanguageMode
+            : 'auto'
+        );
+        setAiSettings({
+          about: prefs.aiSettings?.about !== false,
+          workExperience: Boolean(prefs.aiSettings?.workExperience),
+          skills: Boolean(prefs.aiSettings?.skills),
+        });
+        const cats = (prefs.selectedEmailPrefixCategories || []).filter(
+          (id): id is EmailPrefixCategoryId =>
+            EMAIL_CATEGORY_IDS.has(id as EmailPrefixCategoryId)
+        );
+        if (cats.length) setSelectedEmailPrefixCategories(cats);
+        setCustomEmailLocalPartsText(prefs.customEmailLocalPartsText || '');
+        setIncludePrimaryEmailInSend(prefs.includePrimaryEmailInSend !== false);
+        setSkipPrimaryEmailVerification(Boolean(prefs.skipPrimaryEmailVerification));
+        setForceOutreachResend(Boolean(prefs.forceResend));
+        setShouldGenerateCoverLetter(prefs.shouldGenerateCoverLetter !== false);
+        setCoverLetterSource(
+          prefs.coverLetterSource === 'text' ? 'text' : 'company'
+        );
+        setShouldGenerateLinkedInMessage(Boolean(prefs.shouldGenerateLinkedInMessage));
+        setLinkedinMessageSource(
+          prefs.linkedinMessageSource === 'text' ? 'text' : 'company'
+        );
+        setCvAdaptationSource(
+          prefs.cvAdaptationSource === 'text' ? 'text' : 'company'
+        );
+        setIncludeCvPhoto(Boolean(prefs.includeCvPhoto));
+        setShouldSendCompanyEmail(Boolean(prefs.shouldSendCompanyEmail));
+        setOutreachCvAttachmentSource(
+          prefs.outreachCvAttachmentSource === 'original' ? 'original' : 'optimized'
+        );
+      } catch (err) {
+        console.warn('Client tercihleri yüklenemedi:', err);
+        // Fallback: eski localStorage
+        try {
+          const raw = localStorage.getItem(ANALYSIS_PREFS_STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw) as {
+              targetPosition?: string;
+              manualMustMentionTopicsText?: string;
+              manualMustNotMentionTopicsText?: string;
+              coverLetterRecipientName?: string;
+              coverLetterCompanyName?: string;
+            };
+            if (typeof parsed.targetPosition === 'string') {
+              setTargetPosition(parsed.targetPosition);
+            }
+            if (typeof parsed.manualMustMentionTopicsText === 'string') {
+              setManualMustMentionTopicsText(parsed.manualMustMentionTopicsText);
+            }
+            if (typeof parsed.manualMustNotMentionTopicsText === 'string') {
+              setManualMustNotMentionTopicsText(parsed.manualMustNotMentionTopicsText);
+            }
+            if (typeof parsed.coverLetterRecipientName === 'string') {
+              setCoverLetterRecipientName(parsed.coverLetterRecipientName);
+            }
+            if (typeof parsed.coverLetterCompanyName === 'string') {
+              setCoverLetterCompanyName(parsed.coverLetterCompanyName);
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      } finally {
+        if (!cancelled) setPrefsReady(true);
       }
-      if (typeof parsed.manualMustMentionTopicsText === 'string') {
-        setManualMustMentionTopicsText(parsed.manualMustMentionTopicsText);
-      }
-      if (typeof parsed.manualMustNotMentionTopicsText === 'string') {
-        setManualMustNotMentionTopicsText(parsed.manualMustNotMentionTopicsText);
-      }
-      if (typeof parsed.coverLetterRecipientName === 'string') {
-        setCoverLetterRecipientName(parsed.coverLetterRecipientName);
-      }
-      if (typeof parsed.coverLetterCompanyName === 'string') {
-        setCoverLetterCompanyName(parsed.coverLetterCompanyName);
-      }
-    } catch (err) {
-      console.warn('Analiz tercihleri localStorage yüklenemedi:', err);
-    }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        ANALYSIS_PREFS_STORAGE_KEY,
-        JSON.stringify({
-          targetPosition,
-          manualMustMentionTopicsText,
-          manualMustNotMentionTopicsText,
-          coverLetterRecipientName,
-          coverLetterCompanyName
-        })
-      );
-    } catch (err) {
-      console.warn('Analiz tercihleri localStorage kaydedilemedi:', err);
-    }
+    if (!prefsReady) return;
+    if (prefsSaveTimerRef.current) clearTimeout(prefsSaveTimerRef.current);
+    prefsSaveTimerRef.current = setTimeout(() => {
+      const patch = {
+        targetPosition: targetPosition.trim(),
+        cvLanguage,
+        outreachEmailLanguageMode,
+        aiSettings,
+        selectedEmailPrefixCategories,
+        customEmailLocalPartsText,
+        includePrimaryEmailInSend,
+        skipPrimaryEmailVerification,
+        forceResend: forceOutreachResend,
+        shouldGenerateCoverLetter,
+        coverLetterSource,
+        shouldGenerateLinkedInMessage,
+        linkedinMessageSource,
+        cvAdaptationSource,
+        includeCvPhoto,
+        shouldSendCompanyEmail,
+        outreachCvAttachmentSource,
+        manualMustMentionTopicsText,
+        manualMustNotMentionTopicsText,
+        coverLetterRecipientName,
+        coverLetterCompanyName,
+      };
+      void updateClientUiPreferencesRequest(patch).catch((err) => {
+        console.warn('Client tercihleri kaydedilemedi:', err);
+      });
+      try {
+        localStorage.setItem(
+          ANALYSIS_PREFS_STORAGE_KEY,
+          JSON.stringify({
+            targetPosition,
+            manualMustMentionTopicsText,
+            manualMustNotMentionTopicsText,
+            coverLetterRecipientName,
+            coverLetterCompanyName,
+          })
+        );
+      } catch {
+        /* ignore */
+      }
+    }, 700);
+    return () => {
+      if (prefsSaveTimerRef.current) clearTimeout(prefsSaveTimerRef.current);
+    };
   }, [
+    prefsReady,
     targetPosition,
+    cvLanguage,
+    outreachEmailLanguageMode,
+    aiSettings,
+    selectedEmailPrefixCategories,
+    customEmailLocalPartsText,
+    includePrimaryEmailInSend,
+    skipPrimaryEmailVerification,
+    forceOutreachResend,
+    shouldGenerateCoverLetter,
+    coverLetterSource,
+    shouldGenerateLinkedInMessage,
+    linkedinMessageSource,
+    cvAdaptationSource,
+    includeCvPhoto,
+    shouldSendCompanyEmail,
+    outreachCvAttachmentSource,
     manualMustMentionTopicsText,
     manualMustNotMentionTopicsText,
     coverLetterRecipientName,
-    coverLetterCompanyName
+    coverLetterCompanyName,
   ]);
 
   // Gönderen domain (SMTP) mail altyapısı — alıcı domain değişince reset YOK; 24s cache sunucuda

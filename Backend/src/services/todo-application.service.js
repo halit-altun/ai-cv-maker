@@ -117,6 +117,7 @@ function mapJob(doc, { includePdf = false } = {}) {
       detectedLanguage: item.detectedLanguage || "",
       coldEmailSubject: item.coldEmailSubject || "",
       coldEmailBody: item.coldEmailBody || "",
+      linkedinMessage: item.linkedinMessage || "",
       adaptationNotes: item.adaptationNotes || "",
       cvFileName: item.cvFileName || "",
       candidateRecipients: item.candidateRecipients || [],
@@ -475,6 +476,10 @@ function buildSettingsSnapshot(body = {}, user = {}) {
       body.cvAdaptationSource === "text" ? "text" : "company",
     shouldGenerateCoverLetter: Boolean(body.shouldGenerateCoverLetter),
     shouldGenerateLinkedInMessage: Boolean(body.shouldGenerateLinkedInMessage),
+    includeCvPhoto: Boolean(body.includeCvPhoto),
+    profileImageUrl: String(
+      body.profileImageUrl || user.profileImageUrl || ""
+    ).trim(),
     outreachCvAttachmentSource:
       body.outreachCvAttachmentSource === "original" ? "original" : "optimized",
     cvId: body.cvId || null,
@@ -871,7 +876,7 @@ async function processSingleJobItem(job, item) {
           skills: settings.aiSettings?.skills !== false,
         },
         generateCoverLetter: false,
-        generateLinkedInMessage: false,
+        generateLinkedInMessage: Boolean(settings.shouldGenerateLinkedInMessage),
         generateColdEmail: true,
         coldEmailLanguage: language,
         recipientCompanyName: item.companyName || undefined,
@@ -909,6 +914,9 @@ async function processSingleJobItem(job, item) {
       code: "COLD_EMAIL_EMPTY",
     });
   }
+  item.linkedinMessage = settings.shouldGenerateLinkedInMessage
+    ? String(bundle.linkedinMessage || "").trim()
+    : "";
   item.adaptationNotes = bundle.adaptationNotes || "";
   item.detectedLanguage =
     bundle.companyInfo?.detectedLanguage || item.detectedLanguage;
@@ -971,7 +979,20 @@ async function processSingleJobItem(job, item) {
   const wantOptimized = settings.outreachCvAttachmentSource !== "original";
   if (wantOptimized && bundle.adaptedCvData) {
     try {
-      pdf = await renderOptimizedCvPdfViaFrontend(bundle.adaptedCvData, {
+      const photoUrl = String(
+        settings.profileImageUrl || user.profileImageUrl || ""
+      ).trim();
+      const includePhoto = Boolean(settings.includeCvPhoto) && Boolean(photoUrl);
+      const cvForPdf = {
+        ...bundle.adaptedCvData,
+        personalInfo: {
+          ...(bundle.adaptedCvData.personalInfo || {}),
+          photoUrl: includePhoto ? photoUrl : "",
+          includePhoto,
+          photoSizePt: includePhoto ? 99 : undefined,
+        },
+      };
+      pdf = await renderOptimizedCvPdfViaFrontend(cvForPdf, {
         isEnglish: settings.cvLanguage === "english",
       });
       item.cvFileName = pdf.filename || item.cvFileName;

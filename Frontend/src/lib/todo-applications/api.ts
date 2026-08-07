@@ -62,6 +62,7 @@ export type TodoJobItem = {
   detectedLanguage?: string;
   coldEmailSubject?: string;
   coldEmailBody?: string;
+  linkedinMessage?: string;
   adaptationNotes?: string;
   cvFileName?: string;
   candidateRecipients?: string[];
@@ -140,6 +141,8 @@ export type TodoJobStartPayload = {
   cvAdaptationSource?: 'company' | 'text';
   shouldGenerateCoverLetter?: boolean;
   shouldGenerateLinkedInMessage?: boolean;
+  includeCvPhoto?: boolean;
+  profileImageUrl?: string;
   outreachCvAttachmentSource?: 'optimized' | 'original';
   cvId?: string | null;
   cvTitle?: string;

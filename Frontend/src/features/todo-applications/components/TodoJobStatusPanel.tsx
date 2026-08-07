@@ -390,6 +390,28 @@ export function TodoJobStatusPanel({
                       >
                         {item.coldEmailBody}
                       </Typography>
+                      {item.linkedinMessage ? (
+                        <>
+                          <Typography
+                            variant="caption"
+                            fontWeight={700}
+                            sx={{ display: 'block', mt: 1.5, mb: 0.5 }}
+                          >
+                            LinkedIn mesajı
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            component="pre"
+                            sx={{
+                              whiteSpace: 'pre-wrap',
+                              fontFamily: 'inherit',
+                              color: colors.onSurfaceVariant,
+                            }}
+                          >
+                            {item.linkedinMessage}
+                          </Typography>
+                        </>
+                      ) : null}
                     </AccordionDetails>
                   </Accordion>
                 ) : (

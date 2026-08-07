@@ -17,6 +17,7 @@ import {
   RadioGroup,
   Select,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material';
@@ -50,11 +51,20 @@ import {
   type TodoProjectCvMeta,
   type TodoSendHistoryFilter,
 } from '@/lib/todo-applications/api';
+import {
+  getClientUiPreferencesRequest,
+  updateClientUiPreferencesRequest,
+} from '@/lib/client-preferences/api';
+import { authFetch } from '@/lib/auth/authFetch';
 import { TodoJobStatusPanel } from '@/features/todo-applications';
 import Link from 'next/link';
 import { bulkApplicationCopy } from '../constants/copy';
 
 type SendHistoryFilter = TodoSendHistoryFilter;
+
+const EMAIL_CATEGORY_IDS = new Set(
+  EMAIL_PREFIX_CATEGORIES.map((c) => c.id)
+);
 
 function buildPreviouslySentKeys(
   companies: Array<{
@@ -107,7 +117,6 @@ export function BulkApplicationView() {
     domains: new Set(),
   });
 
-  const [targetPosition, setTargetPosition] = useState('');
   const [cvLanguage, setCvLanguage] = useState<'turkish' | 'english'>('turkish');
   const [emailLangMode, setEmailLangMode] = useState<'auto' | 'turkish' | 'english'>('auto');
   const [aiAbout, setAiAbout] = useState(true);
@@ -119,14 +128,20 @@ export function BulkApplicationView() {
   const [customLocals, setCustomLocals] = useState('');
   const [includePrimary, setIncludePrimary] = useState(true);
   const [forceResend, setForceResend] = useState(false);
+  const [generateLinkedIn, setGenerateLinkedIn] = useState(false);
+  const [includeCvPhoto, setIncludeCvPhoto] = useState(false);
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
 
   const [activeJob, setActiveJob] = useState<TodoApplicationJob | null>(null);
   const [jobLoading, setJobLoading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [prefsReady, setPrefsReady] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prefsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clientFilterRef = useRef<SendHistoryFilter | null>(null);
 
   const loadProjects = useCallback(async () => {
     setProjectsLoading(true);
@@ -158,10 +173,11 @@ export function BulkApplicationView() {
         getTodoProjectCompanyResultsRequest(pid, { limit: 30 }),
       ]);
       const keys = buildPreviouslySentKeys(results.companies || []);
-      const savedFilter = (summary.cv?.bulkSendHistoryFilter ||
+      const projectFilter = (summary.cv?.bulkSendHistoryFilter ||
         'all') as SendHistoryFilter;
-      const filter: SendHistoryFilter = ['all', 'sent', 'unsent'].includes(savedFilter)
-        ? savedFilter
+      const preferred = clientFilterRef.current || projectFilter;
+      const filter: SendHistoryFilter = ['all', 'sent', 'unsent'].includes(preferred)
+        ? preferred
         : 'all';
       setItems(list);
       setSentKeys(keys);
@@ -213,12 +229,16 @@ export function BulkApplicationView() {
 
   const handleSendFilterChange = async (next: SendHistoryFilter) => {
     setSendFilter(next);
+    clientFilterRef.current = next;
     applyFilterSelection(next, items, sentKeys);
     if (!projectId) return;
     try {
-      const cv = await updateTodoProjectSettingsRequest(projectId, {
-        bulkSendHistoryFilter: next,
-      });
+      const [cv] = await Promise.all([
+        updateTodoProjectSettingsRequest(projectId, {
+          bulkSendHistoryFilter: next,
+        }),
+        updateClientUiPreferencesRequest({ bulkSendHistoryFilter: next }),
+      ]);
       setCvMeta((prev) => ({
         ...(prev || {
           hasCv: false,
@@ -234,13 +254,116 @@ export function BulkApplicationView() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const prefs = await getClientUiPreferencesRequest();
+        if (cancelled) return;
+        setCvLanguage(prefs.cvLanguage === 'english' ? 'english' : 'turkish');
+        setEmailLangMode(
+          prefs.outreachEmailLanguageMode === 'turkish' ||
+            prefs.outreachEmailLanguageMode === 'english'
+            ? prefs.outreachEmailLanguageMode
+            : 'auto'
+        );
+        setAiAbout(prefs.aiSettings?.about !== false);
+        setAiExperience(Boolean(prefs.aiSettings?.workExperience));
+        setAiSkills(Boolean(prefs.aiSettings?.skills));
+        const cats = (prefs.selectedEmailPrefixCategories || []).filter(
+          (id): id is EmailPrefixCategoryId => EMAIL_CATEGORY_IDS.has(id as EmailPrefixCategoryId)
+        );
+        setSelectedCategories(cats.length ? cats : ['turkey-hiring']);
+        setCustomLocals(prefs.customEmailLocalPartsText || '');
+        setIncludePrimary(prefs.includePrimaryEmailInSend !== false);
+        setForceResend(Boolean(prefs.forceResend));
+        setGenerateLinkedIn(Boolean(prefs.shouldGenerateLinkedInMessage));
+        setIncludeCvPhoto(Boolean(prefs.includeCvPhoto));
+        const filter = prefs.bulkSendHistoryFilter;
+        if (filter === 'all' || filter === 'sent' || filter === 'unsent') {
+          clientFilterRef.current = filter;
+          setSendFilter(filter);
+        }
+      } catch (err) {
+        console.warn('Client tercihleri yüklenemedi:', err);
+      } finally {
+        if (!cancelled) setPrefsReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await authFetch('/api/auth/me');
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          user?: { profileImageUrl?: string };
+        };
+        if (cancelled || !res.ok || !data.user) return;
+        setProfilePhotoUrl(String(data.user.profileImageUrl || '').trim());
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!prefsReady) return;
+    if (prefsSaveTimerRef.current) clearTimeout(prefsSaveTimerRef.current);
+    prefsSaveTimerRef.current = setTimeout(() => {
+      void updateClientUiPreferencesRequest({
+        cvLanguage,
+        outreachEmailLanguageMode: emailLangMode,
+        aiSettings: {
+          about: aiAbout,
+          workExperience: aiExperience,
+          skills: aiSkills,
+        },
+        selectedEmailPrefixCategories: selectedCategories,
+        customEmailLocalPartsText: customLocals,
+        includePrimaryEmailInSend: includePrimary,
+        forceResend,
+        shouldGenerateLinkedInMessage: generateLinkedIn,
+        includeCvPhoto,
+        bulkSendHistoryFilter: sendFilter,
+      }).catch((err) => {
+        console.warn('Client tercihleri kaydedilemedi:', err);
+      });
+    }, 600);
+    return () => {
+      if (prefsSaveTimerRef.current) clearTimeout(prefsSaveTimerRef.current);
+    };
+  }, [
+    prefsReady,
+    cvLanguage,
+    emailLangMode,
+    aiAbout,
+    aiExperience,
+    aiSkills,
+    selectedCategories,
+    customLocals,
+    includePrimary,
+    forceResend,
+    generateLinkedIn,
+    includeCvPhoto,
+    sendFilter,
+  ]);
+
+  useEffect(() => {
     void loadProjects();
   }, [loadProjects]);
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !prefsReady) return;
     void loadItems(projectId);
-  }, [projectId, loadItems]);
+  }, [projectId, prefsReady, loadItems]);
 
   const refreshJob = useCallback(
     async (jobId?: string) => {
@@ -317,7 +440,6 @@ export function BulkApplicationView() {
         projectId,
         mode: 'analyze_and_send',
         itemIds: selectedItemIds,
-        targetPosition: targetPosition.trim(),
         cvLanguage,
         outreachEmailLanguageMode: emailLangMode,
         aiSettings: {
@@ -329,6 +451,9 @@ export function BulkApplicationView() {
         customEmailLocalPartsText: customLocals,
         includePrimaryEmailInSend: includePrimary,
         forceResend,
+        shouldGenerateLinkedInMessage: generateLinkedIn,
+        includeCvPhoto: includeCvPhoto && Boolean(profilePhotoUrl),
+        profileImageUrl: profilePhotoUrl || undefined,
         sendMail: true,
       });
       setActiveJob(job);
@@ -550,15 +675,6 @@ export function BulkApplicationView() {
             Analiz ve gönderim ayarları
           </Typography>
 
-          <TextField
-            size="small"
-            label="Hedef pozisyon"
-            value={targetPosition}
-            onChange={(e) => setTargetPosition(e.target.value)}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-
           <Typography fontWeight={600} fontSize={14} sx={{ mb: 0.5 }}>
             CV / içerik dili
           </Typography>
@@ -571,6 +687,31 @@ export function BulkApplicationView() {
             <FormControlLabel value="turkish" control={<Radio size="small" />} label="Türkçe" />
             <FormControlLabel value="english" control={<Radio size="small" />} label="English" />
           </RadioGroup>
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={includeCvPhoto && Boolean(profilePhotoUrl)}
+                disabled={!profilePhotoUrl}
+                onChange={(_, on) => setIncludeCvPhoto(on)}
+                color="primary"
+                size="small"
+              />
+            }
+            label={
+              <Box>
+                <Typography fontWeight={600} fontSize={14}>
+                  CV&apos;ye profil fotoğrafı ekle
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {profilePhotoUrl
+                    ? 'Optimize PDF’de Profilim fotoğrafı sol üste eklenir (3.5 cm).'
+                    : 'Önce Profilim sayfasından profil fotoğrafı yükleyin.'}
+                </Typography>
+              </Box>
+            }
+            sx={{ alignItems: 'flex-start', ml: 0, mb: 2 }}
+          />
 
           <Typography fontWeight={600} fontSize={14} sx={{ mb: 0.5 }}>
             Cold mail dili
@@ -681,8 +822,26 @@ export function BulkApplicationView() {
               />
             }
             label="Bu domain’e daha önce mail atıldıysa yine de gönder (force)"
-            sx={{ mb: 2 }}
           />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={generateLinkedIn}
+                onChange={(e) => setGenerateLinkedIn(e.target.checked)}
+              />
+            }
+            label="LinkedIn soğuk mesaj üret"
+            sx={{ mb: 0.5 }}
+          />
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            display="block"
+            sx={{ pl: 4, mb: 2 }}
+          >
+            Açıkken şirket araştırması (AI son adım) her firma için 60–90 kelimelik LinkedIn
+            cold outreach mesajı da üretir; sonuçlarda cold mail ile birlikte görünür.
+          </Typography>
 
           <Button
             variant="contained"
