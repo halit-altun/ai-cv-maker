@@ -1,0 +1,7 @@
+# Paths are relative to this folder when Base directory = Frontend
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
