@@ -1,37 +1,201 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CV AI Maker
 
-## Getting Started
+AI-powered CV creation, company-targeted optimization, and job application outreach platform.
 
-First, run the development server:
+CV AI Maker strengthens your resume with Gemini, tailors it to job postings and companies, exports polished PDFs, and helps you manage application emails with verification and open tracking.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+---
+
+## Features
+
+### AI CV Builder
+- Interactive CV editor with personal info, experience, education, skills, and languages
+- AI generation and improvement for summary, experience, and skills
+- Live preview and PDF export (`@react-pdf/renderer`)
+- Font size, language, and drag-and-drop editing support
+
+### AI Optimizer (Company-based)
+- Upload an existing CV (PDF text extraction)
+- Job posting / company analysis
+- Keyword-driven, company-specific CV optimization
+- Preview, PDF attachment, and handoff to the outreach flow
+
+### Outreach & Mail
+- Send application emails with CV attachments to multiple recipients
+- Pre-send email verification (Reacher + EmailVerify.io fallback)
+- Daily limits, domain protection, and randomized send delays
+- Outreach projects and mail logs
+- Open tracking (tracking pixel)
+
+### Account & Profile
+- Sign up, sign in, JWT (access + refresh)
+- Email verification and password reset
+- Profile photo (Cloudinary)
+- Dashboard overview and saved CVs
+
+---
+
+## Tech Stack
+
+| Layer | Technologies |
+|--------|----------------|
+| **Frontend** | Next.js 15, React 19, TypeScript, MUI, `@react-pdf/renderer`, dnd-kit, pdf.js |
+| **Backend** | Node.js, Express, Mongoose |
+| **Database** | MongoDB |
+| **AI** | Google Gemini (`gemini-2.5-flash`, key rotation) |
+| **Other** | JWT, Nodemailer, Cloudinary, Reacher (Docker), EmailVerify.io |
+
+---
+
+## Project Structure
+
+```
+CV AI Maker/
+├── Frontend/          # Next.js app (port 3010)
+│   └── src/
+│       ├── app/                 # App Router pages
+│       ├── features/            # Feature modules (auth, ai-cv-builder, optimizer…)
+│       ├── components/          # Shared UI & CV/PDF components
+│       └── lib/                 # API clients, AI helpers, utilities
+└── Backend/           # Express API (port 3001)
+    └── src/
+        ├── controllers/
+        ├── routes/
+        ├── services/
+        ├── models/
+        └── middlewares/
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Quick Start
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Prerequisites
+- Node.js 18+
+- MongoDB (local or Atlas)
+- Docker Desktop *(for Reacher email verification; starts automatically with `npm run dev`)*
+- Google Gemini API key
+- SMTP credentials *(for email delivery)*
+- Cloudinary account *(optional, for profile photos)*
 
-## Learn More
+### 1. Backend
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+cd Backend
+cp .env.example .env
+# Fill in the .env values
+npm install
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The API runs at `http://localhost:3001` by default. Health check: `GET /health`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 2. Frontend
 
-## Deploy on Vercel
+```bash
+cd Frontend
+# Create .env.local:
+# NEXT_PUBLIC_API_URL=http://localhost:3001
+npm install
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+App: [http://localhost:3010](http://localhost:3010)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-"# ai-cv-maker" 
+> If you change the backend port in `.env`, update `NEXT_PUBLIC_API_URL` accordingly.
+
+---
+
+## Environment Variables (summary)
+
+### Backend (`.env`)
+
+| Variable | Description |
+|----------|-------------|
+| `MONGODB_URI` | MongoDB connection string |
+| `JWT_SECRET` | Access/refresh token signing secret |
+| `FRONTEND_URL` | Frontend URL for CORS and reset links |
+| `SMTP_*` | Outbound email delivery |
+| `GEMINI_API_KEY` (+ fallbacks) | Gemini keys (server-side only) |
+| `REACHER_URL` | Self-hosted email verification |
+| `EMAILVERIFY_API_KEY` | Reacher fallback |
+| `OUTREACH_*` | Daily limit, delay, recipient cap |
+| `TRACKING_PUBLIC_BASE_URL` | Public URL for the open-tracking pixel (prod / ngrok) |
+
+Full list: [`Backend/.env.example`](Backend/.env.example)
+
+### Frontend (`.env.local`)
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3001
+```
+
+---
+
+## Main Pages
+
+| Route | Description |
+|------|-------------|
+| `/login`, `/register` | Authentication |
+| `/dashboard` | Overview panel |
+| `/my-cvs` | Saved CVs |
+| `/my-cvs/ai-cv-builder/new` | New AI CV |
+| `/company-based-cv-editor` | Company-based AI Optimizer |
+| `/outreach-projects` | Outreach projects |
+| `/outreach-logs` | Mail logs |
+| `/mail-tracking` | Open tracking |
+| `/profile` | Profile management |
+
+---
+
+## API Overview
+
+| Prefix | Description |
+|--------|-------------|
+| `/api/auth` | Register, login, refresh, password reset |
+| `/api/cvs` | CV CRUD |
+| `/api/dashboard` | Dashboard data |
+| `/api/ai` | Gemini proxy & token estimation |
+| `/api/outreach` | Application email sending |
+| `/api/outreach-projects` | Outreach projects |
+| `/api/mail-tracking` | Mail tracking API |
+| `/api/track` | Tracking pixel (no auth) |
+
+---
+
+## Typical Workflow
+
+```mermaid
+flowchart LR
+  A[CV Builder / Upload] --> B[AI Optimizer]
+  B --> C[Job & keyword analysis]
+  C --> D[Optimized PDF]
+  D --> E[Outreach send]
+  E --> F[Email verification]
+  F --> G[Mail log + open tracking]
+```
+
+1. Create a CV or upload an existing PDF  
+2. Analyze the job posting and optimize the CV for the company  
+3. Preview / download the PDF  
+4. Send applications via outreach (verification + limits)  
+5. Monitor opens from the Mail Tracking screen  
+
+---
+
+## Development Notes
+
+- Keep Gemini keys **on the Backend only**; do not expose them as `NEXT_PUBLIC_*` on the frontend.
+- Local mail tracking needs a public URL (e.g. `ngrok http <PORT>` → `TRACKING_PUBLIC_BASE_URL`).
+- Reacher: `npm run reacher:start` / `npm run reacher:stop` (or automatic via `npm run dev`).
+- Frontend PDF ligature tests run with `npm test` / during `prebuild`.
+
+---
+
+## License
+
+ISC
+
+---
+
+**CV AI Maker** — Build with AI, optimize for the company, track your applications.

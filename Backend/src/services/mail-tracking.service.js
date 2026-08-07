@@ -1,0 +1,275 @@
+const crypto = require("crypto");
+const MailTracking = require("../models/mail-tracking.model");
+const MailOpenEvent = require("../models/mail-open-event.model");
+
+/**
+ * Yeni mail tracking kaydı oluştur
+ */
+async function createMailTracking({
+  userId,
+  recipient,
+  company,
+  jobTitle,
+  subject,
+  outreachLogId,
+  projectId,
+  projectName,
+}) {
+  const mailId = crypto.randomUUID();
+
+  const tracking = new MailTracking({
+    mailId,
+    userId,
+    recipient,
+    company,
+    jobTitle,
+    subject,
+    status: "SENT",
+    sentAt: new Date(),
+    outreachLogId,
+    projectId: projectId || null,
+    projectName: projectName || "",
+  });
+
+  await tracking.save();
+
+  console.log(`[MAIL_TRACKING] Created tracking: ${mailId} | recipient: ${recipient}`);
+
+  return {
+    mailId,
+    tracking,
+  };
+}
+
+/**
+ * Mail açılışını kaydet (pixel tetiklendi)
+ */
+async function recordMailOpen(mailId, { ip, userAgent, referer } = {}) {
+  const tracking = await MailTracking.findOne({ mailId });
+
+  if (!tracking) {
+    console.warn(`[MAIL_TRACKING] Tracking not found for mailId: ${mailId}`);
+    return { found: false };
+  }
+
+  const now = new Date();
+  const sentAt = tracking.sentAt || tracking.createdAt;
+  const openedInSeconds = Math.floor((now - sentAt) / 1000);
+
+  // Bot detection: 3 saniye içinde açıldıysa muhtemelen bot
+  const isLikelyBot = openedInSeconds < 3;
+
+  // MailOpenEvent kaydet
+  const openEvent = new MailOpenEvent({
+    mailId,
+    ip,
+    userAgent,
+    referer,
+    openedInSeconds,
+    isLikelyBot,
+  });
+
+  await openEvent.save();
+
+  // MailTracking güncelle
+  tracking.openedCount += 1;
+  tracking.status = "OPENED";
+
+  if (!tracking.firstOpenedAt) {
+    tracking.firstOpenedAt = now;
+  }
+
+  tracking.lastOpenedAt = now;
+
+  // İlk açılış bot ise işaretle
+  if (tracking.openedCount === 1 && isLikelyBot) {
+    tracking.isLikelyBot = true;
+  }
+
+  await tracking.save();
+
+  console.log(
+    `[MAIL_TRACKING] Recorded open: ${mailId} | count: ${tracking.openedCount} | bot: ${isLikelyBot} | ${openedInSeconds}s`
+  );
+
+  return {
+    found: true,
+    tracking,
+    openEvent,
+    isLikelyBot,
+  };
+}
+
+/**
+ * Mail statüsünü güncelle (DELIVERED/FAILED)
+ */
+async function updateMailStatus(mailId, status, errorMessage = null) {
+  const tracking = await MailTracking.findOne({ mailId });
+
+  if (!tracking) {
+    console.warn(`[MAIL_TRACKING] Tracking not found for mailId: ${mailId}`);
+    return { found: false };
+  }
+
+  tracking.status = status;
+
+  if (errorMessage) {
+    tracking.errorMessage = errorMessage;
+  }
+
+  await tracking.save();
+
+  console.log(`[MAIL_TRACKING] Updated status: ${mailId} → ${status}`);
+
+  return { found: true, tracking };
+}
+
+/**
+ * Kullanıcının mail tracking listesini al
+ */
+async function getUserMailTrackings(userId, { limit = 50, skip = 0, status, projectId, company, startDate, endDate } = {}) {
+  const query = { userId };
+
+  if (status) {
+    query.status = status;
+  }
+
+  if (projectId) {
+    query.projectId = projectId;
+  }
+
+  if (company) {
+    query.company = { $regex: String(company), $options: "i" };
+  }
+
+  if (startDate || endDate) {
+    query.createdAt = {};
+    if (startDate) query.createdAt.$gte = new Date(startDate);
+    if (endDate) query.createdAt.$lte = new Date(endDate);
+  }
+
+  const [trackings, total] = await Promise.all([
+    MailTracking.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(skip)
+      .lean(),
+    MailTracking.countDocuments(query),
+  ]);
+
+  return {
+    trackings,
+    total,
+    limit,
+    skip,
+  };
+}
+
+/**
+ * Mail tracking detaylarını al (açılış event'leri ile)
+ */
+async function getMailTrackingDetails(mailId, userId) {
+  const tracking = await MailTracking.findOne({ mailId, userId }).lean();
+
+  if (!tracking) {
+    return { found: false };
+  }
+
+  const openEvents = await MailOpenEvent.find({ mailId })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const pixelUrl = generateTrackingPixelUrl(mailId);
+  const trackingBase = getTrackingPublicBaseUrl();
+
+  return {
+    found: true,
+    tracking,
+    openEvents,
+    pixelUrl,
+    trackingBaseIsLocal: isLocalTrackingBase(trackingBase),
+  };
+}
+
+/**
+ * Kullanıcı outcome bildirimi: inbox | spam | unknown
+ */
+async function setDeliveryOutcome(mailId, userId, outcome) {
+  const allowed = new Set(["inbox", "spam", "unknown"]);
+  const value = String(outcome || "").trim().toLowerCase();
+  if (!allowed.has(value)) {
+    return { ok: false, error: "Geçersiz outcome (inbox|spam|unknown)" };
+  }
+
+  const tracking = await MailTracking.findOneAndUpdate(
+    { mailId, userId },
+    {
+      deliveryOutcome: value,
+      deliveryOutcomeAt: value === "unknown" ? null : new Date(),
+    },
+    { new: true }
+  ).lean();
+
+  if (!tracking) {
+    return { ok: false, error: "Mail tracking bulunamadı" };
+  }
+
+  return { ok: true, tracking };
+}
+
+/**
+ * Tracking pixel URL oluştur
+ * Gmail görselleri Google proxy üzerinden çeker — localhost ASLA çalışmaz.
+ * TRACKING_PUBLIC_BASE_URL (veya API_BASE_URL) mutlaka public HTTPS olmalı.
+ */
+function getTrackingPublicBaseUrl() {
+  const raw =
+    process.env.TRACKING_PUBLIC_BASE_URL ||
+    process.env.API_BASE_URL ||
+    `http://localhost:${process.env.PORT || 3011}`;
+  return String(raw).trim().replace(/\/$/, "");
+}
+
+function isLocalTrackingBase(baseUrl) {
+  try {
+    const host = new URL(baseUrl).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return true;
+  }
+}
+
+function generateTrackingPixelUrl(mailId, baseUrl = getTrackingPublicBaseUrl()) {
+  const base = String(baseUrl || getTrackingPublicBaseUrl()).replace(/\/$/, "");
+  const id = String(mailId || "").replace(/\.png$/i, "");
+  return `${base}/api/track/pixel/${id}.png`;
+}
+
+/**
+ * Tracking pixel HTML tag
+ */
+function generateTrackingPixelHtml(mailId, baseUrl) {
+  const pixelUrl = generateTrackingPixelUrl(mailId, baseUrl);
+  if (isLocalTrackingBase(pixelUrl)) {
+    console.warn(
+      `[MAIL_TRACKING] UYARI: Pixel URL localhost (${pixelUrl}). Gmail/Outlook bu adresi açamaz; OPENED kaydı düşmez. .env içine TRACKING_PUBLIC_BASE_URL=https://... (ngrok vb.) ekleyin.`
+    );
+  } else {
+    console.log(`[MAIL_TRACKING] Pixel URL: ${pixelUrl}`);
+  }
+  // display:none Gmail'de bazen yüklenmez; 1x1 block kullan
+  return `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;outline:none;text-decoration:none;" />`;
+}
+
+module.exports = {
+  createMailTracking,
+  recordMailOpen,
+  updateMailStatus,
+  getUserMailTrackings,
+  getMailTrackingDetails,
+  setDeliveryOutcome,
+  getTrackingPublicBaseUrl,
+  isLocalTrackingBase,
+  generateTrackingPixelUrl,
+  generateTrackingPixelHtml,
+};
