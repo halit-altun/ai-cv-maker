@@ -16,13 +16,22 @@ const { isDatabaseUnavailableError } = require("./utils/db-error");
 
 const app = express();
 
-/** Comma-separated origins, e.g. https://cv-ai-maker.netlify.app,http://localhost:3010 */
-const frontendOrigins = String(process.env.FRONTEND_URL || "http://localhost:3010")
+/** Always allowed (local + Netlify). FRONTEND_URL can add more, comma-separated. */
+const BUILTIN_FRONTEND_ORIGINS = [
+  "http://localhost:3010",
+  "https://cv-ai-maker.netlify.app",
+];
+
+const envFrontendOrigins = String(process.env.FRONTEND_URL || "")
   .split(",")
   .map((value) => value.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
-console.log("[CORS] Allowed origins:", frontendOrigins.join(", ") || "(none)");
+const frontendOrigins = [
+  ...new Set([...envFrontendOrigins, ...BUILTIN_FRONTEND_ORIGINS]),
+];
+
+console.log("[CORS] Allowed origins:", frontendOrigins.join(", "));
 
 app.use(express.json({ limit: "12mb" }));
 app.use(cookieParser());

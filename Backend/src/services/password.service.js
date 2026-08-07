@@ -15,10 +15,13 @@ const {
 const { sendPasswordResetEmail } = require("./email.service");
 
 function buildPasswordResetUrl(token) {
-  const baseUrl = String(process.env.FRONTEND_URL || "http://localhost:3010")
+  const envPrimary = String(process.env.FRONTEND_URL || "")
     .split(",")[0]
     .trim()
     .replace(/\/$/, "");
+  const baseUrl =
+    envPrimary ||
+    "https://cv-ai-maker.netlify.app";
   const path = process.env.PASSWORD_RESET_PATH || "/reset-password";
   return `${baseUrl}${path}?token=${encodeURIComponent(token)}`;
 }
