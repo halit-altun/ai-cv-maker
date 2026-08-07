@@ -101,7 +101,7 @@ npm run dev
 App: [http://localhost:3010](http://localhost:3010)
 
 - `npm run dev` → API `http://localhost:3011` (`.env.development`)
-- `npm run build && npm start` → API `https://ai-cv-maker-3qcm.onrender.com` (`.env.production`)
+- `npm run build && npm start` → API `https://portal--cv-ai-maker--6gvfdf2h8v7d.code.run` (`.env.production`)
 
 > Local backend port comes from Backend `.env` (`PORT`). Keep `NEXT_PUBLIC_API_URL` in `.env.development` in sync with that port.
 
@@ -137,7 +137,7 @@ Full list: [`Backend/.env.example`](Backend/.env.example)
 NEXT_PUBLIC_API_URL=http://localhost:3011
 
 # .env.production
-NEXT_PUBLIC_API_URL=https://ai-cv-maker-3qcm.onrender.com
+NEXT_PUBLIC_API_URL=https://portal--cv-ai-maker--6gvfdf2h8v7d.code.run
 ```
 
 `NEXT_PUBLIC_*` values are baked in at **build** time. After changing production URL, run `npm run build` again before `npm start`.
