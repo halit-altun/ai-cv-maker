@@ -20,7 +20,7 @@ async function ensureDefaultProject(clientId, userId) {
   const count = await OutreachProject.countDocuments({ clientId, archived: { $ne: true } });
   if (count > 0) return null;
 
-  await releaseArchivedNameKeys(clientId, String(DEFAULT_SEED_NAME).trim().toLowerCase());
+  await releaseArchivedNameKeys(clientId, DEFAULT_SEED_NAME);
 
   try {
     const created = await OutreachProject.create({
@@ -60,20 +60,50 @@ async function listProjects(clientId, userId) {
 }
 
 /**
- * Eski soft-delete kayıtlarında nameKey hâlâ dolu kalmış olabilir; ismi serbest bırak.
+ * Soft-delete sonrası hem nameKey hem name serbest kalsın.
+ * MongoDB'de clientId+name (collation) unique index de var; sadece nameKey yetmez.
  */
-async function releaseArchivedNameKeys(clientId, nameKey) {
-  const key = String(nameKey || "").trim().toLowerCase();
-  if (!key) return;
+function archivedNameLabel(projectId, originalName) {
+  const base = String(originalName || "project").trim() || "project";
+  return `archived:${String(projectId)}:${base}`.slice(0, 120);
+}
 
-  const archived = await OutreachProject.find({
+function originalNameFromProject(project) {
+  const raw = String(project?.name || "").trim();
+  const match = /^archived:[a-f0-9]{24}:(.+)$/i.exec(raw);
+  return match ? match[1] : raw;
+}
+
+/**
+ * Eski soft-delete kayıtlarında name / nameKey hâlâ dolu kalmış olabilir; ismi serbest bırak.
+ */
+async function releaseArchivedNameKeys(clientId, name) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return;
+  const key = trimmed.toLowerCase();
+
+  const byKey = await OutreachProject.find({
     clientId,
-    nameKey: key,
     archived: true,
+    nameKey: key,
   });
 
-  for (const project of archived) {
-    project.nameKey = `archived:${String(project._id)}:${key}`;
+  // Collation unique index name alanına bakıyor (Türkiye / türkiye aynı)
+  const byName = await OutreachProject.find({
+    clientId,
+    archived: true,
+    name: trimmed,
+  }).collation({ locale: "en", strength: 2 });
+
+  const map = new Map();
+  for (const p of [...byKey, ...byName]) {
+    map.set(String(p._id), p);
+  }
+
+  for (const project of map.values()) {
+    const original = originalNameFromProject(project);
+    project.archived = true;
+    project.name = archivedNameLabel(project._id, original);
     await project.save();
   }
 }
@@ -85,16 +115,25 @@ async function createProject(clientId, userId, name) {
   }
 
   const nameKey = trimmed.toLowerCase();
-  const existingActive = await OutreachProject.findOne({
-    clientId,
-    nameKey,
-    archived: { $ne: true },
-  }).lean();
+  const existingActive =
+    (await OutreachProject.findOne({
+      clientId,
+      nameKey,
+      archived: { $ne: true },
+    }).lean()) ||
+    (await OutreachProject.findOne({
+      clientId,
+      name: trimmed,
+      archived: { $ne: true },
+    })
+      .collation({ locale: "en", strength: 2 })
+      .lean());
+
   if (existingActive) {
     throw new AppError("Bu isimde bir proje zaten var.", 409, "PROJECT_EXISTS");
   }
 
-  await releaseArchivedNameKeys(clientId, nameKey);
+  await releaseArchivedNameKeys(clientId, trimmed);
 
   try {
     const created = await OutreachProject.create({
@@ -106,7 +145,22 @@ async function createProject(clientId, userId, name) {
     return mapProject(created);
   } catch (err) {
     if (err && err.code === 11000) {
-      throw new AppError("Bu isimde bir proje zaten var.", 409, "PROJECT_EXISTS");
+      // Index race / eski kayıt: bir kez daha serbest bırakıp dene
+      await releaseArchivedNameKeys(clientId, trimmed);
+      try {
+        const created = await OutreachProject.create({
+          clientId,
+          userId,
+          name: trimmed,
+          lastSelectedAt: new Date(),
+        });
+        return mapProject(created);
+      } catch (retryErr) {
+        if (retryErr && retryErr.code === 11000) {
+          throw new AppError("Bu isimde bir proje zaten var.", 409, "PROJECT_EXISTS");
+        }
+        throw retryErr;
+      }
     }
     throw err;
   }
@@ -134,7 +188,9 @@ async function deleteProject(clientId, projectId) {
     throw new AppError("Proje bulunamadı.", 404, "PROJECT_NOT_FOUND");
   }
 
+  const originalName = originalNameFromProject(project);
   project.archived = true;
+  project.name = archivedNameLabel(project._id, originalName);
   await project.save();
 
   return {
