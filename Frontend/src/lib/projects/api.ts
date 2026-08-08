@@ -181,6 +181,27 @@ export async function deleteOutreachProjectCompanyRequest(
   };
 }
 
+export async function deleteOutreachProjectLogRequest(
+  projectId: string,
+  logId: string
+): Promise<{ logId: string; domain: string }> {
+  const response = await authFetch(
+    `/api/outreach-projects/${projectId}/logs/${encodeURIComponent(logId)}`,
+    {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+  const data = await parseJson(response);
+  if (!response.ok || data.ok === false) {
+    throwApiError(data, 'Kayıt silinemedi.');
+  }
+  return {
+    logId: typeof data.logId === 'string' ? data.logId : logId,
+    domain: typeof data.domain === 'string' ? data.domain : '',
+  };
+}
+
 export async function getOutreachProjectDashboardRequest(
   projectId: string,
   query: ProjectDashboardQuery = {}

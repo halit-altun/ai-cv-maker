@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const OutreachProject = require("../models/outreach-project.model");
 const OutreachLog = require("../models/outreach-log.model");
 const { AppError } = require("../utils/app-error");
@@ -244,6 +245,35 @@ async function deleteProjectCompany(clientId, projectId, domain) {
     domain: normalizedDomain,
     deletedLogs: logResult.deletedCount || 0,
     archivedTodoItems: todoArchived,
+  };
+}
+
+/**
+ * Projedeki tek bir outreach log kaydını siler (tekrarlayan başvuru satırları için).
+ */
+async function deleteProjectLog(clientId, projectId, logId) {
+  const project = await getProjectOrThrow(clientId, projectId);
+  if (!logId || !mongoose.Types.ObjectId.isValid(String(logId))) {
+    throw new AppError("Log kaydı bulunamadı.", 404, "LOG_NOT_FOUND");
+  }
+
+  const log = await OutreachLog.findOne({
+    _id: logId,
+    clientId,
+    projectId: project._id,
+  });
+
+  if (!log) {
+    throw new AppError("Log kaydı bulunamadı.", 404, "LOG_NOT_FOUND");
+  }
+
+  const domain = log.domain || "";
+  await log.deleteOne();
+
+  return {
+    deleted: true,
+    logId: String(logId),
+    domain,
   };
 }
 
@@ -503,8 +533,21 @@ async function getProjectDashboard(clientId, projectId, options = {}) {
     (a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime()
   );
 
+  const mailLogStatuses = new Set(["success", "partial", "failed", "verify_failed"]);
   const companiesWithMail = companies.filter((c) => c.hasMailSent).length;
   const companiesAnalysisOnly = companies.filter((c) => c.hasAnalysisOnly && !c.hasMailSent).length;
+  /** Toplam firma = mail denemesi olan firmalar (analiz-only hariç) */
+  const companiesMailAttempt = companies.filter((c) =>
+    (c.statuses || []).some((s) => mailLogStatuses.has(s))
+  ).length;
+
+  // Firma detayında sadece mail kayıtları dönsün (analiz/AI satırları hariç)
+  const companiesForUi = companies
+    .map((c) => ({
+      ...c,
+      logs: (c.logs || []).filter((log) => mailLogStatuses.has(log.status)),
+    }))
+    .filter((c) => c.logs.length > 0 || c.hasMailSent);
 
   return {
     project: mapProject(project),
@@ -514,10 +557,10 @@ async function getProjectDashboard(clientId, projectId, options = {}) {
       to: dateRange.toYmd,
     },
     totals: {
-      companiesTotal: companies.length,
+      companiesTotal: companiesMailAttempt,
       companiesWithMail,
       companiesAnalysisOnly,
-      companiesTouched: companies.length,
+      companiesTouched: companiesMailAttempt,
       /** Mail gönderim denemesi = başvuru sayısı */
       totalApplications: mailAttemptCount,
       mailAttemptCount,
@@ -530,9 +573,9 @@ async function getProjectDashboard(clientId, projectId, options = {}) {
       uniqueSentEmails: allSentEmails.size,
       uniqueVerifiedEmails: allVerifiedEmails.size,
       uniqueInvalidEmails: allInvalidEmails.size,
-      logCount: logs.length,
+      logCount: logs.filter((l) => mailLogStatuses.has(l.status)).length,
     },
-    companies,
+    companies: companiesForUi,
   };
 }
 
@@ -542,6 +585,7 @@ module.exports = {
   selectProject,
   deleteProject,
   deleteProjectCompany,
+  deleteProjectLog,
   getProjectOrThrow,
   getProjectDashboard,
   resolveDashboardDateRange,

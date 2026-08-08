@@ -38,6 +38,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {
   createOutreachProjectRequest,
   deleteOutreachProjectCompanyRequest,
+  deleteOutreachProjectLogRequest,
   deleteOutreachProjectRequest,
   getOutreachProjectDashboardRequest,
   listOutreachProjectsRequest,
@@ -120,6 +121,14 @@ export function OutreachProjectsView() {
     companyName: string;
   } | null>(null);
   const [deletingCompany, setDeletingCompany] = useState(false);
+  const [logDeleteTarget, setLogDeleteTarget] = useState<{
+    logId: string;
+    companyName: string;
+    domain: string;
+    status: string;
+    sentAt?: string;
+  } | null>(null);
+  const [deletingLog, setDeletingLog] = useState(false);
 
   const [rangePreset, setRangePreset] = useState<ProjectDashboardRange>('today');
   const todayYmd = useMemo(() => formatYmd(new Date()), []);
@@ -272,6 +281,21 @@ export function OutreachProjectsView() {
       setError(err instanceof Error ? err.message : 'Firma silinemedi.');
     } finally {
       setDeletingCompany(false);
+    }
+  };
+
+  const handleDeleteLog = async () => {
+    if (!selectedId || !logDeleteTarget?.logId) return;
+    setDeletingLog(true);
+    setError(null);
+    try {
+      await deleteOutreachProjectLogRequest(selectedId, logDeleteTarget.logId);
+      setLogDeleteTarget(null);
+      await loadDashboard(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Kayıt silinemedi.');
+    } finally {
+      setDeletingLog(false);
     }
   };
 
@@ -452,7 +476,7 @@ export function OutreachProjectsView() {
               { label: 'Gönderilen mail', value: totals.totalMailsSent },
               { label: 'Toplam firma', value: totals.companiesTotal },
               { label: 'Mail atılan firma', value: totals.companiesWithMail },
-              { label: 'Sadece analiz', value: totals.companiesAnalysisOnly },
+              { label: 'Sadece analiz (firma)', value: totals.companiesAnalysisOnly },
               { label: 'Analiz kaydı', value: totals.analysisOnlyCount },
               { label: 'Doğrulanan adres', value: totals.uniqueVerifiedEmails },
               { label: 'Doğrulanamayan', value: totals.uniqueInvalidEmails },
@@ -597,6 +621,9 @@ export function OutreachProjectsView() {
                           <TableCell>Gönderilen</TableCell>
                           <TableCell>Doğrulanan</TableCell>
                           <TableCell>Detay</TableCell>
+                          <TableCell align="right" sx={{ width: 56 }}>
+                            Sil
+                          </TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -616,6 +643,26 @@ export function OutreachProjectsView() {
                             </TableCell>
                             <TableCell sx={{ fontSize: 12 }}>
                               {log.errorMessage || log.subject || log.targetPosition || '—'}
+                            </TableCell>
+                            <TableCell align="right">
+                              <Tooltip title="Bu kaydı sil">
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  aria-label="Kaydı sil"
+                                  onClick={() =>
+                                    setLogDeleteTarget({
+                                      logId: log.id,
+                                      companyName: company.companyName || company.domain,
+                                      domain: company.domain,
+                                      status: log.status,
+                                      sentAt: log.sentAt,
+                                    })
+                                  }
+                                >
+                                  <DeleteOutlineIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -706,6 +753,33 @@ export function OutreachProjectsView() {
             onClick={() => void handleDeleteCompany()}
           >
             {deletingCompany ? 'Siliniyor...' : 'Firmayı sil'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(logDeleteTarget)}
+        onClose={() => !deletingLog && setLogDeleteTarget(null)}
+      >
+        <DialogTitle>Kaydı sil</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {logDeleteTarget
+              ? `"${logDeleteTarget.companyName}" (@${logDeleteTarget.domain}) için ${statusLabel(logDeleteTarget.status)} kaydını (${formatDateTime(logDeleteTarget.sentAt)}) silmek istediğinize emin misiniz? Sadece bu satır silinir; diğer tekrarlar kalır.`
+              : 'Bu kaydı silmek istediğinize emin misiniz?'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={deletingLog} onClick={() => setLogDeleteTarget(null)}>
+            İptal
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={deletingLog || !logDeleteTarget}
+            onClick={() => void handleDeleteLog()}
+          >
+            {deletingLog ? 'Siliniyor...' : 'Kaydı sil'}
           </Button>
         </DialogActions>
       </Dialog>
