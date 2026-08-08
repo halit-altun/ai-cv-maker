@@ -53,7 +53,13 @@ outreachProjectSchema.index({ clientId: 1, lastSelectedAt: -1 });
 
 outreachProjectSchema.pre("validate", function (next) {
   if (this.name) {
-    this.nameKey = String(this.name).trim().toLowerCase();
+    const base = String(this.name).trim().toLowerCase();
+    // Soft-delete sonrası isim yeniden kullanılabilsin diye nameKey serbest bırakılır
+    if (this.archived) {
+      this.nameKey = `archived:${String(this._id)}:${base}`;
+    } else {
+      this.nameKey = base;
+    }
   }
   next();
 });

@@ -160,6 +160,27 @@ export async function deleteOutreachProjectRequest(projectId: string): Promise<v
   }
 }
 
+export async function deleteOutreachProjectCompanyRequest(
+  projectId: string,
+  domain: string
+): Promise<{ deletedLogs: number; archivedTodoItems: number; domain: string }> {
+  const response = await authFetch(`/api/outreach-projects/${projectId}/companies`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ domain }),
+  });
+  const data = await parseJson(response);
+  if (!response.ok || data.ok === false) {
+    throwApiError(data, 'Firma silinemedi.');
+  }
+  return {
+    domain: typeof data.domain === 'string' ? data.domain : domain,
+    deletedLogs: typeof data.deletedLogs === 'number' ? data.deletedLogs : 0,
+    archivedTodoItems:
+      typeof data.archivedTodoItems === 'number' ? data.archivedTodoItems : 0,
+  };
+}
+
 export async function getOutreachProjectDashboardRequest(
   projectId: string,
   query: ProjectDashboardQuery = {}

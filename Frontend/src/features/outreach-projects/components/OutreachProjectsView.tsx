@@ -15,6 +15,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  IconButton,
   InputLabel,
   MenuItem,
   Select,
@@ -27,6 +28,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -35,6 +37,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {
   createOutreachProjectRequest,
+  deleteOutreachProjectCompanyRequest,
   deleteOutreachProjectRequest,
   getOutreachProjectDashboardRequest,
   listOutreachProjectsRequest,
@@ -112,6 +115,11 @@ export function OutreachProjectsView() {
   const [creating, setCreating] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [companyDeleteTarget, setCompanyDeleteTarget] = useState<{
+    domain: string;
+    companyName: string;
+  } | null>(null);
+  const [deletingCompany, setDeletingCompany] = useState(false);
 
   const [rangePreset, setRangePreset] = useState<ProjectDashboardRange>('today');
   const todayYmd = useMemo(() => formatYmd(new Date()), []);
@@ -249,6 +257,21 @@ export function OutreachProjectsView() {
       setError(err instanceof Error ? err.message : 'Proje silinemedi.');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleDeleteCompany = async () => {
+    if (!selectedId || !companyDeleteTarget?.domain) return;
+    setDeletingCompany(true);
+    setError(null);
+    try {
+      await deleteOutreachProjectCompanyRequest(selectedId, companyDeleteTarget.domain);
+      setCompanyDeleteTarget(null);
+      await loadDashboard(selectedId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Firma silinemedi.');
+    } finally {
+      setDeletingCompany(false);
     }
   };
 
@@ -498,7 +521,16 @@ export function OutreachProjectsView() {
                   }}
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 1,
+                        alignItems: 'center',
+                        width: '100%',
+                        pr: 1,
+                      }}
+                    >
                       <Typography fontWeight={700}>
                         {company.companyName || company.domain}
                       </Typography>
@@ -512,6 +544,23 @@ export function OutreachProjectsView() {
                       <Typography variant="caption" color="text.secondary">
                         Son: {formatDateTime(company.lastActivityAt)}
                       </Typography>
+                      <Box sx={{ flexGrow: 1 }} />
+                      <Tooltip title="Firmayı projeden sil">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          aria-label="Firmayı sil"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCompanyDeleteTarget({
+                              domain: company.domain,
+                              companyName: company.companyName || company.domain,
+                            });
+                          }}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
@@ -615,7 +664,7 @@ export function OutreachProjectsView() {
         <DialogContent>
           <Typography variant="body2">
             {selectedProjectName
-              ? `"${selectedProjectName}" projesini silmek istediğinize emin misiniz? Proje listeden kalkar; geçmiş mail logları saklanır.`
+              ? `"${selectedProjectName}" projesini silmek istediğinize emin misiniz? Proje listeden kalkar; geçmiş mail logları saklanır. Aynı isimle sonra yeniden oluşturabilirsiniz.`
               : 'Seçili projeyi silmek istediğinize emin misiniz?'}
           </Typography>
         </DialogContent>
@@ -630,6 +679,33 @@ export function OutreachProjectsView() {
             onClick={() => void handleDeleteProject()}
           >
             {deleting ? 'Siliniyor...' : 'Sil'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(companyDeleteTarget)}
+        onClose={() => !deletingCompany && setCompanyDeleteTarget(null)}
+      >
+        <DialogTitle>Firmayı sil</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {companyDeleteTarget
+              ? `"${companyDeleteTarget.companyName}" (@${companyDeleteTarget.domain}) kaydını bu projeden silmek istediğinize emin misiniz? Outreach logları kalıcı olarak silinir.`
+              : 'Firmayı projeden silmek istediğinize emin misiniz?'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={deletingCompany} onClick={() => setCompanyDeleteTarget(null)}>
+            İptal
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={deletingCompany || !companyDeleteTarget}
+            onClick={() => void handleDeleteCompany()}
+          >
+            {deletingCompany ? 'Siliniyor...' : 'Firmayı sil'}
           </Button>
         </DialogActions>
       </Dialog>

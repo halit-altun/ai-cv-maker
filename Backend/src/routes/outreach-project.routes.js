@@ -4,6 +4,7 @@ const {
   createProjectHandler,
   selectProjectHandler,
   deleteProjectHandler,
+  deleteProjectCompanyHandler,
   projectDashboardHandler,
 } = require("../controllers/outreach-project.controller");
 const { requireAuth } = require("../middlewares/auth.middleware");
@@ -16,6 +17,7 @@ router.use(requireAuth, requireClientId);
 router.get("/", listProjectsHandler);
 router.post("/", createProjectHandler);
 router.post("/:id/select", selectProjectHandler);
+router.delete("/:id/companies", deleteProjectCompanyHandler);
 router.delete("/:id", deleteProjectHandler);
 router.get("/:id/dashboard", projectDashboardHandler);
 

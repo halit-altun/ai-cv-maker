@@ -20,6 +20,8 @@ async function ensureDefaultProject(clientId, userId) {
   const count = await OutreachProject.countDocuments({ clientId, archived: { $ne: true } });
   if (count > 0) return null;
 
+  await releaseArchivedNameKeys(clientId, String(DEFAULT_SEED_NAME).trim().toLowerCase());
+
   try {
     const created = await OutreachProject.create({
       clientId,
@@ -30,7 +32,11 @@ async function ensureDefaultProject(clientId, userId) {
     return created;
   } catch (err) {
     if (err && err.code === 11000) {
-      return OutreachProject.findOne({ clientId, name: DEFAULT_SEED_NAME }).lean();
+      return OutreachProject.findOne({
+        clientId,
+        nameKey: String(DEFAULT_SEED_NAME).trim().toLowerCase(),
+        archived: { $ne: true },
+      }).lean();
     }
     throw err;
   }
@@ -53,11 +59,42 @@ async function listProjects(clientId, userId) {
   };
 }
 
+/**
+ * Eski soft-delete kayıtlarında nameKey hâlâ dolu kalmış olabilir; ismi serbest bırak.
+ */
+async function releaseArchivedNameKeys(clientId, nameKey) {
+  const key = String(nameKey || "").trim().toLowerCase();
+  if (!key) return;
+
+  const archived = await OutreachProject.find({
+    clientId,
+    nameKey: key,
+    archived: true,
+  });
+
+  for (const project of archived) {
+    project.nameKey = `archived:${String(project._id)}:${key}`;
+    await project.save();
+  }
+}
+
 async function createProject(clientId, userId, name) {
   const trimmed = String(name || "").trim();
   if (!trimmed) {
     throw new AppError("Proje adı zorunlu.", 400, "PROJECT_NAME_REQUIRED");
   }
+
+  const nameKey = trimmed.toLowerCase();
+  const existingActive = await OutreachProject.findOne({
+    clientId,
+    nameKey,
+    archived: { $ne: true },
+  }).lean();
+  if (existingActive) {
+    throw new AppError("Bu isimde bir proje zaten var.", 409, "PROJECT_EXISTS");
+  }
+
+  await releaseArchivedNameKeys(clientId, nameKey);
 
   try {
     const created = await OutreachProject.create({
@@ -88,6 +125,7 @@ async function selectProject(clientId, userId, projectId) {
 
 /**
  * Projeyi soft-delete (archived). Loglar korunur; listede görünmez.
+ * nameKey serbest bırakılır → aynı isimle yeni proje oluşturulabilir.
  * Son proje silinirse bir sonraki listede varsayılan DUBAI yeniden oluşabilir.
  */
 async function deleteProject(clientId, projectId) {
@@ -103,6 +141,53 @@ async function deleteProject(clientId, projectId) {
     deleted: true,
     id: String(project._id),
     project: mapProject(project),
+  };
+}
+
+/**
+ * Projedeki bir firmayı (domain) siler: outreach logları + eşleşen todo item'lar.
+ * Yanlışlıkla başvurulan firmaları listeden kaldırmak için.
+ */
+async function deleteProjectCompany(clientId, projectId, domain) {
+  const project = await getProjectOrThrow(clientId, projectId);
+  const normalizedDomain = String(domain || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, "");
+
+  if (!normalizedDomain) {
+    throw new AppError("Firma domain zorunlu.", 400, "DOMAIN_REQUIRED");
+  }
+
+  const logResult = await OutreachLog.deleteMany({
+    clientId,
+    projectId: project._id,
+    domain: normalizedDomain,
+  });
+
+  let todoArchived = 0;
+  try {
+    const TodoApplicationItem = require("../models/todo-application-item.model");
+    const escaped = normalizedDomain.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const todoResult = await TodoApplicationItem.updateMany(
+      {
+        clientId,
+        projectId: project._id,
+        archived: { $ne: true },
+        emailDomainInput: { $regex: `(^|@)${escaped}$`, $options: "i" },
+      },
+      { $set: { archived: true } }
+    );
+    todoArchived = todoResult.modifiedCount || 0;
+  } catch {
+    // Todo modeli yoksa veya hata olursa sadece log silme yeterli
+  }
+
+  return {
+    deleted: true,
+    domain: normalizedDomain,
+    deletedLogs: logResult.deletedCount || 0,
+    archivedTodoItems: todoArchived,
   };
 }
 
@@ -400,6 +485,7 @@ module.exports = {
   createProject,
   selectProject,
   deleteProject,
+  deleteProjectCompany,
   getProjectOrThrow,
   getProjectDashboard,
   resolveDashboardDateRange,
