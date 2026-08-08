@@ -121,16 +121,25 @@ export function MailTrackingView() {
     setLoading(true);
     setError(null);
     try {
+      const listFilters = {
+        status: statusFilter || undefined,
+        projectId: projectFilter || undefined,
+        company: companyFilter.trim() || undefined,
+        date: sentDateFilter || undefined,
+      };
+      /** Özet kartları: tarih/proje/şirket; statü kırılımları bozulmasın diye status yok */
+      const statsFilters = {
+        projectId: projectFilter || undefined,
+        company: companyFilter.trim() || undefined,
+        date: sentDateFilter || undefined,
+      };
       const [list, summary, projectList] = await Promise.all([
         listMailTrackingsRequest({
           limit,
           skip,
-          status: statusFilter || undefined,
-          projectId: projectFilter || undefined,
-          company: companyFilter.trim() || undefined,
-          date: sentDateFilter || undefined,
+          ...listFilters,
         }),
-        getMailTrackingStatsRequest(projectFilter || undefined),
+        getMailTrackingStatsRequest(statsFilters),
         listOutreachProjectsRequest().catch(() => ({ projects: [] as Array<{ id: string; name: string }> })),
       ]);
       setTrackings(list.trackings);
@@ -199,7 +208,11 @@ export function MailTrackingView() {
       const updated = await setMailDeliveryOutcomeRequest(mailId, outcome);
       setTrackings((prev) => prev.map((t) => (t.mailId === mailId ? { ...t, ...updated } : t)));
       if (selected?.mailId === mailId) setSelected((prev) => (prev ? { ...prev, ...updated } : prev));
-      const summary = await getMailTrackingStatsRequest(projectFilter || undefined);
+      const summary = await getMailTrackingStatsRequest({
+        projectId: projectFilter || undefined,
+        company: companyFilter.trim() || undefined,
+        date: sentDateFilter || undefined,
+      });
       setStats(summary);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Outcome kaydedilemedi.');
@@ -242,7 +255,8 @@ export function MailTrackingView() {
       {stats && (
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} flexWrap="wrap" useFlexGap>
           {[
-            { label: 'Toplam', value: stats.total },
+            { label: 'Toplam mail', value: stats.total },
+            { label: 'Toplam firma', value: stats.companyCount ?? 0 },
             { label: 'Gönderildi', value: stats.sent },
             { label: 'Teslim', value: stats.delivered },
             { label: 'Okundu', value: stats.opened },

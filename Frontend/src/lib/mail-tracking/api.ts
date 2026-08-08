@@ -36,6 +36,8 @@ export type MailOpenEvent = {
 
 export type MailTrackingStats = {
   total: number;
+  /** Benzersiz şirket sayısı (boş company hariç) */
+  companyCount: number;
   sent: number;
   delivered: number;
   opened: number;
@@ -46,9 +48,7 @@ export type MailTrackingStats = {
   inboxRate?: number | null;
 };
 
-export async function listMailTrackingsRequest(params?: {
-  limit?: number;
-  skip?: number;
+export type MailTrackingListFilters = {
   status?: string;
   projectId?: string;
   company?: string;
@@ -56,7 +56,12 @@ export async function listMailTrackingsRequest(params?: {
   date?: string;
   startDate?: string;
   endDate?: string;
-}): Promise<{ trackings: MailTrackingItem[]; total: number }> {
+};
+
+export async function listMailTrackingsRequest(params?: MailTrackingListFilters & {
+  limit?: number;
+  skip?: number;
+}): Promise<{ trackings: MailTrackingItem[]; total: number; companyCount: number }> {
   const qs = new URLSearchParams();
   if (params?.limit != null) qs.set('limit', String(params.limit));
   if (params?.skip != null) qs.set('skip', String(params.skip));
@@ -75,6 +80,7 @@ export async function listMailTrackingsRequest(params?: {
   return {
     trackings: data.trackings || [],
     total: data.total || 0,
+    companyCount: data.companyCount ?? 0,
   };
 }
 
@@ -122,14 +128,29 @@ export async function simulateMailOpenRequest(mailId: string): Promise<{
   };
 }
 
-export async function getMailTrackingStatsRequest(projectId?: string): Promise<MailTrackingStats> {
-  const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
-  const res = await authFetch(`/api/mail-tracking/stats/summary${qs}`);
+export async function getMailTrackingStatsRequest(
+  filters?: MailTrackingListFilters
+): Promise<MailTrackingStats> {
+  const qs = new URLSearchParams();
+  if (filters?.projectId) qs.set('projectId', filters.projectId);
+  if (filters?.status) qs.set('status', filters.status);
+  if (filters?.company) qs.set('company', filters.company);
+  if (filters?.date) qs.set('date', filters.date);
+  if (filters?.startDate) qs.set('startDate', filters.startDate);
+  if (filters?.endDate) qs.set('endDate', filters.endDate);
+
+  const query = qs.toString();
+  const res = await authFetch(
+    `/api/mail-tracking/stats/summary${query ? `?${query}` : ''}`
+  );
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
     throw new Error(data.message || 'Mail takip istatistikleri alınamadı.');
   }
-  return data.stats;
+  return {
+    ...data.stats,
+    companyCount: data.stats?.companyCount ?? 0,
+  };
 }
 
 export async function setMailDeliveryOutcomeRequest(

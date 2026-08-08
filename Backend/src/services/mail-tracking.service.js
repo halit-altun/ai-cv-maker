@@ -137,11 +137,11 @@ function parseSentDayBounds(dateStr) {
 }
 
 /**
- * Kullanıcının mail tracking listesini al
+ * Liste / istatistik için ortak filtre sorgusu
  */
-async function getUserMailTrackings(
+function buildMailTrackingQuery(
   userId,
-  { limit = 50, skip = 0, status, projectId, company, date, startDate, endDate } = {}
+  { status, projectId, company, date, startDate, endDate } = {}
 ) {
   const query = { userId };
 
@@ -190,18 +190,93 @@ async function getUserMailTrackings(
     ];
   }
 
-  const [trackings, total] = await Promise.all([
+  return query;
+}
+
+/**
+ * Filtreye uyan benzersiz (boş olmayan) şirket sayısı
+ */
+async function countDistinctCompanies(query) {
+  const companies = await MailTracking.distinct("company", query);
+  return companies.filter((c) => typeof c === "string" && c.trim().length > 0).length;
+}
+
+/**
+ * Özet istatistikler (liste ile aynı filtreleri destekler)
+ */
+async function getMailTrackingStatsSummary(
+  userId,
+  { status, projectId, company, date, startDate, endDate } = {}
+) {
+  const base = buildMailTrackingQuery(userId, {
+    status,
+    projectId,
+    company,
+    date,
+    startDate,
+    endDate,
+  });
+
+  const [total, sent, delivered, opened, failed, inbox, spam, companyCount] =
+    await Promise.all([
+      MailTracking.countDocuments(base),
+      MailTracking.countDocuments({ ...base, status: "SENT" }),
+      MailTracking.countDocuments({ ...base, status: "DELIVERED" }),
+      MailTracking.countDocuments({ ...base, status: "OPENED" }),
+      MailTracking.countDocuments({ ...base, status: "FAILED" }),
+      MailTracking.countDocuments({ ...base, deliveryOutcome: "inbox" }),
+      MailTracking.countDocuments({ ...base, deliveryOutcome: "spam" }),
+      countDistinctCompanies(base),
+    ]);
+
+  const openRate = total > 0 ? Number(((opened / total) * 100).toFixed(1)) : 0;
+  const marked = inbox + spam;
+  const inboxRate = marked > 0 ? Number(((inbox / marked) * 100).toFixed(1)) : null;
+
+  return {
+    total,
+    companyCount,
+    sent,
+    delivered,
+    opened,
+    failed,
+    openRate,
+    inbox,
+    spam,
+    inboxRate,
+  };
+}
+
+/**
+ * Kullanıcının mail tracking listesini al
+ */
+async function getUserMailTrackings(
+  userId,
+  { limit = 50, skip = 0, status, projectId, company, date, startDate, endDate } = {}
+) {
+  const query = buildMailTrackingQuery(userId, {
+    status,
+    projectId,
+    company,
+    date,
+    startDate,
+    endDate,
+  });
+
+  const [trackings, total, companyCount] = await Promise.all([
     MailTracking.find(query)
       .sort({ sentAt: -1, createdAt: -1 })
       .limit(limit)
       .skip(skip)
       .lean(),
     MailTracking.countDocuments(query),
+    countDistinctCompanies(query),
   ]);
 
   return {
     trackings,
     total,
+    companyCount,
     limit,
     skip,
   };
@@ -363,6 +438,7 @@ module.exports = {
   recordMailOpen,
   updateMailStatus,
   getUserMailTrackings,
+  getMailTrackingStatsSummary,
   getMailTrackingDetails,
   setDeliveryOutcome,
   getTrackingPublicBaseUrl,

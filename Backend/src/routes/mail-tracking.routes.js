@@ -1,6 +1,7 @@
 const express = require("express");
 const {
   getUserMailTrackings,
+  getMailTrackingStatsSummary,
   getMailTrackingDetails,
   setDeliveryOutcome,
 } = require("../services/mail-tracking.service");
@@ -15,31 +16,24 @@ router.use(requireAuth, requireClientId);
 /**
  * Mail tracking istatistikleri
  * GET /api/mail-tracking/stats/summary
+ * Query: projectId, status, company, date, startDate, endDate (liste ile aynı filtreler)
  */
 router.get("/stats/summary", async (req, res, next) => {
   try {
-    const userId = req.user.id;
-    const { projectId } = req.query;
-    const base = { userId };
-    if (projectId) base.projectId = projectId;
+    const { projectId, status, company, date, startDate, endDate } = req.query;
 
-    const [total, sent, delivered, opened, failed, inbox, spam] = await Promise.all([
-      MailTracking.countDocuments(base),
-      MailTracking.countDocuments({ ...base, status: "SENT" }),
-      MailTracking.countDocuments({ ...base, status: "DELIVERED" }),
-      MailTracking.countDocuments({ ...base, status: "OPENED" }),
-      MailTracking.countDocuments({ ...base, status: "FAILED" }),
-      MailTracking.countDocuments({ ...base, deliveryOutcome: "inbox" }),
-      MailTracking.countDocuments({ ...base, deliveryOutcome: "spam" }),
-    ]);
-
-    const openRate = total > 0 ? Number(((opened / total) * 100).toFixed(1)) : 0;
-    const marked = inbox + spam;
-    const inboxRate = marked > 0 ? Number(((inbox / marked) * 100).toFixed(1)) : null;
+    const stats = await getMailTrackingStatsSummary(req.user.id, {
+      projectId: projectId || undefined,
+      status: status || undefined,
+      company: company || undefined,
+      date: date || undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+    });
 
     return res.json({
       ok: true,
-      stats: { total, sent, delivered, opened, failed, openRate, inbox, spam, inboxRate },
+      stats,
     });
   } catch (error) {
     return next(error);
@@ -70,6 +64,7 @@ router.get("/", async (req, res, next) => {
       ok: true,
       trackings: result.trackings,
       total: result.total,
+      companyCount: result.companyCount,
       limit: result.limit,
       skip: result.skip,
     });
