@@ -204,6 +204,7 @@ async function deleteProject(clientId, projectId) {
 /**
  * Projedeki bir firmayı (domain) siler: outreach logları + eşleşen todo item'lar.
  * Yanlışlıkla başvurulan firmaları listeden kaldırmak için.
+ * Not: Sadece-analiz firmaları silinemez.
  */
 async function deleteProjectCompany(clientId, projectId, domain) {
   const project = await getProjectOrThrow(clientId, projectId);
@@ -216,10 +217,27 @@ async function deleteProjectCompany(clientId, projectId, domain) {
     throw new AppError("Firma domain zorunlu.", 400, "DOMAIN_REQUIRED");
   }
 
+  const mailStatuses = ["success", "partial", "failed", "verify_failed"];
+  const mailLogCount = await OutreachLog.countDocuments({
+    clientId,
+    projectId: project._id,
+    domain: normalizedDomain,
+    status: { $in: mailStatuses },
+  });
+
+  if (mailLogCount === 0) {
+    throw new AppError(
+      "Sadece analiz kaydı olan firmalar silinemez.",
+      400,
+      "ANALYSIS_ONLY_NOT_DELETABLE"
+    );
+  }
+
   const logResult = await OutreachLog.deleteMany({
     clientId,
     projectId: project._id,
     domain: normalizedDomain,
+    status: { $in: mailStatuses },
   });
 
   let todoArchived = 0;
@@ -250,6 +268,7 @@ async function deleteProjectCompany(clientId, projectId, domain) {
 
 /**
  * Projedeki tek bir outreach log kaydını siler (tekrarlayan başvuru satırları için).
+ * Analiz kayıtları silinemez.
  */
 async function deleteProjectLog(clientId, projectId, logId) {
   const project = await getProjectOrThrow(clientId, projectId);
@@ -265,6 +284,15 @@ async function deleteProjectLog(clientId, projectId, logId) {
 
   if (!log) {
     throw new AppError("Log kaydı bulunamadı.", 404, "LOG_NOT_FOUND");
+  }
+
+  const mailStatuses = new Set(["success", "partial", "failed", "verify_failed"]);
+  if (!mailStatuses.has(log.status)) {
+    throw new AppError(
+      "Analiz kayıtları silinemez.",
+      400,
+      "ANALYSIS_LOG_NOT_DELETABLE"
+    );
   }
 
   const domain = log.domain || "";
@@ -541,13 +569,23 @@ async function getProjectDashboard(clientId, projectId, options = {}) {
     (c.statuses || []).some((s) => mailLogStatuses.has(s))
   ).length;
 
-  // Firma detayında sadece mail kayıtları dönsün (analiz/AI satırları hariç)
+  /**
+   * Mail denemesi olan firmalar → sadece mail logları (silinebilir).
+   * Sadece analiz firmaları → analiz logları (görünür, silinemez).
+   */
   const companiesForUi = companies
-    .map((c) => ({
-      ...c,
-      logs: (c.logs || []).filter((log) => mailLogStatuses.has(log.status)),
-    }))
-    .filter((c) => c.logs.length > 0 || c.hasMailSent);
+    .map((c) => {
+      const hasMailAttempt = (c.statuses || []).some((s) => mailLogStatuses.has(s));
+      const logs = hasMailAttempt
+        ? (c.logs || []).filter((log) => mailLogStatuses.has(log.status))
+        : (c.logs || []).filter((log) => log.status === "analysis_only");
+      return {
+        ...c,
+        logs,
+        canDelete: hasMailAttempt,
+      };
+    })
+    .filter((c) => c.logs.length > 0);
 
   return {
     project: mapProject(project),

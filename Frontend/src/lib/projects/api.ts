@@ -15,6 +15,8 @@ export type ProjectCompanyActivity = {
   lastActivityAt: string;
   hasMailSent: boolean;
   hasAnalysisOnly: boolean;
+  /** Mail denemesi varsa true — sadece-analiz firmalarında false */
+  canDelete?: boolean;
   analysisOnlyAt: string | null;
   mailSentAt: string | null;
   sentEmails: string[];
