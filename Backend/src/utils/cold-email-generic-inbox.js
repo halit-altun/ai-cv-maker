@@ -1,5 +1,5 @@
 /**
- * info@ / contact@ / hello@ genel gelen kutuları için cold mail sarmalama.
+ * info@ / contact@ / hello@ / sales@ genel gelen kutuları için cold mail sarmalama.
  * Diğer alıcılara giden gövdeye dokunulmaz; yalnızca bu local-part’larda uygulanır.
  */
 
@@ -14,7 +14,7 @@ const ROUTE_TR =
   "Bu e-postayı İK veya işe alım ekibinize iletmenizi rica ederim.";
 
 /**
- * Local-part tam info/contact/hello veya info./contact-/hello- gibi önekler.
+ * Local-part tam info/contact/hello/sales veya info./contact-/hello-/sales- gibi önekler.
  * @param {string} email
  * @returns {boolean}
  */
@@ -29,9 +29,11 @@ function isInfoOrContactEmail(email) {
     local === "info" ||
     local === "contact" ||
     local === "hello" ||
+    local === "sales" ||
     /^info[._+-]/.test(local) ||
     /^contact[._+-]/.test(local) ||
-    /^hello[._+-]/.test(local)
+    /^hello[._+-]/.test(local) ||
+    /^sales[._+-]/.test(local)
   );
 }
 
@@ -146,7 +148,7 @@ function buildGenericInboxRoutingPromptAddon({
   const thanks = isEnglish ? THANKS_EN : THANKS_TR;
 
   return `
-GENERIC INBOX ROUTING (info@ / contact@ / hello@ ONLY — apply this EXTRA structure; keep all other cold-email rules above unchanged for the middle body):
+GENERIC INBOX ROUTING (info@ / contact@ / hello@ / sales@ ONLY — apply this EXTRA structure; keep all other cold-email rules above unchanged for the middle body):
 1) First line MUST be exactly: ${dear}
 2) Second beat (1 short sentence): ask them to forward/route this email to HR or recruiting (${isEnglish ? `"${ROUTE_EN}"` : `"${ROUTE_TR}"`} or equivalent short wording).
 3) Then write the SAME cold-email body logic as usual (researched opening like "I reviewed …" / Turkish equivalent, middle achievements, CTA) — do not invent extra claims.

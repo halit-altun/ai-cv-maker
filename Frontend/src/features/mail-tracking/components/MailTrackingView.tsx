@@ -306,7 +306,7 @@ export function MailTrackingView() {
       if (!body) {
         setError(
           kind === 'infoContact'
-            ? 'info/contact/hello cold mail bulunamadı.'
+            ? 'info/contact/hello/sales cold mail bulunamadı.'
             : 'Standart cold mail bulunamadı.'
         );
         return;
@@ -318,7 +318,7 @@ export function MailTrackingView() {
         /* clipboard izni yoksa yine modal açılır */
       }
       setColdModalTitle(
-        kind === 'infoContact' ? 'info@ / contact@ / hello@ cold mail' : 'Standart cold mail'
+        kind === 'infoContact' ? 'info@ / contact@ / hello@ / sales@ cold mail' : 'Standart cold mail'
       );
       setColdModalBody(body);
       setColdModalOpen(true);
@@ -586,7 +586,7 @@ export function MailTrackingView() {
                         </Tooltip>
                       )}
                       {row.hasInfoContactColdMail && (
-                        <Tooltip title="info/contact/hello cold mail — kopyala ve göster">
+                        <Tooltip title="info/contact/hello/sales cold mail — kopyala ve göster">
                           <span>
                             <Button
                               size="small"
@@ -603,7 +603,7 @@ export function MailTrackingView() {
                               onClick={(e) => void openColdMail(row, 'infoContact', e)}
                               sx={{ textTransform: 'none', fontSize: '0.7rem' }}
                             >
-                              Info/Hello
+                              Genel kutu
                             </Button>
                           </span>
                         </Tooltip>

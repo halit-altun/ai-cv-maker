@@ -1324,7 +1324,7 @@ export function PreviewStep(props: PreviewStepProps) {
             if (!recipients.length) {
               return (
                 <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
-                  Alıcı seçince cold mail önizlemesi burada görünür. Tek info@/contact@/hello@ ise yalnızca
+                  Alıcı seçince cold mail önizlemesi burada görünür. Tek info@/contact@/hello@/sales@ ise yalnızca
                   yönlendirmeli sürüm; diğer adreslerde standart cold mail gösterilir.
                 </Alert>
               );
@@ -1357,16 +1357,16 @@ export function PreviewStep(props: PreviewStepProps) {
                 {showInfoContact && (
                   <Box>
                     <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
-                      info@ / contact@ / hello@ özel cold mail
+                      info@ / contact@ / hello@ / sales@ özel cold mail
                     </Typography>
                     <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
                       {onlyInfo
-                        ? 'Yalnızca girilen ana adres info/contact/hello olduğu için standart sürüm üretilmez / gösterilmez; bu metin kullanılır.'
-                        : 'info@, contact@ ve hello@ adreslerine İK yönlendirme girişli bu sürüm gider; diğer alıcılar standart metni alır.'}
+                        ? 'Yalnızca girilen ana adres info/contact/hello/sales olduğu için standart sürüm üretilmez / gösterilmez; bu metin kullanılır.'
+                        : 'info@, contact@, hello@ ve sales@ adreslerine İK yönlendirme girişli bu sürüm gider; diğer alıcılar standart metni alır.'}
                     </Typography>
                     <TextField
                       fullWidth
-                      label="info/contact/hello mail gövdesi"
+                      label="info/contact/hello/sales mail gövdesi"
                       value={props.outreachInfoContactEmailBody}
                       onChange={(e) => {
                         props.setOutreachInfoContactEmailBody(e.target.value);
@@ -1567,9 +1567,9 @@ export function PreviewStep(props: PreviewStepProps) {
               </Alert>
               <Alert severity="info" sx={{ my: 1, py: 0.5 }}>
                 {onlyInfoOrContactEmails(props.selectedOutreachRecipients)
-                  ? 'Seçili alıcılar info@/contact@/hello@ — yalnızca yönlendirmeli cold mail gönderilir.'
+                  ? 'Seçili alıcılar info@/contact@/hello@/sales@ — yalnızca yönlendirmeli cold mail gönderilir.'
                   : anyInfoOrContactEmail(props.selectedOutreachRecipients)
-                    ? 'Karışık liste: info/contact/hello adreslerine özel sürüm, diğerlerine standart cold mail.'
+                    ? 'Karışık liste: info/contact/hello/sales adreslerine özel sürüm, diğerlerine standart cold mail.'
                     : 'Seçili alıcılara standart cold mail gönderilir.'}
               </Alert>
               <Typography variant="body2" sx={{ mb: 0.5 }}>

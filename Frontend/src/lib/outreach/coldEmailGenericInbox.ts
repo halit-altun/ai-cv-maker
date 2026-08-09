@@ -1,5 +1,5 @@
 /**
- * info@ / contact@ / hello@ genel gelen kutuları — Frontend mirror (Backend util ile aynı kurallar).
+ * info@ / contact@ / hello@ / sales@ genel gelen kutuları — Frontend mirror (Backend util ile aynı kurallar).
  */
 
 export const COLD_EMAIL_ROUTE_THANKS_EN =
@@ -12,7 +12,7 @@ export const COLD_EMAIL_ROUTE_ASK_EN =
 export const COLD_EMAIL_ROUTE_ASK_TR =
   'Bu e-postayı İK veya işe alım ekibinize iletmenizi rica ederim.';
 
-/** Local-part tam info/contact/hello veya info./contact-/hello- önekleri. */
+/** Local-part tam info/contact/hello/sales veya info./contact-/hello-/sales- önekleri. */
 export function isInfoOrContactEmail(email: string): boolean {
   const local = String(email || '')
     .trim()
@@ -24,9 +24,11 @@ export function isInfoOrContactEmail(email: string): boolean {
     local === 'info' ||
     local === 'contact' ||
     local === 'hello' ||
+    local === 'sales' ||
     /^info[._+-]/.test(local) ||
     /^contact[._+-]/.test(local) ||
-    /^hello[._+-]/.test(local)
+    /^hello[._+-]/.test(local) ||
+    /^sales[._+-]/.test(local)
   );
 }
 
@@ -34,13 +36,13 @@ export function anyInfoOrContactEmail(emails: string[]): boolean {
   return (emails || []).some(isInfoOrContactEmail);
 }
 
-/** Listedeki tüm adresler info@/contact@/hello@ (tek ana domain info dahil). */
+/** Listedeki tüm adresler info@/contact@/hello@/sales@ (tek ana domain info dahil). */
 export function onlyInfoOrContactEmails(emails: string[]): boolean {
   const list = (emails || []).map((e) => String(e || '').trim()).filter(Boolean);
   return list.length > 0 && list.every(isInfoOrContactEmail);
 }
 
-/** info/contact/hello dışı en az bir alıcı var mı (standart cold mail gerekir). */
+/** info/contact/hello/sales dışı en az bir alıcı var mı (standart cold mail gerekir). */
 export function hasStandardRecipientEmails(emails: string[]): boolean {
   return (emails || []).some((e) => {
     const v = String(e || '').trim();
@@ -123,7 +125,7 @@ export function buildGenericInboxRoutingPromptAddon(params: {
   const thanks = isEnglish ? COLD_EMAIL_ROUTE_THANKS_EN : COLD_EMAIL_ROUTE_THANKS_TR;
 
   return `
-GENERIC INBOX ROUTING (info@ / contact@ / hello@ ONLY — apply this EXTRA structure; keep all other cold-email rules above unchanged for the middle body):
+GENERIC INBOX ROUTING (info@ / contact@ / hello@ / sales@ ONLY — apply this EXTRA structure; keep all other cold-email rules above unchanged for the middle body):
 1) First line MUST be exactly: ${dear}
 2) Second beat (1 short sentence): ask them to forward/route this email to HR or recruiting (${isEnglish ? `"${COLD_EMAIL_ROUTE_ASK_EN}"` : `"${COLD_EMAIL_ROUTE_ASK_TR}"`} or equivalent short wording).
 3) Then write the SAME cold-email body logic as usual (researched opening like "I reviewed …" / Turkish equivalent, middle achievements, CTA) — do not invent extra claims.
