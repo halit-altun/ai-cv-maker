@@ -22,7 +22,7 @@ function mapDoc(doc) {
       targetPosition: "",
       cvLanguage: "turkish",
       outreachEmailLanguageMode: "auto",
-      aiSettings: { about: true, workExperience: true, skills: true },
+      aiSettings: { about: true, workExperience: false, skills: false },
       selectedEmailPrefixCategories: ["turkey-hiring"],
       customEmailLocalPartsText: "",
       includePrimaryEmailInSend: true,
@@ -56,8 +56,8 @@ function mapDoc(doc) {
       : "auto",
     aiSettings: {
       about: ai.about !== false,
-      workExperience: ai.workExperience !== false,
-      skills: ai.skills !== false,
+      workExperience: Boolean(ai.workExperience),
+      skills: Boolean(ai.skills),
     },
     selectedEmailPrefixCategories: Array.isArray(doc.selectedEmailPrefixCategories)
       ? doc.selectedEmailPrefixCategories.map(String).filter(Boolean)
@@ -120,8 +120,9 @@ async function updateClientUiPreferences(clientId, userId, patch = {}) {
   if (patch.aiSettings && typeof patch.aiSettings === "object") {
     updates.aiSettings = {
       about: patch.aiSettings.about !== false,
-      workExperience: patch.aiSettings.workExperience !== false,
-      skills: patch.aiSettings.skills !== false,
+      // Explicit false must persist (!== false would also work; Boolean keeps intent clear)
+      workExperience: Boolean(patch.aiSettings.workExperience),
+      skills: Boolean(patch.aiSettings.skills),
     };
   }
   if (patch.selectedEmailPrefixCategories !== undefined) {
@@ -227,6 +228,8 @@ async function updateClientUiPreferences(clientId, userId, patch = {}) {
     return getClientUiPreferences(clientId);
   }
 
+  // Do NOT put the same paths in both $set and $setOnInsert — Mongo rejects that conflict
+  // and PATCH never persists (UI always looks like defaults on reload).
   const doc = await ClientUiPreferences.findOneAndUpdate(
     { clientId },
     {
@@ -235,7 +238,6 @@ async function updateClientUiPreferences(clientId, userId, patch = {}) {
         clientId,
         userId,
       },
-      $setOnInsert: { clientId, userId },
     },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   ).lean();

@@ -54,7 +54,12 @@ import {
 import {
   getClientUiPreferencesRequest,
   updateClientUiPreferencesRequest,
+  type ClientUiPreferencesPatch,
 } from '@/lib/client-preferences/api';
+import {
+  readClientUiPreferencesLocalCache,
+  writeClientUiPreferencesLocalCache,
+} from '@/lib/client-preferences/localCache';
 import { authFetch } from '@/lib/auth/authFetch';
 import { TodoJobStatusPanel } from '@/features/todo-applications';
 import Link from 'next/link';
@@ -141,6 +146,8 @@ export function BulkApplicationView() {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prefsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefsSkipNextSaveRef = useRef(true);
+  const prefsBaselineRef = useRef<string>('');
   const clientFilterRef = useRef<SendHistoryFilter | null>(null);
 
   const loadProjects = useCallback(async () => {
@@ -255,38 +262,70 @@ export function BulkApplicationView() {
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const prefs = await getClientUiPreferencesRequest();
-        if (cancelled) return;
-        setCvLanguage(prefs.cvLanguage === 'english' ? 'english' : 'turkish');
+
+    const applyPrefs = (prefs: ClientUiPreferencesPatch) => {
+      if (prefs.cvLanguage === 'english' || prefs.cvLanguage === 'turkish') {
+        setCvLanguage(prefs.cvLanguage);
+      }
+      if (prefs.outreachEmailLanguageMode !== undefined) {
         setEmailLangMode(
           prefs.outreachEmailLanguageMode === 'turkish' ||
             prefs.outreachEmailLanguageMode === 'english'
             ? prefs.outreachEmailLanguageMode
             : 'auto'
         );
-        setAiAbout(prefs.aiSettings?.about !== false);
-        setAiExperience(Boolean(prefs.aiSettings?.workExperience));
-        setAiSkills(Boolean(prefs.aiSettings?.skills));
-        const cats = (prefs.selectedEmailPrefixCategories || []).filter(
-          (id): id is EmailPrefixCategoryId => EMAIL_CATEGORY_IDS.has(id as EmailPrefixCategoryId)
+      }
+      if (prefs.aiSettings) {
+        setAiAbout(prefs.aiSettings.about !== false);
+        setAiExperience(Boolean(prefs.aiSettings.workExperience));
+        setAiSkills(Boolean(prefs.aiSettings.skills));
+      }
+      if (prefs.selectedEmailPrefixCategories) {
+        const cats = prefs.selectedEmailPrefixCategories.filter(
+          (id): id is EmailPrefixCategoryId =>
+            EMAIL_CATEGORY_IDS.has(id as EmailPrefixCategoryId)
         );
         setSelectedCategories(cats.length ? cats : ['turkey-hiring']);
+      }
+      if (prefs.customEmailLocalPartsText !== undefined) {
         setCustomLocals(prefs.customEmailLocalPartsText || '');
+      }
+      if (prefs.includePrimaryEmailInSend !== undefined) {
         setIncludePrimary(prefs.includePrimaryEmailInSend !== false);
+      }
+      if (prefs.forceResend !== undefined) {
         setForceResend(Boolean(prefs.forceResend));
+      }
+      if (prefs.shouldGenerateLinkedInMessage !== undefined) {
         setGenerateLinkedIn(Boolean(prefs.shouldGenerateLinkedInMessage));
+      }
+      if (prefs.includeCvPhoto !== undefined) {
         setIncludeCvPhoto(Boolean(prefs.includeCvPhoto));
+      }
+      if (prefs.bulkSendHistoryFilter !== undefined) {
         const filter = prefs.bulkSendHistoryFilter;
         if (filter === 'all' || filter === 'sent' || filter === 'unsent') {
           clientFilterRef.current = filter;
           setSendFilter(filter);
         }
+      }
+    };
+
+    void (async () => {
+      try {
+        const prefs = await getClientUiPreferencesRequest();
+        if (cancelled) return;
+        applyPrefs(prefs);
+        writeClientUiPreferencesLocalCache(prefs);
       } catch (err) {
         console.warn('Client tercihleri yüklenemedi:', err);
+        const local = readClientUiPreferencesLocalCache();
+        if (local && !cancelled) applyPrefs(local);
       } finally {
-        if (!cancelled) setPrefsReady(true);
+        if (!cancelled) {
+          prefsSkipNextSaveRef.current = true;
+          setPrefsReady(true);
+        }
       }
     })();
     return () => {
@@ -316,24 +355,34 @@ export function BulkApplicationView() {
 
   useEffect(() => {
     if (!prefsReady) return;
+    const patch = {
+      cvLanguage,
+      outreachEmailLanguageMode: emailLangMode,
+      aiSettings: {
+        about: aiAbout,
+        workExperience: aiExperience,
+        skills: aiSkills,
+      },
+      selectedEmailPrefixCategories: selectedCategories,
+      customEmailLocalPartsText: customLocals,
+      includePrimaryEmailInSend: includePrimary,
+      forceResend,
+      shouldGenerateLinkedInMessage: generateLinkedIn,
+      includeCvPhoto,
+      bulkSendHistoryFilter: sendFilter,
+    };
+    const serialized = JSON.stringify(patch);
+    if (prefsSkipNextSaveRef.current) {
+      prefsSkipNextSaveRef.current = false;
+      prefsBaselineRef.current = serialized;
+      return;
+    }
+    if (serialized === prefsBaselineRef.current) return;
     if (prefsSaveTimerRef.current) clearTimeout(prefsSaveTimerRef.current);
     prefsSaveTimerRef.current = setTimeout(() => {
-      void updateClientUiPreferencesRequest({
-        cvLanguage,
-        outreachEmailLanguageMode: emailLangMode,
-        aiSettings: {
-          about: aiAbout,
-          workExperience: aiExperience,
-          skills: aiSkills,
-        },
-        selectedEmailPrefixCategories: selectedCategories,
-        customEmailLocalPartsText: customLocals,
-        includePrimaryEmailInSend: includePrimary,
-        forceResend,
-        shouldGenerateLinkedInMessage: generateLinkedIn,
-        includeCvPhoto,
-        bulkSendHistoryFilter: sendFilter,
-      }).catch((err) => {
+      prefsBaselineRef.current = serialized;
+      writeClientUiPreferencesLocalCache(patch);
+      void updateClientUiPreferencesRequest(patch).catch((err) => {
         console.warn('Client tercihleri kaydedilemedi:', err);
       });
     }, 600);

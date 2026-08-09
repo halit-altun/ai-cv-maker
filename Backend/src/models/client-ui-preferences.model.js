@@ -32,8 +32,8 @@ const clientUiPreferencesSchema = new mongoose.Schema(
     },
     aiSettings: {
       about: { type: Boolean, default: true },
-      workExperience: { type: Boolean, default: true },
-      skills: { type: Boolean, default: true },
+      workExperience: { type: Boolean, default: false },
+      skills: { type: Boolean, default: false },
     },
     selectedEmailPrefixCategories: {
       type: [String],

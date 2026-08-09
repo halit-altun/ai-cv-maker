@@ -66,7 +66,12 @@ import { authFetch } from '@/lib/auth/authFetch';
 import {
   getClientUiPreferencesRequest,
   updateClientUiPreferencesRequest,
+  type ClientUiPreferencesPatch,
 } from '@/lib/client-preferences/api';
+import {
+  readClientUiPreferencesLocalCache,
+  writeClientUiPreferencesLocalCache,
+} from '@/lib/client-preferences/localCache';
 
 const EMAIL_CATEGORY_IDS = new Set(EMAIL_PREFIX_CATEGORIES.map((c) => c.id));
 
@@ -215,6 +220,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   const [prefsReady, setPrefsReady] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prefsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Hydrate sonrası ilk effect tetiklemesini kaydetme — default’larla API ezilmesin */
+  const prefsSkipNextSaveRef = useRef(true);
+  const prefsBaselineRef = useRef<string>('');
 
   // Outreach projeleri — GET; en son seçilen varsayılan
   useEffect(() => {
@@ -349,61 +357,105 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   // Client bazlı tercihler (toplu + company-based ortak)
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const prefs = await getClientUiPreferencesRequest();
-        if (cancelled) return;
+
+    const applyPageType = (pageType: CompanyPageType, pageTypeOther: string) => {
+      setLastCompanyPageType(pageType);
+      setLastCompanyPageTypeOther(pageType === 'other' ? pageTypeOther : '');
+      setCompanyLinks((prev) =>
+        prev.map((link, index) => {
+          if (index !== 0) return link;
+          return {
+            ...link,
+            pageType,
+            pageTypeOther: pageType === 'other' ? pageTypeOther : '',
+            description: resolvePageTypeLabel(
+              pageType,
+              pageType === 'other' ? pageTypeOther : ''
+            ),
+          };
+        })
+      );
+    };
+
+    const applyPrefs = (prefs: ClientUiPreferencesPatch) => {
+      if (prefs.targetPosition !== undefined) {
         setTargetPosition(prefs.targetPosition || '');
+      }
+      if (prefs.manualMustMentionTopicsText !== undefined) {
         setManualMustMentionTopicsText(prefs.manualMustMentionTopicsText || '');
+      }
+      if (prefs.manualMustNotMentionTopicsText !== undefined) {
         setManualMustNotMentionTopicsText(prefs.manualMustNotMentionTopicsText || '');
+      }
+      if (prefs.coverLetterRecipientName !== undefined) {
         setCoverLetterRecipientName(prefs.coverLetterRecipientName || '');
+      }
+      if (prefs.coverLetterCompanyName !== undefined) {
         setCoverLetterCompanyName(prefs.coverLetterCompanyName || '');
-        const cached = await loadCachedCompanyCvPdf().catch(() => null);
-        if (cancelled) return;
-        if (cached?.file) {
-          // IndexedDB CV dili öncelikli; cache effect ile çift set zararsız
-          setCvFile((prev) => prev || cached.file);
-          setCvLanguage(cached.cvLanguage);
-          setCvRestoredFromCache(true);
-        } else {
-          setCvLanguage(prefs.cvLanguage === 'english' ? 'english' : 'turkish');
-        }
+      }
+      if (prefs.outreachEmailLanguageMode !== undefined) {
         setOutreachEmailLanguageMode(
           prefs.outreachEmailLanguageMode === 'turkish' ||
             prefs.outreachEmailLanguageMode === 'english'
             ? prefs.outreachEmailLanguageMode
             : 'auto'
         );
+      }
+      if (prefs.aiSettings) {
         setAiSettings({
-          about: prefs.aiSettings?.about !== false,
-          workExperience: Boolean(prefs.aiSettings?.workExperience),
-          skills: Boolean(prefs.aiSettings?.skills),
+          about: prefs.aiSettings.about !== false,
+          workExperience: Boolean(prefs.aiSettings.workExperience),
+          skills: Boolean(prefs.aiSettings.skills),
         });
-        const cats = (prefs.selectedEmailPrefixCategories || []).filter(
+      }
+      if (prefs.selectedEmailPrefixCategories) {
+        const cats = prefs.selectedEmailPrefixCategories.filter(
           (id): id is EmailPrefixCategoryId =>
             EMAIL_CATEGORY_IDS.has(id as EmailPrefixCategoryId)
         );
         if (cats.length) setSelectedEmailPrefixCategories(cats);
+      }
+      if (prefs.customEmailLocalPartsText !== undefined) {
         setCustomEmailLocalPartsText(prefs.customEmailLocalPartsText || '');
+      }
+      if (prefs.includePrimaryEmailInSend !== undefined) {
         setIncludePrimaryEmailInSend(prefs.includePrimaryEmailInSend !== false);
+      }
+      if (prefs.skipPrimaryEmailVerification !== undefined) {
         setSkipPrimaryEmailVerification(Boolean(prefs.skipPrimaryEmailVerification));
+      }
+      if (prefs.forceResend !== undefined) {
         setForceOutreachResend(Boolean(prefs.forceResend));
+      }
+      if (prefs.shouldGenerateCoverLetter !== undefined) {
         setShouldGenerateCoverLetter(prefs.shouldGenerateCoverLetter !== false);
-        setCoverLetterSource(
-          prefs.coverLetterSource === 'text' ? 'text' : 'company'
-        );
+      }
+      if (prefs.coverLetterSource !== undefined) {
+        setCoverLetterSource(prefs.coverLetterSource === 'text' ? 'text' : 'company');
+      }
+      if (prefs.shouldGenerateLinkedInMessage !== undefined) {
         setShouldGenerateLinkedInMessage(Boolean(prefs.shouldGenerateLinkedInMessage));
+      }
+      if (prefs.linkedinMessageSource !== undefined) {
         setLinkedinMessageSource(
           prefs.linkedinMessageSource === 'text' ? 'text' : 'company'
         );
-        setCvAdaptationSource(
-          prefs.cvAdaptationSource === 'text' ? 'text' : 'company'
-        );
+      }
+      if (prefs.cvAdaptationSource !== undefined) {
+        setCvAdaptationSource(prefs.cvAdaptationSource === 'text' ? 'text' : 'company');
+      }
+      if (prefs.includeCvPhoto !== undefined) {
         setIncludeCvPhoto(Boolean(prefs.includeCvPhoto));
+      }
+      if (prefs.shouldSendCompanyEmail !== undefined) {
         setShouldSendCompanyEmail(Boolean(prefs.shouldSendCompanyEmail));
+      }
+      if (prefs.outreachCvAttachmentSource !== undefined) {
         setOutreachCvAttachmentSource(
           prefs.outreachCvAttachmentSource === 'original' ? 'original' : 'optimized'
         );
+      }
+      if (prefs.lastCompanyPageType !== undefined) {
         const PAGE_TYPES = new Set([
           'homepage',
           'careers',
@@ -418,130 +470,99 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           ? (prefs.lastCompanyPageType as CompanyPageType)
           : 'homepage';
         const savedPageTypeOther = String(prefs.lastCompanyPageTypeOther || '');
-        setLastCompanyPageType(savedPageType);
-        setLastCompanyPageTypeOther(
-          savedPageType === 'other' ? savedPageTypeOther : ''
-        );
-        setCompanyLinks((prev) =>
-          prev.map((link, index) => {
-            if (index !== 0) return link;
-            const pageType = savedPageType;
-            const pageTypeOther = pageType === 'other' ? savedPageTypeOther : '';
-            return {
-              ...link,
-              pageType,
-              pageTypeOther,
-              description: resolvePageTypeLabel(pageType, pageTypeOther),
-            };
-          })
-        );
+        applyPageType(savedPageType, savedPageTypeOther);
+      }
+    };
+
+    void (async () => {
+      try {
+        const prefs = await getClientUiPreferencesRequest();
+        if (cancelled) return;
+        applyPrefs(prefs);
+
+        const cached = await loadCachedCompanyCvPdf().catch(() => null);
+        if (cancelled) return;
+        if (cached?.file) {
+          setCvFile((prev) => prev || cached.file);
+          setCvLanguage(cached.cvLanguage);
+          setCvRestoredFromCache(true);
+        } else if (prefs.cvLanguage === 'english' || prefs.cvLanguage === 'turkish') {
+          setCvLanguage(prefs.cvLanguage);
+        }
+
+        writeClientUiPreferencesLocalCache(prefs);
       } catch (err) {
         console.warn('Client tercihleri yüklenemedi:', err);
-        // Fallback: eski localStorage
-        try {
-          const raw = localStorage.getItem(ANALYSIS_PREFS_STORAGE_KEY);
-          if (raw) {
-            const parsed = JSON.parse(raw) as {
-              targetPosition?: string;
-              manualMustMentionTopicsText?: string;
-              manualMustNotMentionTopicsText?: string;
-              coverLetterRecipientName?: string;
-              coverLetterCompanyName?: string;
-              lastCompanyPageType?: string;
-              lastCompanyPageTypeOther?: string;
-            };
-            if (typeof parsed.targetPosition === 'string') {
-              setTargetPosition(parsed.targetPosition);
-            }
-            if (typeof parsed.manualMustMentionTopicsText === 'string') {
-              setManualMustMentionTopicsText(parsed.manualMustMentionTopicsText);
-            }
-            if (typeof parsed.manualMustNotMentionTopicsText === 'string') {
-              setManualMustNotMentionTopicsText(parsed.manualMustNotMentionTopicsText);
-            }
-            if (typeof parsed.coverLetterRecipientName === 'string') {
-              setCoverLetterRecipientName(parsed.coverLetterRecipientName);
-            }
-            if (typeof parsed.coverLetterCompanyName === 'string') {
-              setCoverLetterCompanyName(parsed.coverLetterCompanyName);
-            }
-            const localPageTypes = new Set([
-              'homepage',
-              'careers',
-              'contact',
-              'about',
-              'blog',
-              'products',
-              'team',
-              'other',
-            ]);
-            if (
-              typeof parsed.lastCompanyPageType === 'string' &&
-              localPageTypes.has(parsed.lastCompanyPageType)
-            ) {
-              const pageType = parsed.lastCompanyPageType as CompanyPageType;
-              const pageTypeOther =
-                pageType === 'other'
-                  ? String(parsed.lastCompanyPageTypeOther || '')
-                  : '';
-              setLastCompanyPageType(pageType);
-              setLastCompanyPageTypeOther(pageTypeOther);
-              setCompanyLinks((prev) =>
-                prev.map((link, index) =>
-                  index === 0
-                    ? {
-                        ...link,
-                        pageType,
-                        pageTypeOther,
-                        description: resolvePageTypeLabel(pageType, pageTypeOther),
-                      }
-                    : link
-                )
-              );
-            }
+        const local = readClientUiPreferencesLocalCache();
+        if (local && !cancelled) {
+          applyPrefs(local);
+          if (local.cvLanguage === 'english' || local.cvLanguage === 'turkish') {
+            setCvLanguage(local.cvLanguage);
           }
-        } catch {
-          /* ignore */
+        } else if (!cancelled) {
+          // Eski localStorage anahtarı
+          try {
+            const raw = localStorage.getItem(ANALYSIS_PREFS_STORAGE_KEY);
+            if (raw) {
+              const parsed = JSON.parse(raw) as ClientUiPreferencesPatch;
+              applyPrefs(parsed);
+            }
+          } catch {
+            /* ignore */
+          }
         }
       } finally {
-        if (!cancelled) setPrefsReady(true);
+        if (!cancelled) {
+          prefsSkipNextSaveRef.current = true;
+          setPrefsReady(true);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only hydrate
   }, []);
 
   useEffect(() => {
     if (!prefsReady) return;
+    const patch = {
+      targetPosition: targetPosition.trim(),
+      cvLanguage,
+      outreachEmailLanguageMode,
+      aiSettings,
+      selectedEmailPrefixCategories,
+      customEmailLocalPartsText,
+      includePrimaryEmailInSend,
+      skipPrimaryEmailVerification,
+      forceResend: forceOutreachResend,
+      shouldGenerateCoverLetter,
+      coverLetterSource,
+      shouldGenerateLinkedInMessage,
+      linkedinMessageSource,
+      cvAdaptationSource,
+      includeCvPhoto,
+      shouldSendCompanyEmail,
+      outreachCvAttachmentSource,
+      manualMustMentionTopicsText,
+      manualMustNotMentionTopicsText,
+      coverLetterRecipientName,
+      coverLetterCompanyName,
+      lastCompanyPageType,
+      lastCompanyPageTypeOther:
+        lastCompanyPageType === 'other' ? lastCompanyPageTypeOther : '',
+    };
+    const serialized = JSON.stringify(patch);
+    if (prefsSkipNextSaveRef.current) {
+      prefsSkipNextSaveRef.current = false;
+      prefsBaselineRef.current = serialized;
+      return;
+    }
+    if (serialized === prefsBaselineRef.current) return;
     if (prefsSaveTimerRef.current) clearTimeout(prefsSaveTimerRef.current);
     prefsSaveTimerRef.current = setTimeout(() => {
-      const patch = {
-        targetPosition: targetPosition.trim(),
-        cvLanguage,
-        outreachEmailLanguageMode,
-        aiSettings,
-        selectedEmailPrefixCategories,
-        customEmailLocalPartsText,
-        includePrimaryEmailInSend,
-        skipPrimaryEmailVerification,
-        forceResend: forceOutreachResend,
-        shouldGenerateCoverLetter,
-        coverLetterSource,
-        shouldGenerateLinkedInMessage,
-        linkedinMessageSource,
-        cvAdaptationSource,
-        includeCvPhoto,
-        shouldSendCompanyEmail,
-        outreachCvAttachmentSource,
-        manualMustMentionTopicsText,
-        manualMustNotMentionTopicsText,
-        coverLetterRecipientName,
-        coverLetterCompanyName,
-        lastCompanyPageType,
-        lastCompanyPageTypeOther:
-          lastCompanyPageType === 'other' ? lastCompanyPageTypeOther : '',
-      };
+      prefsBaselineRef.current = serialized;
+      writeClientUiPreferencesLocalCache(patch);
       void updateClientUiPreferencesRequest(patch).catch((err) => {
         console.warn('Client tercihleri kaydedilemedi:', err);
       });
