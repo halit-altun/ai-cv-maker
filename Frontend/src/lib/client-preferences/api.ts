@@ -32,6 +32,17 @@ export type ClientUiPreferences = {
   manualMustNotMentionTopicsText: string;
   coverLetterRecipientName: string;
   coverLetterCompanyName: string;
+  /** Son seçilen şirket sayfa tipi (homepage, careers, …) */
+  lastCompanyPageType:
+    | 'homepage'
+    | 'careers'
+    | 'contact'
+    | 'about'
+    | 'blog'
+    | 'products'
+    | 'team'
+    | 'other';
+  lastCompanyPageTypeOther: string;
   updatedAt?: string | null;
 };
 

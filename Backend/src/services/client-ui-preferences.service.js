@@ -5,6 +5,16 @@ const EMAIL_LANG = new Set(["auto", "turkish", "english"]);
 const SOURCE = new Set(["company", "text"]);
 const FILTER = new Set(["all", "sent", "unsent"]);
 const CV_ATTACH = new Set(["optimized", "original"]);
+const PAGE_TYPES = new Set([
+  "homepage",
+  "careers",
+  "contact",
+  "about",
+  "blog",
+  "products",
+  "team",
+  "other",
+]);
 
 function mapDoc(doc) {
   if (!doc) {
@@ -31,6 +41,8 @@ function mapDoc(doc) {
       manualMustNotMentionTopicsText: "",
       coverLetterRecipientName: "",
       coverLetterCompanyName: "",
+      lastCompanyPageType: "homepage",
+      lastCompanyPageTypeOther: "",
       updatedAt: null,
     };
   }
@@ -44,8 +56,8 @@ function mapDoc(doc) {
       : "auto",
     aiSettings: {
       about: ai.about !== false,
-      workExperience: Boolean(ai.workExperience),
-      skills: Boolean(ai.skills),
+      workExperience: ai.workExperience !== false,
+      skills: ai.skills !== false,
     },
     selectedEmailPrefixCategories: Array.isArray(doc.selectedEmailPrefixCategories)
       ? doc.selectedEmailPrefixCategories.map(String).filter(Boolean)
@@ -77,6 +89,10 @@ function mapDoc(doc) {
     manualMustNotMentionTopicsText: String(doc.manualMustNotMentionTopicsText || ""),
     coverLetterRecipientName: String(doc.coverLetterRecipientName || ""),
     coverLetterCompanyName: String(doc.coverLetterCompanyName || ""),
+    lastCompanyPageType: PAGE_TYPES.has(doc.lastCompanyPageType)
+      ? doc.lastCompanyPageType
+      : "homepage",
+    lastCompanyPageTypeOther: String(doc.lastCompanyPageTypeOther || ""),
     updatedAt: doc.updatedAt || null,
   };
 }
@@ -104,8 +120,8 @@ async function updateClientUiPreferences(clientId, userId, patch = {}) {
   if (patch.aiSettings && typeof patch.aiSettings === "object") {
     updates.aiSettings = {
       about: patch.aiSettings.about !== false,
-      workExperience: Boolean(patch.aiSettings.workExperience),
-      skills: Boolean(patch.aiSettings.skills),
+      workExperience: patch.aiSettings.workExperience !== false,
+      skills: patch.aiSettings.skills !== false,
     };
   }
   if (patch.selectedEmailPrefixCategories !== undefined) {
@@ -193,6 +209,17 @@ async function updateClientUiPreferences(clientId, userId, patch = {}) {
   if (patch.coverLetterCompanyName !== undefined) {
     updates.coverLetterCompanyName = String(
       patch.coverLetterCompanyName || ""
+    ).trim();
+  }
+  if (
+    patch.lastCompanyPageType !== undefined &&
+    PAGE_TYPES.has(String(patch.lastCompanyPageType))
+  ) {
+    updates.lastCompanyPageType = String(patch.lastCompanyPageType);
+  }
+  if (patch.lastCompanyPageTypeOther !== undefined) {
+    updates.lastCompanyPageTypeOther = String(
+      patch.lastCompanyPageTypeOther || ""
     ).trim();
   }
 

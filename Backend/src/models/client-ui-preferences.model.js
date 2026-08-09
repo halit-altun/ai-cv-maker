@@ -76,6 +76,22 @@ const clientUiPreferencesSchema = new mongoose.Schema(
     manualMustNotMentionTopicsText: { type: String, default: "" },
     coverLetterRecipientName: { type: String, default: "" },
     coverLetterCompanyName: { type: String, default: "" },
+    /** Son seçilen şirket sayfa tipi (homepage, careers, …) */
+    lastCompanyPageType: {
+      type: String,
+      enum: [
+        "homepage",
+        "careers",
+        "contact",
+        "about",
+        "blog",
+        "products",
+        "team",
+        "other",
+      ],
+      default: "homepage",
+    },
+    lastCompanyPageTypeOther: { type: String, default: "" },
   },
   {
     timestamps: true,

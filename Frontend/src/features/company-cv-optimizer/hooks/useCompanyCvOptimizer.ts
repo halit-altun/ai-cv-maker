@@ -20,7 +20,7 @@ import {
   ANALYSIS_PREFS_STORAGE_KEY,
 } from '../constants/optimizerConstants';
 import type { AIAdaptationSettings, CompanyCvOptimizerState, OutreachCvAttachmentSource, OutreachEmailLanguageMode } from '../types';
-import type { EmailPrefixCategoryId } from '../constants/outreachConstants';
+import type { EmailPrefixCategoryId, CompanyPageType } from '../constants/outreachConstants';
 import {
   DEFAULT_CV_BODY_FONT_SIZE,
   DEFAULT_CV_HEADING_FONT_SIZE,
@@ -123,6 +123,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   const [companyLinks, setCompanyLinks] = useState<CompanyLink[]>([
     { url: '', description: '', pageType: 'homepage', pageTypeOther: '' },
   ]);
+  const [lastCompanyPageType, setLastCompanyPageType] =
+    useState<CompanyPageType>('homepage');
+  const [lastCompanyPageTypeOther, setLastCompanyPageTypeOther] = useState('');
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [cvData, setCvData] = useState<CompanyBasedCVData | null>(null);
   const [analysisResult, setAnalysisResult] = useState<CVAnalysisResponse | null>(null);
@@ -394,6 +397,37 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         setOutreachCvAttachmentSource(
           prefs.outreachCvAttachmentSource === 'original' ? 'original' : 'optimized'
         );
+        const PAGE_TYPES = new Set([
+          'homepage',
+          'careers',
+          'contact',
+          'about',
+          'blog',
+          'products',
+          'team',
+          'other',
+        ]);
+        const savedPageType = PAGE_TYPES.has(String(prefs.lastCompanyPageType || ''))
+          ? (prefs.lastCompanyPageType as CompanyPageType)
+          : 'homepage';
+        const savedPageTypeOther = String(prefs.lastCompanyPageTypeOther || '');
+        setLastCompanyPageType(savedPageType);
+        setLastCompanyPageTypeOther(
+          savedPageType === 'other' ? savedPageTypeOther : ''
+        );
+        setCompanyLinks((prev) =>
+          prev.map((link, index) => {
+            if (index !== 0) return link;
+            const pageType = savedPageType;
+            const pageTypeOther = pageType === 'other' ? savedPageTypeOther : '';
+            return {
+              ...link,
+              pageType,
+              pageTypeOther,
+              description: resolvePageTypeLabel(pageType, pageTypeOther),
+            };
+          })
+        );
       } catch (err) {
         console.warn('Client tercihleri yüklenemedi:', err);
         // Fallback: eski localStorage
@@ -406,6 +440,8 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
               manualMustNotMentionTopicsText?: string;
               coverLetterRecipientName?: string;
               coverLetterCompanyName?: string;
+              lastCompanyPageType?: string;
+              lastCompanyPageTypeOther?: string;
             };
             if (typeof parsed.targetPosition === 'string') {
               setTargetPosition(parsed.targetPosition);
@@ -421,6 +457,40 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
             }
             if (typeof parsed.coverLetterCompanyName === 'string') {
               setCoverLetterCompanyName(parsed.coverLetterCompanyName);
+            }
+            const localPageTypes = new Set([
+              'homepage',
+              'careers',
+              'contact',
+              'about',
+              'blog',
+              'products',
+              'team',
+              'other',
+            ]);
+            if (
+              typeof parsed.lastCompanyPageType === 'string' &&
+              localPageTypes.has(parsed.lastCompanyPageType)
+            ) {
+              const pageType = parsed.lastCompanyPageType as CompanyPageType;
+              const pageTypeOther =
+                pageType === 'other'
+                  ? String(parsed.lastCompanyPageTypeOther || '')
+                  : '';
+              setLastCompanyPageType(pageType);
+              setLastCompanyPageTypeOther(pageTypeOther);
+              setCompanyLinks((prev) =>
+                prev.map((link, index) =>
+                  index === 0
+                    ? {
+                        ...link,
+                        pageType,
+                        pageTypeOther,
+                        description: resolvePageTypeLabel(pageType, pageTypeOther),
+                      }
+                    : link
+                )
+              );
             }
           }
         } catch {
@@ -461,6 +531,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         manualMustNotMentionTopicsText,
         coverLetterRecipientName,
         coverLetterCompanyName,
+        lastCompanyPageType,
+        lastCompanyPageTypeOther:
+          lastCompanyPageType === 'other' ? lastCompanyPageTypeOther : '',
       };
       void updateClientUiPreferencesRequest(patch).catch((err) => {
         console.warn('Client tercihleri kaydedilemedi:', err);
@@ -474,6 +547,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
             manualMustNotMentionTopicsText,
             coverLetterRecipientName,
             coverLetterCompanyName,
+            lastCompanyPageType,
+            lastCompanyPageTypeOther:
+              lastCompanyPageType === 'other' ? lastCompanyPageTypeOther : '',
           })
         );
       } catch {
@@ -506,6 +582,8 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     manualMustNotMentionTopicsText,
     coverLetterRecipientName,
     coverLetterCompanyName,
+    lastCompanyPageType,
+    lastCompanyPageTypeOther,
   ]);
 
   // Gönderen domain (SMTP) mail altyapısı — alıcı domain değişince reset YOK; 24s cache sunucuda
@@ -861,9 +939,17 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       return;
     }
 
+    const pageType = lastCompanyPageType;
+    const pageTypeOther = pageType === 'other' ? lastCompanyPageTypeOther : '';
+
     setCompanyLinks((prev) => [
       ...prev,
-      { url: '', description: '', pageType: 'about', pageTypeOther: '' },
+      {
+        url: '',
+        description: resolvePageTypeLabel(pageType, pageTypeOther),
+        pageType,
+        pageTypeOther,
+      },
     ]);
   };
 
@@ -872,6 +958,13 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   };
 
   const updateCompanyLink = (index: number, field: keyof CompanyLink, value: string) => {
+    if (field === 'pageType') {
+      setLastCompanyPageType(value as CompanyPageType);
+      if (value !== 'other') setLastCompanyPageTypeOther('');
+    }
+    if (field === 'pageTypeOther') {
+      setLastCompanyPageTypeOther(value);
+    }
     setCompanyLinks((prev) =>
       prev.map((link, i) => {
         if (i !== index) return link;
