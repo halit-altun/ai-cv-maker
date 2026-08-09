@@ -25,14 +25,20 @@ function userFromAuthStorage(): DashboardUser {
   };
 }
 
+const emptyUser: DashboardUser = { name: '', accountLabel: '', avatarUrl: '' };
+
 /**
  * Global shell verisi — kullanıcı API/dashboard'dan, nav statik.
+ * İlk state boş tutulur (SSR = client hydrate); sessionStorage yalnızca mount sonrası okunur.
  */
 export function useAppShell() {
-  const [user, setUser] = useState<DashboardUser>(() => userFromAuthStorage());
+  const [user, setUser] = useState<DashboardUser>(emptyUser);
 
   useEffect(() => {
     let cancelled = false;
+
+    // Hydration sonrası: local oturum metni, ardından API.
+    setUser(userFromAuthStorage());
 
     async function load() {
       try {
