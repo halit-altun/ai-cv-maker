@@ -89,6 +89,16 @@ function formatDateTime(value?: string | null): string {
   });
 }
 
+/** Soft-delete sonrası archived:<id>:<ad> veya ham ObjectId → okunabilir proje adı */
+function formatProjectName(value?: string | null): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '—';
+  const archived = /^archived:[a-f0-9]{24}:(.+)$/i.exec(raw);
+  if (archived) return archived[1].trim() || '—';
+  if (/^[a-f0-9]{24}$/i.test(raw)) return '—';
+  return raw;
+}
+
 export function MailTrackingView() {
   const { colors, fonts } = dashboardTokens;
   const [loading, setLoading] = useState(true);
@@ -394,7 +404,7 @@ export function MailTrackingView() {
                     </Typography>
                   </TableCell>
                   <TableCell>{row.company || '—'}</TableCell>
-                  <TableCell>{row.projectName || '—'}</TableCell>
+                  <TableCell>{formatProjectName(row.projectName)}</TableCell>
                   <TableCell>
                     <Chip size="small" label={statusLabel(row.status)} color={statusColor(row.status)} />
                   </TableCell>
@@ -464,7 +474,7 @@ export function MailTrackingView() {
                 <strong>Pozisyon:</strong> {selected.jobTitle || '—'}
               </Typography>
               <Typography variant="body2">
-                <strong>Proje:</strong> {selected.projectName || '—'}
+                <strong>Proje:</strong> {formatProjectName(selected.projectName)}
               </Typography>
               <Typography variant="body2">
                 <strong>Konu:</strong> {selected.subject || '—'}

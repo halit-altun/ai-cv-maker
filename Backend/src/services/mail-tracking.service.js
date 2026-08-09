@@ -252,6 +252,19 @@ async function getMailTrackingStatsSummary(
 }
 
 /**
+ * Soft-delete sonrası name "archived:<id>:<orijinal>" olur; UI'da yalnızca orijinal ad.
+ */
+function resolveDisplayProjectName(name) {
+  const raw = String(name || "").trim();
+  if (!raw) return "";
+  const match = /^archived:[a-f0-9]{24}:(.+)$/i.exec(raw);
+  if (match) return String(match[1] || "").trim();
+  // Yanlışlıkla sadece ObjectId yazılmışsa gösterme
+  if (/^[a-f0-9]{24}$/i.test(raw)) return "";
+  return raw;
+}
+
+/**
  * Eksik company / projectName alanlarını liste için doldur (eski kayıtlar).
  */
 async function enrichMailTrackingRows(trackings = []) {
@@ -261,23 +274,28 @@ async function enrichMailTrackingRows(trackings = []) {
   const OutreachProject = require("../models/outreach-project.model");
   const OutreachLog = require("../models/outreach-log.model");
 
-  const missingProjectIds = [
+  const projectIdsNeedingName = [
     ...new Set(
       rows
-        .filter((t) => t.projectId && !String(t.projectName || "").trim())
+        .filter((t) => {
+          if (!t.projectId) return false;
+          const display = resolveDisplayProjectName(t.projectName);
+          return !display;
+        })
         .map((t) => String(t.projectId))
     ),
   ];
 
   const projectNameById = new Map();
-  if (missingProjectIds.length) {
+  if (projectIdsNeedingName.length) {
     const projects = await OutreachProject.find({
-      _id: { $in: missingProjectIds },
+      _id: { $in: projectIdsNeedingName },
     })
       .select("name")
       .lean();
     for (const p of projects) {
-      projectNameById.set(String(p._id), String(p.name || "").trim());
+      const display = resolveDisplayProjectName(p.name);
+      if (display) projectNameById.set(String(p._id), display);
     }
   }
 
@@ -308,13 +326,32 @@ async function enrichMailTrackingRows(trackings = []) {
   const toPersist = [];
   for (const row of rows) {
     let changed = false;
-    if (row.projectId && !String(row.projectName || "").trim()) {
-      const name = projectNameById.get(String(row.projectId)) || "";
-      if (name) {
-        row.projectName = name;
+
+    const currentDisplay = resolveDisplayProjectName(row.projectName);
+    if (String(row.projectName || "").trim() !== currentDisplay) {
+      // archived:id:Name veya ham ObjectId → temiz ad
+      if (currentDisplay) {
+        row.projectName = currentDisplay;
+        changed = true;
+      } else if (row.projectId) {
+        const fromProject = projectNameById.get(String(row.projectId)) || "";
+        if (fromProject) {
+          row.projectName = fromProject;
+          changed = true;
+        } else if (String(row.projectName || "").trim()) {
+          // Geçersiz id-benzeri değeri temizle
+          row.projectName = "";
+          changed = true;
+        }
+      }
+    } else if (row.projectId && !currentDisplay) {
+      const fromProject = projectNameById.get(String(row.projectId)) || "";
+      if (fromProject) {
+        row.projectName = fromProject;
         changed = true;
       }
     }
+
     if (!String(row.company || "").trim() && row.mailId) {
       const name = companyByMailId.get(String(row.mailId)) || "";
       if (name) {
@@ -340,7 +377,7 @@ async function enrichMailTrackingRows(trackings = []) {
           {
             $set: {
               ...(p.company ? { company: p.company } : {}),
-              ...(p.projectName ? { projectName: p.projectName } : {}),
+              projectName: String(p.projectName || ""),
             },
           }
         ).catch(() => null)

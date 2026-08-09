@@ -194,6 +194,17 @@ async function deleteProject(clientId, projectId) {
   project.name = archivedNameLabel(project._id, originalName);
   await project.save();
 
+  // Mail takip satırlarında proje adı silinmeden önceki isim olarak kalsın (id / archived:… yazılmasın).
+  try {
+    const MailTracking = require("../models/mail-tracking.model");
+    await MailTracking.updateMany(
+      { projectId: project._id },
+      { $set: { projectName: originalName } }
+    );
+  } catch (err) {
+    console.warn("[OUTREACH_PROJECT] MailTracking projectName güncellenemedi:", err);
+  }
+
   return {
     deleted: true,
     id: String(project._id),
