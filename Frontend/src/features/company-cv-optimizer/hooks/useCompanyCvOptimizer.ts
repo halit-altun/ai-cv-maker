@@ -40,14 +40,15 @@ import {
   EMAIL_PREFIX_CATEGORIES,
   buildRecipientEmails,
   extractDomainFromUrl,
-  extractLocalPartFromInput,
   isExclusiveEmailCategory,
   normalizeEmailDomainInput,
   resolveOutreachEmailLanguage,
   resolvePageTypeLabel,
 } from '../constants/outreachConstants';
 import {
-  isInfoOrContactEmail,
+  onlyInfoOrContactEmails,
+  anyInfoOrContactEmail,
+  wrapColdEmailForInfoContactInbox,
 } from '@/lib/outreach/coldEmailGenericInbox';
 import {
   checkMailInfraRequest,
@@ -69,18 +70,15 @@ import {
 
 const EMAIL_CATEGORY_IDS = new Set(EMAIL_PREFIX_CATEGORIES.map((c) => c.id));
 
-/**
- * Seçili alıcıların tamamı info@/contact@ ise cold mail prompt’una yönlendirme eki eklenir.
- * Karışık listede false — gönderimde yalnızca info/contact sarmalanır; diğerleri birebir kalır.
- */
-function resolveColdEmailGenericInboxRouting(params: {
+/** Analiz / önizleme için aday alıcı listesini üretir. */
+function resolveOutreachCandidateEmails(params: {
   emailDomainOverride: string;
   companyWebsite?: string;
   firstCompanyUrl?: string;
   selectedCategoryIds: EmailPrefixCategoryId[];
   customLocalPartsText: string;
   includePrimaryEmail: boolean;
-}): boolean {
+}): string[] {
   const domain = normalizeEmailDomainInput(
     params.emailDomainOverride ||
       extractDomainFromUrl(params.companyWebsite || '') ||
@@ -92,8 +90,7 @@ function resolveColdEmailGenericInboxRouting(params: {
     params.firstCompanyUrl ||
     domain;
   if (!domain && !String(rawDomainInput || '').includes('@')) {
-    const local = extractLocalPartFromInput(params.emailDomainOverride);
-    return Boolean(local && isInfoOrContactEmail(`${local}@x.com`));
+    return [];
   }
 
   const candidates = buildRecipientEmails({
@@ -106,14 +103,23 @@ function resolveColdEmailGenericInboxRouting(params: {
     rawDomainInput,
     includePrimaryEmail: params.includePrimaryEmail,
   });
-  const list = params.selectedCategoryIds.some(isExclusiveEmailCategory)
+  return params.selectedCategoryIds.some(isExclusiveEmailCategory)
     ? candidates
     : candidates.slice(0, 3);
-  if (!list.length) {
-    const local = extractLocalPartFromInput(params.emailDomainOverride);
-    return Boolean(local && isInfoOrContactEmail(`${local}@${domain || 'x.com'}`));
-  }
-  return list.every(isInfoOrContactEmail);
+}
+
+function buildInfoContactColdBody(params: {
+  standardBody: string;
+  companyName?: string;
+  language?: 'turkish' | 'english';
+}): string {
+  const standard = String(params.standardBody || '').trim();
+  if (!standard) return '';
+  return wrapColdEmailForInfoContactInbox({
+    bodyText: standard,
+    companyName: params.companyName,
+    language: params.language,
+  });
 }
 
 export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
@@ -161,6 +167,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     useState<OutreachEmailLanguageMode>('auto');
   const [outreachEmailSubject, setOutreachEmailSubject] = useState('');
   const [outreachEmailBody, setOutreachEmailBody] = useState('');
+  const [outreachInfoContactEmailBody, setOutreachInfoContactEmailBody] = useState('');
   const [outreachLinkedinUrl, setOutreachLinkedinUrl] = useState('');
   const [outreachPortfolioUrl, setOutreachPortfolioUrl] = useState('');
   const [outreachWebsiteUrl, setOutreachWebsiteUrl] = useState('');
@@ -631,6 +638,39 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldSendCompanyEmail, outreachEmailSubject, outreachEmailBody]);
 
+  // Seçili alıcılarda info/contact varsa özel gövdeyi standarttan türet (boşsa).
+  useEffect(() => {
+    if (!anyInfoOrContactEmail(selectedOutreachRecipients)) return;
+    if (!outreachEmailBody.trim()) return;
+    if (outreachInfoContactEmailBody.trim()) return;
+    setOutreachInfoContactEmailBody(
+      buildInfoContactColdBody({
+        standardBody: outreachEmailBody,
+        companyName: coverLetterCompanyName.trim() || companyInfo?.name || '',
+        language: resolveOutreachEmailLanguage({
+          mode: outreachEmailLanguageMode,
+          pageLanguage: companyInfo?.detectedLanguage,
+          jobDescriptionText,
+          adaptationSource: cvAdaptationSource,
+          fallback: cvLanguage,
+        }) === 'english'
+          ? 'english'
+          : 'turkish',
+      })
+    );
+  }, [
+    selectedOutreachRecipients,
+    outreachEmailBody,
+    outreachInfoContactEmailBody,
+    coverLetterCompanyName,
+    companyInfo?.name,
+    companyInfo?.detectedLanguage,
+    outreachEmailLanguageMode,
+    jobDescriptionText,
+    cvAdaptationSource,
+    cvLanguage,
+  ]);
+
   const sanitizeRoleTitle = (input: string) => {
     let role = (input || '').trim();
     role = role.replace(/^[\-\s:]+|[\-\s:]+$/g, '');
@@ -925,6 +965,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     setOutreachSending(false);
     setOutreachEmailSubject('');
     setOutreachEmailBody('');
+    setOutreachInfoContactEmailBody('');
     setSelectedOutreachRecipients([]);
     setForceOutreachResend(false);
     // Eski firma e-posta domaini kalmasın — yalnızca bu alan
@@ -1123,18 +1164,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         ? coverLetterSource
         : linkedinMessageSource;
 
-      const coldEmailGenericInboxRouting = shouldSendCompanyEmail
-        ? resolveColdEmailGenericInboxRouting({
-            emailDomainOverride,
-            companyWebsite: companyInfo?.website,
-            firstCompanyUrl: companyLinks[0]?.url,
-            selectedCategoryIds: selectedEmailPrefixCategories,
-            customLocalPartsText: customEmailLocalPartsText,
-            includePrimaryEmail: includePrimaryEmailInSend,
-          })
-        : false;
-
-      // Tek AI: (şirket profili) + parse + uyarlama + outreach
+      // Cold mail her zaman STANDART üretilir; info/contact sürümü istemci sarmalaması ile türetilir.
       const bundle = await CompanyBasedCVService.runFullOptimizationBundle({
         cvText,
         cvLanguage,
@@ -1164,7 +1194,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         coverLetterSource,
         linkedinMessageSource: outreachSourceForLinkedIn,
         coldEmailLanguage: coldLanguage,
-        coldEmailGenericInboxRouting,
+        coldEmailGenericInboxRouting: false,
         recipientName: coverLetterRecipientName.trim() || undefined,
         recipientCompanyName:
           coverLetterCompanyName.trim() || companyInfo?.name || undefined,
@@ -1202,10 +1232,34 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       }
 
       if (shouldSendCompanyEmail && bundle.coldEmail) {
+        const standardBody = String(bundle.coldEmail.body || '').trim();
+        const companyLabel =
+          coverLetterCompanyName.trim() ||
+          resolvedCompany?.name ||
+          companyInfo?.name ||
+          '';
+        const candidateEmails = resolveOutreachCandidateEmails({
+          emailDomainOverride,
+          companyWebsite: resolvedCompany?.website || companyInfo?.website,
+          firstCompanyUrl: companyLinks[0]?.url,
+          selectedCategoryIds: selectedEmailPrefixCategories,
+          customLocalPartsText: customEmailLocalPartsText,
+          includePrimaryEmail: includePrimaryEmailInSend,
+        });
         setOutreachEmailSubject(bundle.coldEmail.subject);
-        setOutreachEmailBody(bundle.coldEmail.body);
+        setOutreachEmailBody(standardBody);
+        setOutreachInfoContactEmailBody(
+          anyInfoOrContactEmail(candidateEmails)
+            ? buildInfoContactColdBody({
+                standardBody,
+                companyName: companyLabel,
+                language: coldLanguage === 'english' ? 'english' : 'turkish',
+              })
+            : ''
+        );
       } else if (!shouldSendCompanyEmail) {
         setOutreachEmailBody('');
+        setOutreachInfoContactEmailBody('');
       }
 
       setAnalysisResult(analysis);
@@ -1512,7 +1566,41 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     }
 
     const cvDataForSend = opts?.cvDataOverride ?? cvData;
-    let bodyText = (opts?.bodyOverride ?? outreachEmailBody).trim();
+
+    const recipients = (opts?.recipientsOverride ?? selectedOutreachRecipients)
+      .map((r) => r.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (!recipients.length) {
+      setError('En az bir alıcı seçmelisiniz (tek tek işaretleyin).');
+      return;
+    }
+
+    const companyLabel =
+      coverLetterCompanyName.trim() || companyInfo?.name || '';
+    const coldLangResolved = resolveOutreachEmailLanguage({
+      mode: outreachEmailLanguageMode,
+      pageLanguage: companyInfo?.detectedLanguage,
+      jobDescriptionText,
+      adaptationSource: cvAdaptationSource,
+      fallback: cvLanguage,
+    });
+
+    // Tek alıcı info/contact ise yalnızca özel gövde; karışık/standartta standart gövde (backend info’yu sarar).
+    let bodyText = (opts?.bodyOverride ?? '').trim();
+    if (!bodyText) {
+      if (onlyInfoOrContactEmails(recipients)) {
+        bodyText =
+          outreachInfoContactEmailBody.trim() ||
+          buildInfoContactColdBody({
+            standardBody: outreachEmailBody,
+            companyName: companyLabel,
+            language: coldLangResolved === 'english' ? 'english' : 'turkish',
+          });
+      } else {
+        bodyText = outreachEmailBody.trim();
+      }
+    }
     if (!bodyText) {
       setError('Cold mail henüz üretilmedi. Optimizasyonu çalıştırın veya Yeniden üret kullanın.');
       return;
@@ -1523,15 +1611,6 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         extractDomainFromUrl(companyInfo?.website || '') ||
         extractDomainFromUrl(companyLinks[0]?.url || '')
     );
-
-    const recipients = (opts?.recipientsOverride ?? selectedOutreachRecipients)
-      .map((r) => r.trim().toLowerCase())
-      .filter(Boolean);
-
-    if (!recipients.length) {
-      setError('En az bir alıcı seçmelisiniz (tek tek işaretleyin).');
-      return;
-    }
 
     setOutreachSending(true);
     setOutreachSendResult(null);
@@ -1693,17 +1772,33 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         portfolioUrl: outreachPortfolioUrl.trim() || undefined,
         websiteUrl: outreachWebsiteUrl.trim() || undefined,
         phoneOverride: outreachPhone.trim() || undefined,
-        genericInboxRouting: resolveColdEmailGenericInboxRouting({
-          emailDomainOverride,
-          companyWebsite: companyInfo?.website,
-          firstCompanyUrl: companyLinks[0]?.url,
-          selectedCategoryIds: selectedEmailPrefixCategories,
-          customLocalPartsText: customEmailLocalPartsText,
-          includePrimaryEmail: includePrimaryEmailInSend,
-        }),
+        genericInboxRouting: false,
       });
+      const standardBody = String(cold.body || '').trim();
+      const companyLabel =
+        coverLetterCompanyName.trim() || companyInfo?.name || '';
+      const candidateEmails =
+        selectedOutreachRecipients.length > 0
+          ? selectedOutreachRecipients
+          : resolveOutreachCandidateEmails({
+              emailDomainOverride,
+              companyWebsite: companyInfo?.website,
+              firstCompanyUrl: companyLinks[0]?.url,
+              selectedCategoryIds: selectedEmailPrefixCategories,
+              customLocalPartsText: customEmailLocalPartsText,
+              includePrimaryEmail: includePrimaryEmailInSend,
+            });
       setOutreachEmailSubject(cold.subject);
-      setOutreachEmailBody(cold.body);
+      setOutreachEmailBody(standardBody);
+      setOutreachInfoContactEmailBody(
+        anyInfoOrContactEmail(candidateEmails)
+          ? buildInfoContactColdBody({
+              standardBody,
+              companyName: companyLabel,
+              language: coldLanguage === 'english' ? 'english' : 'turkish',
+            })
+          : ''
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Cold mail üretilemedi.');
     } finally {
@@ -1781,6 +1876,8 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     setOutreachEmailSubject,
     outreachEmailBody,
     setOutreachEmailBody,
+    outreachInfoContactEmailBody,
+    setOutreachInfoContactEmailBody,
     outreachLinkedinUrl,
     setOutreachLinkedinUrl,
     outreachPortfolioUrl,

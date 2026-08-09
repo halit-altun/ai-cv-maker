@@ -59,6 +59,11 @@ import {
   normalizeEmailDomainInput,
   resolveOutreachEmailLanguage,
 } from '../../constants/outreachConstants';
+import {
+  anyInfoOrContactEmail,
+  hasStandardRecipientEmails,
+  onlyInfoOrContactEmails,
+} from '@/lib/outreach/coldEmailGenericInbox';
 
 type PreviewStepProps = Pick<
   CompanyCvOptimizerState,
@@ -128,6 +133,8 @@ type PreviewStepProps = Pick<
   | 'setOutreachEmailSubject'
   | 'outreachEmailBody'
   | 'setOutreachEmailBody'
+  | 'outreachInfoContactEmailBody'
+  | 'setOutreachInfoContactEmailBody'
   | 'outreachSending'
   | 'outreachSendResult'
   | 'outreachCvAttachmentSource'
@@ -1308,19 +1315,77 @@ export function PreviewStep(props: PreviewStepProps) {
             placeholder="Full Stack Developer – Başvuru"
             sx={{ mb: 2 }}
           />
-          <TextField
-            fullWidth
-            label="Mail gövdesi (ne yazıldı)"
-            value={props.outreachEmailBody}
-            onChange={(e) => {
-              props.setOutreachEmailBody(e.target.value);
-              setOutreachApproved(false);
-            }}
-            multiline
-            minRows={8}
-            maxRows={16}
-            sx={{ mb: 2 }}
-          />
+          {(() => {
+            const recipients = props.selectedOutreachRecipients;
+            const showStandard = hasStandardRecipientEmails(recipients);
+            const showInfoContact = anyInfoOrContactEmail(recipients);
+            const onlyInfo = onlyInfoOrContactEmails(recipients);
+
+            if (!recipients.length) {
+              return (
+                <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+                  Alıcı seçince cold mail önizlemesi burada görünür. Tek info@/contact@ ise yalnızca
+                  yönlendirmeli sürüm; diğer adreslerde standart cold mail gösterilir.
+                </Alert>
+              );
+            }
+
+            return (
+              <Stack spacing={2} sx={{ mb: 2 }}>
+                {showStandard && (
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
+                      Standart cold mail
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                      hr@, careers@, founders@ vb. adreslere bu metin gider.
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      label="Standart mail gövdesi"
+                      value={props.outreachEmailBody}
+                      onChange={(e) => {
+                        props.setOutreachEmailBody(e.target.value);
+                        setOutreachApproved(false);
+                      }}
+                      multiline
+                      minRows={8}
+                      maxRows={16}
+                    />
+                  </Box>
+                )}
+                {showInfoContact && (
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
+                      info@ / contact@ özel cold mail
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                      {onlyInfo
+                        ? 'Yalnızca girilen ana adres info/contact olduğu için standart sürüm üretilmez / gösterilmez; bu metin kullanılır.'
+                        : 'info@ ve contact@ adreslerine İK yönlendirme girişli bu sürüm gider; diğer alıcılar standart metni alır.'}
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      label="info/contact mail gövdesi"
+                      value={props.outreachInfoContactEmailBody}
+                      onChange={(e) => {
+                        props.setOutreachInfoContactEmailBody(e.target.value);
+                        setOutreachApproved(false);
+                      }}
+                      multiline
+                      minRows={8}
+                      maxRows={16}
+                    />
+                  </Box>
+                )}
+                {!showStandard && !showInfoContact && (
+                  <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                    Seçili alıcılar için cold mail sınıflandırılamadı.
+                  </Alert>
+                )}
+              </Stack>
+            );
+          })()}
 
           <FormControlLabel
             control={
@@ -1368,10 +1433,13 @@ export function PreviewStep(props: PreviewStepProps) {
                 onClick={() => setConfirmOpen(true)}
                 disabled={
                   props.outreachSending ||
-                  !props.outreachEmailBody.trim() ||
                   props.loading ||
                   !outreachApproved ||
-                  props.selectedOutreachRecipients.length === 0
+                  props.selectedOutreachRecipients.length === 0 ||
+                  (onlyInfoOrContactEmails(props.selectedOutreachRecipients)
+                    ? !props.outreachInfoContactEmailBody.trim() &&
+                      !props.outreachEmailBody.trim()
+                    : !props.outreachEmailBody.trim())
                 }
                 sx={{ textTransform: 'none', fontWeight: 600 }}
               >
@@ -1497,6 +1565,13 @@ export function PreviewStep(props: PreviewStepProps) {
                 diğer adaylar doğrulanır ve geçerli olanlara mail atılır (tek sefer limiti
                 dahilinde).
               </Alert>
+              <Alert severity="info" sx={{ my: 1, py: 0.5 }}>
+                {onlyInfoOrContactEmails(props.selectedOutreachRecipients)
+                  ? 'Seçili alıcılar info@/contact@ — yalnızca yönlendirmeli cold mail gönderilir.'
+                  : anyInfoOrContactEmail(props.selectedOutreachRecipients)
+                    ? 'Karışık liste: info/contact adreslerine özel sürüm, diğerlerine standart cold mail.'
+                    : 'Seçili alıcılara standart cold mail gönderilir.'}
+              </Alert>
               <Typography variant="body2" sx={{ mb: 0.5 }}>
                 <strong>CV:</strong> {props.cvFile?.name || '—'} · skor{' '}
                 {props.analysisResult?.matchScore ?? '—'}%
@@ -1515,7 +1590,9 @@ export function PreviewStep(props: PreviewStepProps) {
                   borderRadius: 1,
                 }}
               >
-                {props.outreachEmailBody}
+                {onlyInfoOrContactEmails(props.selectedOutreachRecipients)
+                  ? props.outreachInfoContactEmailBody || props.outreachEmailBody
+                  : props.outreachEmailBody}
               </Typography>
             </DialogContent>
             <DialogActions sx={{ px: 3, py: 2 }}>

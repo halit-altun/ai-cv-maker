@@ -32,6 +32,20 @@ export function anyInfoOrContactEmail(emails: string[]): boolean {
   return (emails || []).some(isInfoOrContactEmail);
 }
 
+/** Listedeki tüm adresler info@/contact@ (tek ana domain info dahil). */
+export function onlyInfoOrContactEmails(emails: string[]): boolean {
+  const list = (emails || []).map((e) => String(e || '').trim()).filter(Boolean);
+  return list.length > 0 && list.every(isInfoOrContactEmail);
+}
+
+/** info/contact dışı en az bir alıcı var mı (standart cold mail gerekir). */
+export function hasStandardRecipientEmails(emails: string[]): boolean {
+  return (emails || []).some((e) => {
+    const v = String(e || '').trim();
+    return Boolean(v) && !isInfoOrContactEmail(v);
+  });
+}
+
 export function detectColdEmailLanguage(bodyText: string): 'english' | 'turkish' {
   const t = String(bodyText || '');
   if (/Saygılarımla/i.test(t) || /^Sayın\b/m.test(t) || /rica ederim/i.test(t)) {
