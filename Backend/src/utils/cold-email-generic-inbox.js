@@ -42,6 +42,28 @@ function anyInfoOrContactEmail(emails) {
 }
 
 /**
+ * @param {string[]} emails
+ * @returns {boolean}
+ */
+function onlyInfoOrContactEmails(emails) {
+  const list = (Array.isArray(emails) ? emails : [])
+    .map((e) => String(e || "").trim())
+    .filter(Boolean);
+  return list.length > 0 && list.every(isInfoOrContactEmail);
+}
+
+/**
+ * @param {string[]} emails
+ * @returns {boolean}
+ */
+function hasStandardRecipientEmails(emails) {
+  return (Array.isArray(emails) ? emails : []).some((e) => {
+    const v = String(e || "").trim();
+    return Boolean(v) && !isInfoOrContactEmail(v);
+  });
+}
+
+/**
  * @param {string} bodyText
  * @returns {'english'|'turkish'}
  */
@@ -138,6 +160,8 @@ module.exports = {
   ROUTE_TR,
   isInfoOrContactEmail,
   anyInfoOrContactEmail,
+  onlyInfoOrContactEmails,
+  hasStandardRecipientEmails,
   detectColdEmailLanguage,
   wrapColdEmailForInfoContactInbox,
   buildGenericInboxRoutingPromptAddon,

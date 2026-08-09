@@ -385,7 +385,189 @@ async function enrichMailTrackingRows(trackings = []) {
     );
   }
 
+  // Outreach log içerik bayrakları (CV / cold mail) — base64 listede dönmez
+  const logIds = [
+    ...new Set(
+      rows
+        .map((t) => (t.outreachLogId ? String(t.outreachLogId) : ""))
+        .filter(Boolean)
+    ),
+  ];
+  const mailIdsForLog = rows
+    .filter((t) => !t.outreachLogId && t.mailId)
+    .map((t) => String(t.mailId));
+
+  const contentByLogId = new Map();
+  const contentByMailId = new Map();
+
+  if (logIds.length) {
+    const logs = await OutreachLog.find({ _id: { $in: logIds } })
+      .select(
+        "companyName bodyText infoContactBodyText pdfAttachment.contentBase64 pdfAttachment.filename cvFileName recipients.email"
+      )
+      .lean();
+    for (const log of logs) {
+      contentByLogId.set(String(log._id), summarizeOutreachContent(log));
+    }
+  }
+
+  if (mailIdsForLog.length) {
+    const logs = await OutreachLog.find({
+      "recipients.mailId": { $in: mailIdsForLog },
+    })
+      .select(
+        "companyName bodyText infoContactBodyText pdfAttachment.contentBase64 pdfAttachment.filename cvFileName recipients.mailId recipients.email"
+      )
+      .lean();
+    for (const log of logs) {
+      const summary = summarizeOutreachContent(log);
+      for (const r of log.recipients || []) {
+        const mid = String(r.mailId || "");
+        if (mid && mailIdsForLog.includes(mid) && !contentByMailId.has(mid)) {
+          contentByMailId.set(mid, summary);
+        }
+      }
+    }
+  }
+
+  for (const row of rows) {
+    const summary =
+      (row.outreachLogId && contentByLogId.get(String(row.outreachLogId))) ||
+      (row.mailId && contentByMailId.get(String(row.mailId))) ||
+      {
+        hasCvPdf: false,
+        hasStandardColdMail: false,
+        hasInfoContactColdMail: false,
+        cvFileName: "",
+      };
+    row.hasCvPdf = summary.hasCvPdf;
+    row.hasStandardColdMail = summary.hasStandardColdMail;
+    row.hasInfoContactColdMail = summary.hasInfoContactColdMail;
+    row.cvFileName = summary.cvFileName || "";
+  }
+
   return rows;
+}
+
+function summarizeOutreachContent(log) {
+  const body = String(log?.bodyText || "").trim();
+  const emails = (log?.recipients || []).map((r) => r.email || r);
+  const {
+    anyInfoOrContactEmail,
+    hasStandardRecipientEmails,
+    wrapColdEmailForInfoContactInbox,
+  } = require("../utils/cold-email-generic-inbox");
+
+  let infoBody = String(log?.infoContactBodyText || "").trim();
+  if (!infoBody && body && anyInfoOrContactEmail(emails)) {
+    infoBody = wrapColdEmailForInfoContactInbox({
+      bodyText: body,
+      companyName: log.companyName || "",
+    });
+  }
+
+  const hasInfo = Boolean(infoBody);
+  const hasStandard =
+    Boolean(body) &&
+    (hasStandardRecipientEmails(emails) || (!hasInfo && Boolean(body)));
+
+  return {
+    hasCvPdf: Boolean(log?.pdfAttachment?.contentBase64),
+    hasStandardColdMail: hasStandard,
+    hasInfoContactColdMail: hasInfo,
+    cvFileName: String(
+      log?.cvFileName || log?.pdfAttachment?.filename || ""
+    ).trim(),
+  };
+}
+
+/**
+ * Tracking → bağlı OutreachLog (PDF / cold mail kaynağı)
+ */
+async function findOutreachLogForTracking(tracking) {
+  const OutreachLog = require("../models/outreach-log.model");
+  if (tracking.outreachLogId) {
+    const byId = await OutreachLog.findById(tracking.outreachLogId).lean();
+    if (byId) return byId;
+  }
+  if (tracking.mailId) {
+    return OutreachLog.findOne({
+      "recipients.mailId": String(tracking.mailId),
+    })
+      .sort({ sentAt: -1 })
+      .lean();
+  }
+  return null;
+}
+
+/**
+ * Gönderim anındaki CV PDF snapshot
+ */
+async function getMailTrackingCvPdf(mailId, userId) {
+  const tracking = await MailTracking.findOne({ mailId, userId }).lean();
+  if (!tracking) return { found: false, error: "Mail tracking bulunamadı." };
+
+  const log = await findOutreachLogForTracking(tracking);
+  const pdf = log?.pdfAttachment;
+  if (!pdf?.contentBase64) {
+    return {
+      found: true,
+      hasCv: false,
+      error: "Bu gönderim için kayıtlı CV PDF yok (eski kayıt veya ek yok).",
+    };
+  }
+
+  return {
+    found: true,
+    hasCv: true,
+    filename:
+      String(pdf.filename || log.cvFileName || "CV.pdf").trim() || "CV.pdf",
+    contentType: String(pdf.contentType || "application/pdf"),
+    contentBase64: pdf.contentBase64,
+    company: tracking.company || log.companyName || "",
+  };
+}
+
+/**
+ * Standart + info/contact cold mail gövdeleri (hangisi varsa)
+ */
+async function getMailTrackingColdMails(mailId, userId) {
+  const tracking = await MailTracking.findOne({ mailId, userId }).lean();
+  if (!tracking) return { found: false, error: "Mail tracking bulunamadı." };
+
+  const log = await findOutreachLogForTracking(tracking);
+  if (!log) {
+    return {
+      found: true,
+      standardBody: "",
+      infoContactBody: "",
+      subject: tracking.subject || "",
+    };
+  }
+
+  const standardBody = String(log.bodyText || "").trim();
+  let infoContactBody = String(log.infoContactBodyText || "").trim();
+  if (!infoContactBody && standardBody) {
+    const {
+      anyInfoOrContactEmail,
+      wrapColdEmailForInfoContactInbox,
+    } = require("../utils/cold-email-generic-inbox");
+    const emails = (log.recipients || []).map((r) => r.email);
+    if (anyInfoOrContactEmail(emails)) {
+      infoContactBody = wrapColdEmailForInfoContactInbox({
+        bodyText: standardBody,
+        companyName: log.companyName || tracking.company || "",
+      });
+    }
+  }
+
+  return {
+    found: true,
+    subject: String(log.subject || tracking.subject || "").trim(),
+    standardBody,
+    infoContactBody,
+    company: tracking.company || log.companyName || "",
+  };
 }
 
 /**
@@ -585,6 +767,8 @@ module.exports = {
   getUserMailTrackings,
   getMailTrackingStatsSummary,
   getMailTrackingDetails,
+  getMailTrackingCvPdf,
+  getMailTrackingColdMails,
   setDeliveryOutcome,
   getTrackingPublicBaseUrl,
   resolveTrackingBaseFromRequest,

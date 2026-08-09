@@ -61,8 +61,10 @@ const outreachLogSchema = new mongoose.Schema(
       index: true,
     },
     subject: { type: String, default: "" },
-    /** Mail şablonu gövdesi (kapak mektubu / LinkedIn) */
+    /** Mail şablonu gövdesi (kapak mektubu / LinkedIn / standart cold mail) */
     bodyText: { type: String, default: "" },
+    /** info@ / contact@ için yönlendirmeli cold mail gövdesi (varsa) */
+    infoContactBodyText: { type: String, default: "" },
     templateType: {
       type: String,
       enum: ["cover_letter", "linkedin", "custom", "cold_email", "none"],
@@ -71,6 +73,12 @@ const outreachLogSchema = new mongoose.Schema(
     cvId: { type: String, default: null },
     cvTitle: { type: String, default: "" },
     cvFileName: { type: String, default: "" },
+    /** Gönderim anındaki CV PDF snapshot (Mail Takip indirme) */
+    pdfAttachment: {
+      filename: { type: String, default: "" },
+      contentBase64: { type: String, default: "" },
+      contentType: { type: String, default: "application/pdf" },
+    },
     selectedCategories: { type: [String], default: [] },
     recipients: { type: [recipientResultSchema], default: [] },
     sentCount: { type: Number, default: 0 },

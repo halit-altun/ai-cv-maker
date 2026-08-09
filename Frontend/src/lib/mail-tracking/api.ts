@@ -21,6 +21,11 @@ export type MailTrackingItem = {
   sentAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** Outreach log’dan — liste bayrakları */
+  hasCvPdf?: boolean;
+  hasStandardColdMail?: boolean;
+  hasInfoContactColdMail?: boolean;
+  cvFileName?: string;
 };
 
 export type MailOpenEvent = {
@@ -167,4 +172,42 @@ export async function setMailDeliveryOutcomeRequest(
     throw new Error(data.message || 'Outcome kaydedilemedi.');
   }
   return data.tracking as MailTrackingItem;
+}
+
+export async function downloadMailTrackingCvRequest(mailId: string): Promise<{
+  filename: string;
+  contentType: string;
+  contentBase64: string;
+  company?: string;
+}> {
+  const res = await authFetch(`/api/mail-tracking/${encodeURIComponent(mailId)}/cv`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !data.contentBase64) {
+    throw new Error(data.message || 'CV indirilemedi.');
+  }
+  return {
+    filename: String(data.filename || 'CV.pdf'),
+    contentType: String(data.contentType || 'application/pdf'),
+    contentBase64: String(data.contentBase64),
+    company: data.company ? String(data.company) : undefined,
+  };
+}
+
+export async function getMailTrackingColdMailsRequest(mailId: string): Promise<{
+  subject: string;
+  standardBody: string;
+  infoContactBody: string;
+  company?: string;
+}> {
+  const res = await authFetch(`/api/mail-tracking/${encodeURIComponent(mailId)}/cold-mails`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    throw new Error(data.message || 'Cold mail alınamadı.');
+  }
+  return {
+    subject: String(data.subject || ''),
+    standardBody: String(data.standardBody || ''),
+    infoContactBody: String(data.infoContactBody || ''),
+    company: data.company ? String(data.company) : undefined,
+  };
 }

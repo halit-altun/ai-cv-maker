@@ -3,6 +3,8 @@ const {
   getUserMailTrackings,
   getMailTrackingStatsSummary,
   getMailTrackingDetails,
+  getMailTrackingCvPdf,
+  getMailTrackingColdMails,
   setDeliveryOutcome,
 } = require("../services/mail-tracking.service");
 const MailTracking = require("../models/mail-tracking.model");
@@ -122,6 +124,55 @@ router.post("/:mailId/simulate-open", async (req, res, next) => {
       hint: isLocalTrackingBase(getTrackingPublicBaseUrl())
         ? "Pixel URL localhost — Gmail açılışları kayda geçmez. TRACKING_PUBLIC_BASE_URL ile ngrok/public HTTPS kullanın."
         : "Pixel URL public görünüyor; Gmail'de görselleri açınca OPENED düşmeli.",
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * Gönderim CV PDF snapshot
+ * GET /api/mail-tracking/:mailId/cv
+ */
+router.get("/:mailId/cv", async (req, res, next) => {
+  try {
+    const { mailId } = req.params;
+    const result = await getMailTrackingCvPdf(mailId, req.user.id);
+    if (!result.found) {
+      return res.status(404).json({ ok: false, message: result.error });
+    }
+    if (!result.hasCv) {
+      return res.status(404).json({ ok: false, message: result.error });
+    }
+    return res.json({
+      ok: true,
+      filename: result.filename,
+      contentType: result.contentType,
+      contentBase64: result.contentBase64,
+      company: result.company,
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * Cold mail gövdeleri (standart / info-contact)
+ * GET /api/mail-tracking/:mailId/cold-mails
+ */
+router.get("/:mailId/cold-mails", async (req, res, next) => {
+  try {
+    const { mailId } = req.params;
+    const result = await getMailTrackingColdMails(mailId, req.user.id);
+    if (!result.found) {
+      return res.status(404).json({ ok: false, message: result.error });
+    }
+    return res.json({
+      ok: true,
+      subject: result.subject,
+      standardBody: result.standardBody,
+      infoContactBody: result.infoContactBody,
+      company: result.company,
     });
   } catch (error) {
     return next(error);

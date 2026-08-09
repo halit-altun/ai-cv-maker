@@ -3,6 +3,7 @@ const MailTracking = require("../models/mail-tracking.model");
 const { enqueueEmail } = require("./email-queue.service");
 const {
   isInfoOrContactEmail,
+  anyInfoOrContactEmail,
   wrapColdEmailForInfoContactInbox,
 } = require("../utils/cold-email-generic-inbox");
 const { createMailTracking, generateTrackingPixelHtml } = require("./mail-tracking.service");
@@ -12,7 +13,11 @@ const {
   isVerifyEnabled,
   pickValidRecipient,
 } = require("./email-verifier.service");
-const { buildPdfAttachmentFromBase64, stripDataUriBase64 } = require("../utils/email-attachment.utils");
+const {
+  buildPdfAttachmentFromBase64,
+  stripDataUriBase64,
+  toQueueAttachment,
+} = require("../utils/email-attachment.utils");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -345,6 +350,7 @@ async function sendCompanyOutreachEmails({
 
   const attachment = buildPdfAttachment(pdfAttachment);
   const attachments = attachment ? [attachment] : [];
+  const storedPdf = toQueueAttachment(pdfAttachment);
 
   const safeSubject =
     String(subject || "").trim() ||
@@ -352,6 +358,12 @@ async function sendCompanyOutreachEmails({
 
   const baseText = String(bodyText).trim();
   const resolvedCompanyName = String(companyName || "").trim() || resolvedDomain;
+  const infoContactBodyText = anyInfoOrContactEmail(list)
+    ? wrapColdEmailForInfoContactInbox({
+        bodyText: baseText,
+        companyName: resolvedCompanyName,
+      })
+    : "";
 
   const results = [];
   const mailIds = [];
@@ -504,10 +516,18 @@ async function sendCompanyOutreachEmails({
     status,
     subject: safeSubject,
     bodyText: baseText,
+    infoContactBodyText,
     templateType: templateType || "cold_email",
     cvId: cvId || null,
     cvTitle: cvTitle || "",
-    cvFileName: cvFileName || (attachment ? attachment.filename : ""),
+    cvFileName: cvFileName || (storedPdf ? storedPdf.filename : "") || (attachment ? attachment.filename : ""),
+    pdfAttachment: storedPdf
+      ? {
+          filename: storedPdf.filename,
+          contentBase64: storedPdf.contentBase64,
+          contentType: storedPdf.contentType || "application/pdf",
+        }
+      : undefined,
     selectedCategories: Array.isArray(selectedCategories) ? selectedCategories : [],
     recipients: results,
     sentCount: sentCount + queuedCount,
