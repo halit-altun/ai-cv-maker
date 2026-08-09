@@ -221,7 +221,7 @@ CRITICAL RULES:
 ${genericInboxAddon}9) Recipient name: ${recipientName || "none"}; company for outreach: ${recipientCompany || "none"}.
 10) Outreach optional links if non-empty: LinkedIn=${request.outreachLinkedinUrl || "n/a"}, Portfolio=${request.outreachPortfolioUrl || "n/a"}, Website=${request.outreachWebsiteUrl || "n/a"}, Phone=${request.outreachPhone || "n/a"}.
 11) If a GENERATE flag is NO, return empty string / null for that field.
-12) If Extract companyInfo=YES, fill companyInfo from pages; extractedKeywords may list up to 10 candidate hints (pipeline will filter).
+12) If Extract companyInfo=YES, fill companyInfo from pages; extractedKeywords may list up to 10 candidate hints (pipeline will filter). companyInfo.name MUST be the brand/legal company name only — NEVER a URL, www., or domain (put those in website).
 `;
 
   return {

@@ -97,6 +97,26 @@ function formatDateTime(value?: string | null): string {
   });
 }
 
+function formatCompanyName(value?: string | null): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '—';
+  // FE yedek: backend normalize etse de eski cache’lerde www. görünebilir
+  if (/^https?:\/\//i.test(raw) || /^www\./i.test(raw) || (!/\s/.test(raw) && /^[a-z0-9.-]+\.[a-z]{2,}/i.test(raw))) {
+    try {
+      const host = raw.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0];
+      const label = host.split('.')[0] || host;
+      return label
+        .split(/[-_]+/)
+        .filter(Boolean)
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+        .join(' ') || raw;
+    } catch {
+      return raw;
+    }
+  }
+  return raw;
+}
+
 /** Soft-delete sonrası archived:<id>:<ad> veya ham ObjectId → okunabilir proje adı */
 function formatProjectName(value?: string | null): string {
   const raw = String(value || '').trim();
@@ -494,7 +514,7 @@ export function MailTrackingView() {
                       {row.subject || '—'}
                     </Typography>
                   </TableCell>
-                  <TableCell>{row.company || '—'}</TableCell>
+                  <TableCell>{formatCompanyName(row.company)}</TableCell>
                   <TableCell>{formatProjectName(row.projectName)}</TableCell>
                   <TableCell>
                     <Chip size="small" label={statusLabel(row.status)} color={statusColor(row.status)} />
@@ -625,7 +645,7 @@ export function MailTrackingView() {
                 )}
               </Stack>
               <Typography variant="body2">
-                <strong>Şirket:</strong> {selected.company || '—'}
+                <strong>Şirket:</strong> {formatCompanyName(selected.company)}
               </Typography>
               <Typography variant="body2">
                 <strong>Pozisyon:</strong> {selected.jobTitle || '—'}

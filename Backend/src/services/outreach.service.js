@@ -18,6 +18,7 @@ const {
   stripDataUriBase64,
   toQueueAttachment,
 } = require("../utils/email-attachment.utils");
+const { resolveCompanyDisplayName } = require("../utils/company-display-name");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -357,7 +358,13 @@ async function sendCompanyOutreachEmails({
     `Başvuru${companyName ? ` — ${companyName}` : ""} | ${fromDisplayName}`;
 
   const baseText = String(bodyText).trim();
-  const resolvedCompanyName = String(companyName || "").trim() || resolvedDomain;
+  const resolvedCompanyName =
+    resolveCompanyDisplayName({
+      name: companyName,
+      domain: resolvedDomain,
+    }) ||
+    String(companyName || "").trim() ||
+    resolvedDomain;
   const infoContactBodyText = anyInfoOrContactEmail(list)
     ? wrapColdEmailForInfoContactInbox({
         bodyText: baseText,
@@ -511,7 +518,7 @@ async function sendCompanyOutreachEmails({
     clientId,
     userId,
     projectId: resolvedProjectId,
-    companyName: String(companyName || "").trim() || resolvedDomain,
+    companyName: resolvedCompanyName,
     domain: resolvedDomain,
     status,
     subject: safeSubject,

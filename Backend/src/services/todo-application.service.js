@@ -9,6 +9,7 @@ const {
   isInfoOrContactEmail,
   wrapColdEmailForInfoContactInbox,
 } = require("../utils/cold-email-generic-inbox");
+const { resolveCompanyDisplayName } = require("../utils/company-display-name");
 const { getProjectOrThrow } = require("./outreach-project.service");
 const { fetchPageText } = require("./todo-page-fetch.service");
 const {
@@ -919,7 +920,10 @@ async function processSingleJobItem(job, item) {
     });
   }
 
-  item.companyName = bundle.companyInfo?.name || item.companyName;
+  item.companyName = resolveCompanyDisplayName({
+    name: bundle.companyInfo?.name || item.companyName,
+    website: bundle.companyInfo?.website || item.companyUrl,
+  }) || item.companyName;
   if (bundle.coldEmail) {
     item.coldEmailSubject = bundle.coldEmail.subject;
     item.coldEmailBody = bundle.coldEmail.body;

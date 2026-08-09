@@ -72,6 +72,7 @@ import {
   readClientUiPreferencesLocalCache,
   writeClientUiPreferencesLocalCache,
 } from '@/lib/client-preferences/localCache';
+import { resolveCompanyDisplayName } from '@/lib/company/normalizeCompanyDisplayName';
 
 const EMAIL_CATEGORY_IDS = new Set(EMAIL_PREFIX_CATEGORIES.map((c) => c.id));
 
@@ -1227,7 +1228,14 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
       const resolvedCompany = bundle.companyInfo || companyInfo;
       if (bundle.companyInfo) {
-        setCompanyInfo(bundle.companyInfo);
+        const cleaned = {
+          ...bundle.companyInfo,
+          name: resolveCompanyDisplayName({
+            name: bundle.companyInfo.name,
+            website: bundle.companyInfo.website,
+          }),
+        };
+        setCompanyInfo(cleaned);
       }
 
       const parsedCVData = bundle.parsedCV;
@@ -1254,11 +1262,14 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
       if (shouldSendCompanyEmail && bundle.coldEmail) {
         const standardBody = String(bundle.coldEmail.body || '').trim();
-        const companyLabel =
-          coverLetterCompanyName.trim() ||
-          resolvedCompany?.name ||
-          companyInfo?.name ||
-          '';
+        const companyLabel = resolveCompanyDisplayName({
+          name:
+            coverLetterCompanyName.trim() ||
+            resolvedCompany?.name ||
+            companyInfo?.name ||
+            '',
+          website: resolvedCompany?.website || companyInfo?.website,
+        });
         const candidateEmails = resolveOutreachCandidateEmails({
           emailDomainOverride,
           companyWebsite: resolvedCompany?.website || companyInfo?.website,
@@ -1597,8 +1608,10 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       return;
     }
 
-    const companyLabel =
-      coverLetterCompanyName.trim() || companyInfo?.name || '';
+    const companyLabel = resolveCompanyDisplayName({
+      name: coverLetterCompanyName.trim() || companyInfo?.name,
+      website: companyInfo?.website,
+    });
     const coldLangResolved = resolveOutreachEmailLanguage({
       mode: outreachEmailLanguageMode,
       pageLanguage: companyInfo?.detectedLanguage,
@@ -1655,13 +1668,40 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
       let pdfAttachment: { filename: string; contentBase64: string; contentType: string } | undefined;
 
+      const displayCompanyName = resolveCompanyDisplayName({
+        name: coverLetterCompanyName || companyInfo?.name || cvDataForSend?.companyInfo?.name,
+        website: companyInfo?.website || cvDataForSend?.companyInfo?.website,
+        domain: inferredDomain,
+      });
+
       if (outreachCvAttachmentSource === 'optimized') {
         const sourceData = opts?.cvDataOverride || editableCVData || cvDataForSend;
         if (!sourceData) {
           setError('Optimize CV henüz hazır değil. Önce optimizasyonu tamamlayın veya orijinal CV seçin.');
           return;
         }
-        pdfAttachment = await generateOptimizedCvPdfAttachment(sourceData, {
+        const pdfSource =
+          displayCompanyName && sourceData.companyInfo
+            ? {
+                ...sourceData,
+                companyInfo: { ...sourceData.companyInfo, name: displayCompanyName },
+              }
+            : displayCompanyName
+              ? {
+                  ...sourceData,
+                  companyInfo: {
+                    name: displayCompanyName,
+                    website: companyInfo?.website || '',
+                    description: '',
+                    industry: '',
+                    values: [],
+                    requirements: [],
+                    culture: '',
+                    analyzedLinks: [],
+                  },
+                }
+              : sourceData;
+        pdfAttachment = await generateOptimizedCvPdfAttachment(pdfSource, {
           isEnglish: cvLanguage === 'english',
           bodyFontSize,
           headingFontSize,
@@ -1669,6 +1709,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           skillsFontSize,
           nameFontSize,
           profileTitleFontSize,
+          companyName: displayCompanyName,
         });
       } else if (cvFile) {
         const contentBase64 = await fileToBase64(cvFile);
@@ -1686,10 +1727,10 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         recipients,
         subject:
           (opts?.subjectOverride ?? outreachEmailSubject).trim() ||
-          `Başvuru${coverLetterCompanyName ? ` — ${coverLetterCompanyName}` : companyInfo?.name ? ` — ${companyInfo.name}` : ''}`,
+          `Başvuru${displayCompanyName ? ` — ${displayCompanyName}` : ''}`,
         bodyText,
         replyTo: cvDataForSend?.personalInfo?.email || undefined,
-        companyName: coverLetterCompanyName || companyInfo?.name || undefined,
+        companyName: displayCompanyName || undefined,
         domain: inferredDomain,
         rawDomainInput:
           emailDomainOverride.trim() ||

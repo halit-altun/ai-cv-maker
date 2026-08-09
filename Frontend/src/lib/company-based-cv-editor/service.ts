@@ -28,6 +28,7 @@ import {
   buildGenericInboxRoutingPromptAddon,
   wrapColdEmailForInfoContactInbox,
 } from '@/lib/outreach/coldEmailGenericInbox';
+import { resolveCompanyDisplayName } from '@/lib/company/normalizeCompanyDisplayName';
 
 /** Company-based optimizer Gemini modeli (3.5 yerine 2.5 Flash). */
 const COMPANY_BASED_GEMINI_MODEL = 'gemini-2.5-flash';
@@ -109,7 +110,7 @@ ${pagesBlock}
 
 JSON formatında cevap ver:
 {
-  "name": "Şirket adı",
+  "name": "Resmi / marka şirket adı (asla URL veya domain yazma)",
   "website": "Ana web sitesi URL'si",
   "description": "Birleştirilmiş şirket açıklaması",
   "industry": "Sektör",
@@ -128,7 +129,8 @@ Kurallar:
 2. extractedKeywords: en fazla 5, tekrar etmeyen en önemli KW (teknoloji/yetkinlik/ürün/domain).
 3. detectedLanguage: baskın sayfa dili ("turkish" | "english" | "other").
 4. analyzedLinks: verilen tüm URL'leri dahil et.
-5. Sadece JSON döndür.
+5. name: yalnızca şirket marka/ticari adı (ör. "Acme", "Softtech"). ASLA www..., http(s)://, domain.com veya path yazma; website alanına koy.
+6. Sadece JSON döndür.
 `;
 
     const response = await this.callGeminiAPI(prompt, { jsonMode: true });
@@ -163,6 +165,12 @@ Kurallar:
     if (!finalResult.website && companyUrls[0]?.url) {
       finalResult.website = companyUrls[0].url;
     }
+
+    // name asla URL/domain olmasın
+    finalResult.name = resolveCompanyDisplayName({
+      name: finalResult.name,
+      website: finalResult.website || companyUrls[0]?.url,
+    });
 
     console.log('=== COMPANY ANALYSIS COMPLETED (single AI) ===');
     console.log('Final result:', finalResult);

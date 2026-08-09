@@ -2,6 +2,7 @@ const { generateAIContent } = require("../ai-provider.service");
 const { COMPANY_BASED_GEMINI_MODEL } = require("../gemini.service");
 const { waitAndProceed } = require("../gemini-rate-limiter");
 const { buildFullOptimizationBundlePrompt } = require("./fullOptimizationBundle.prompt");
+const { resolveCompanyDisplayName } = require("../../utils/company-display-name");
 const { parseJSONResponse } = require("./jsonParse");
 const {
   normalizeParsedCVData,
@@ -159,7 +160,12 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
           ? raw.extractedKeywords.map((k) => String(k ?? "").trim()).filter(Boolean)
           : [];
         resolvedCompanyInfo = {
-          name: String(raw.name || "").trim() || "Şirket",
+          name: resolveCompanyDisplayName({
+            name: String(raw.name || "").trim(),
+            website: String(
+              raw.website || request.companyPages?.[0]?.url || ""
+            ).trim(),
+          }) || "Şirket",
           website: String(
             raw.website || request.companyPages?.[0]?.url || ""
           ).trim(),

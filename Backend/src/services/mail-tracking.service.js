@@ -1,6 +1,11 @@
 const crypto = require("crypto");
 const MailTracking = require("../models/mail-tracking.model");
 const MailOpenEvent = require("../models/mail-open-event.model");
+const {
+  resolveCompanyDisplayName,
+  isDomainLikeCompanyLabel,
+  replaceCompanySegmentInPdfFilename,
+} = require("../utils/company-display-name");
 
 /**
  * Yeni mail tracking kaydı oluştur
@@ -311,8 +316,10 @@ async function enrichMailTrackingRows(trackings = []) {
       .select("companyName domain recipients.mailId")
       .lean();
     for (const log of logs) {
-      const name =
-        String(log.companyName || "").trim() || String(log.domain || "").trim();
+      const name = resolveCompanyDisplayName({
+        name: String(log.companyName || "").trim(),
+        domain: String(log.domain || "").trim(),
+      });
       if (!name) continue;
       for (const r of log.recipients || []) {
         const mid = String(r.mailId || "");
@@ -359,6 +366,22 @@ async function enrichMailTrackingRows(trackings = []) {
         changed = true;
       }
     }
+
+    // www.domain.com → marka adı (gösterim + backfill)
+    const cleanedCompany = resolveCompanyDisplayName({
+      name: row.company,
+      domain: undefined,
+    });
+    if (
+      cleanedCompany &&
+      cleanedCompany !== String(row.company || "").trim() &&
+      (isDomainLikeCompanyLabel(String(row.company || "")) ||
+        !String(row.company || "").trim())
+    ) {
+      row.company = cleanedCompany;
+      changed = true;
+    }
+
     if (changed && row._id) {
       toPersist.push({
         id: row._id,
@@ -520,11 +543,19 @@ async function getMailTrackingCvPdf(mailId, userId) {
   return {
     found: true,
     hasCv: true,
-    filename:
+    filename: replaceCompanySegmentInPdfFilename(
       String(pdf.filename || log.cvFileName || "CV.pdf").trim() || "CV.pdf",
+      resolveCompanyDisplayName({
+        name: tracking.company || log.companyName,
+        domain: log.domain,
+      })
+    ),
     contentType: String(pdf.contentType || "application/pdf"),
     contentBase64: pdf.contentBase64,
-    company: tracking.company || log.companyName || "",
+    company: resolveCompanyDisplayName({
+      name: tracking.company || log.companyName,
+      domain: log.domain,
+    }),
   };
 }
 
@@ -566,7 +597,10 @@ async function getMailTrackingColdMails(mailId, userId) {
     subject: String(log.subject || tracking.subject || "").trim(),
     standardBody,
     infoContactBody,
-    company: tracking.company || log.companyName || "",
+    company: resolveCompanyDisplayName({
+      name: tracking.company || log.companyName,
+      domain: log.domain,
+    }),
   };
 }
 

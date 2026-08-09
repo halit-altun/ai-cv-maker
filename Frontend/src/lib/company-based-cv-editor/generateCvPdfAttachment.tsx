@@ -9,6 +9,10 @@ import type {
   CvSkillsFontSize,
 } from '@/components/cv-maker/cvTypography';
 import type { CompanyBasedCVData } from './types';
+import {
+  resolveCompanyDisplayName,
+  sanitizeCompanyForFileName,
+} from '@/lib/company/normalizeCompanyDisplayName';
 
 export type OptimizedCvPdfFontOptions = {
   bodyFontSize?: CvBodyFontSize;
@@ -17,6 +21,8 @@ export type OptimizedCvPdfFontOptions = {
   skillsFontSize?: CvSkillsFontSize;
   nameFontSize?: CvNameFontSize;
   profileTitleFontSize?: CvProfileTitleFontSize;
+  /** Dosya adı sonuna eklenecek gerçek şirket adı (URL/domain değil) */
+  companyName?: string;
 };
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -32,13 +38,18 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-function buildOptimizedFileName(data: CompanyBasedCVData): string {
+function buildOptimizedFileName(
+  data: CompanyBasedCVData,
+  companyNameOverride?: string
+): string {
   const first = (data.personalInfo?.firstName || 'CV').replace(/[^\w\-]+/g, '_');
   const last = (data.personalInfo?.lastName || 'Resume').replace(/[^\w\-]+/g, '_');
-  const company = (data.companyInfo?.name || 'Optimized')
-    .replace(/[^a-zA-Z0-9]+/g, '_')
-    .replace(/^_|_$/g, '');
-  return `${first}_${last}_${company || 'Optimized'}.pdf`;
+  const display = resolveCompanyDisplayName({
+    name: companyNameOverride || data.companyInfo?.name,
+    website: data.companyInfo?.website,
+  });
+  const company = sanitizeCompanyForFileName(display || 'Optimized');
+  return `${first}_${last}_${company}.pdf`;
 }
 
 /**
@@ -74,7 +85,7 @@ export async function generateOptimizedCvPdfAttachment(
   }
 
   return {
-    filename: buildOptimizedFileName(data),
+    filename: buildOptimizedFileName(data, options?.companyName),
     contentBase64,
     contentType: 'application/pdf',
   };
