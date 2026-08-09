@@ -1036,7 +1036,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
             companyWebsite: companyInfo?.website,
             firstCompanyUrl: companyLinks[0]?.url,
             selectedCategoryIds: selectedEmailPrefixCategories,
-            customLocalPartsText,
+            customLocalPartsText: customEmailLocalPartsText,
             includePrimaryEmail: includePrimaryEmailInSend,
           })
         : false;
@@ -1605,7 +1605,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           companyWebsite: companyInfo?.website,
           firstCompanyUrl: companyLinks[0]?.url,
           selectedCategoryIds: selectedEmailPrefixCategories,
-          customLocalPartsText,
+          customLocalPartsText: customEmailLocalPartsText,
           includePrimaryEmail: includePrimaryEmailInSend,
         }),
       });
