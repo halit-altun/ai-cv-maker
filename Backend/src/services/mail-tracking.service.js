@@ -21,19 +21,23 @@ async function createMailTracking({
     mailId,
     userId,
     recipient,
-    company,
-    jobTitle,
+    company: String(company || "").trim(),
+    jobTitle: String(jobTitle || "").trim(),
     subject,
     status: "SENT",
     sentAt: new Date(),
     outreachLogId,
     projectId: projectId || null,
-    projectName: projectName || "",
+    projectName: String(projectName || "").trim(),
   });
 
   await tracking.save();
 
-  console.log(`[MAIL_TRACKING] Created tracking: ${mailId} | recipient: ${recipient}`);
+  console.log(
+    `[MAIL_TRACKING] Created tracking: ${mailId} | recipient: ${recipient} | company: ${
+      company || "-"
+    } | project: ${projectName || projectId || "-"}`
+  );
 
   return {
     mailId,
@@ -248,6 +252,106 @@ async function getMailTrackingStatsSummary(
 }
 
 /**
+ * Eksik company / projectName alanlarını liste için doldur (eski kayıtlar).
+ */
+async function enrichMailTrackingRows(trackings = []) {
+  const rows = Array.isArray(trackings) ? trackings : [];
+  if (!rows.length) return rows;
+
+  const OutreachProject = require("../models/outreach-project.model");
+  const OutreachLog = require("../models/outreach-log.model");
+
+  const missingProjectIds = [
+    ...new Set(
+      rows
+        .filter((t) => t.projectId && !String(t.projectName || "").trim())
+        .map((t) => String(t.projectId))
+    ),
+  ];
+
+  const projectNameById = new Map();
+  if (missingProjectIds.length) {
+    const projects = await OutreachProject.find({
+      _id: { $in: missingProjectIds },
+    })
+      .select("name")
+      .lean();
+    for (const p of projects) {
+      projectNameById.set(String(p._id), String(p.name || "").trim());
+    }
+  }
+
+  const mailIdsMissingCompany = rows
+    .filter((t) => !String(t.company || "").trim() && t.mailId)
+    .map((t) => String(t.mailId));
+
+  const companyByMailId = new Map();
+  if (mailIdsMissingCompany.length) {
+    const logs = await OutreachLog.find({
+      "recipients.mailId": { $in: mailIdsMissingCompany },
+    })
+      .select("companyName domain recipients.mailId")
+      .lean();
+    for (const log of logs) {
+      const name =
+        String(log.companyName || "").trim() || String(log.domain || "").trim();
+      if (!name) continue;
+      for (const r of log.recipients || []) {
+        const mid = String(r.mailId || "");
+        if (mid && mailIdsMissingCompany.includes(mid) && !companyByMailId.has(mid)) {
+          companyByMailId.set(mid, name);
+        }
+      }
+    }
+  }
+
+  const toPersist = [];
+  for (const row of rows) {
+    let changed = false;
+    if (row.projectId && !String(row.projectName || "").trim()) {
+      const name = projectNameById.get(String(row.projectId)) || "";
+      if (name) {
+        row.projectName = name;
+        changed = true;
+      }
+    }
+    if (!String(row.company || "").trim() && row.mailId) {
+      const name = companyByMailId.get(String(row.mailId)) || "";
+      if (name) {
+        row.company = name;
+        changed = true;
+      }
+    }
+    if (changed && row._id) {
+      toPersist.push({
+        id: row._id,
+        company: row.company,
+        projectName: row.projectName,
+      });
+    }
+  }
+
+  // Sessiz backfill — sonraki listelerde join gerekmesin
+  if (toPersist.length) {
+    await Promise.all(
+      toPersist.map((p) =>
+        MailTracking.updateOne(
+          { _id: p.id },
+          {
+            $set: {
+              ...(p.company ? { company: p.company } : {}),
+              ...(p.projectName ? { projectName: p.projectName } : {}),
+            },
+          }
+        ).catch(() => null)
+      )
+    );
+  }
+
+  return rows;
+}
+
+/**
  * Kullanıcının mail tracking listesini al
  */
 async function getUserMailTrackings(
@@ -263,7 +367,7 @@ async function getUserMailTrackings(
     endDate,
   });
 
-  const [trackings, total, companyCount] = await Promise.all([
+  const [rawTrackings, total, companyCount] = await Promise.all([
     MailTracking.find(query)
       .sort({ sentAt: -1, createdAt: -1 })
       .limit(limit)
@@ -272,6 +376,8 @@ async function getUserMailTrackings(
     MailTracking.countDocuments(query),
     countDistinctCompanies(query),
   ]);
+
+  const trackings = await enrichMailTrackingRows(rawTrackings);
 
   return {
     trackings,
@@ -286,11 +392,13 @@ async function getUserMailTrackings(
  * Mail tracking detaylarını al (açılış event'leri ile)
  */
 async function getMailTrackingDetails(mailId, userId) {
-  const tracking = await MailTracking.findOne({ mailId, userId }).lean();
+  const trackingRaw = await MailTracking.findOne({ mailId, userId }).lean();
 
-  if (!tracking) {
+  if (!trackingRaw) {
     return { found: false };
   }
+
+  const [tracking] = await enrichMailTrackingRows([trackingRaw]);
 
   const openEvents = await MailOpenEvent.find({ mailId })
     .sort({ createdAt: -1 })

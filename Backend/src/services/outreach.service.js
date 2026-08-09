@@ -184,10 +184,12 @@ async function sendCompanyOutreachEmails({
   }
 
   let resolvedProjectId = null;
+  let resolvedProjectName = "";
   if (projectId) {
     const { getProjectOrThrow } = require("./outreach-project.service");
     const project = await getProjectOrThrow(clientId, projectId);
     resolvedProjectId = project._id;
+    resolvedProjectName = String(project.name || "").trim();
   }
 
   // --- Gönderimden hemen önce: MX + Reacher/EmailVerify doğrulama ---
@@ -409,11 +411,12 @@ async function sendCompanyOutreachEmails({
         const trackingResult = await createMailTracking({
           userId,
           recipient: to,
-          company: companyName,
+          company: resolvedCompanyName,
           jobTitle: targetPosition || "",
           subject: safeSubject,
           outreachLogId: null,
           projectId: resolvedProjectId || null,
+          projectName: resolvedProjectName,
         });
         
         mailId = trackingResult.mailId;
