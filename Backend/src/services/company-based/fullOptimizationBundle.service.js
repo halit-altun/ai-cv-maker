@@ -13,6 +13,9 @@ const {
   applyAdaptedCvFromBundle,
   buildAdaptationNotes,
 } = require("./applyAdaptedCv");
+const {
+  wrapColdEmailForInfoContactInbox,
+} = require("../../utils/cold-email-generic-inbox");
 
 const GEMINI_MAX_RETRIES = 3;
 const GEMINI_RETRY_DELAY_MS = 1500;
@@ -136,6 +139,15 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
             missing.push(website);
           }
           if (missing.length) body = `${body}\n${missing.join(" | ")}`.trim();
+          if (request.coldEmailGenericInboxRouting) {
+            body = wrapColdEmailForInfoContactInbox({
+              bodyText: body,
+              companyName:
+                String(request.recipientCompanyName || "").trim() ||
+                String(request.companyInfo?.name || "").trim(),
+              language: coldLang === "English" ? "english" : "turkish",
+            });
+          }
           coldEmail = { subject, body };
         }
       }

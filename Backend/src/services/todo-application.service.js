@@ -5,6 +5,10 @@ const MailTracking = require("../models/mail-tracking.model");
 const User = require("../models/user.model");
 const { AppError } = require("../utils/app-error");
 const { isValidPdfBuffer } = require("../utils/email-attachment.utils");
+const {
+  isInfoOrContactEmail,
+  wrapColdEmailForInfoContactInbox,
+} = require("../utils/cold-email-generic-inbox");
 const { getProjectOrThrow } = require("./outreach-project.service");
 const { fetchPageText } = require("./todo-page-fetch.service");
 const {
@@ -949,6 +953,19 @@ async function processSingleJobItem(job, item) {
     ? candidates
     : candidates.slice(0, 3);
   item.selectedRecipients = selected;
+
+  // Tüm seçili alıcılar info@/contact@ ise önizleme gövdesini de sarmala (gönderimde idempotent).
+  if (
+    item.coldEmailBody &&
+    selected.length > 0 &&
+    selected.every(isInfoOrContactEmail)
+  ) {
+    item.coldEmailBody = wrapColdEmailForInfoContactInbox({
+      bodyText: item.coldEmailBody,
+      companyName: item.companyName,
+      language: language === "english" ? "english" : "turkish",
+    });
+  }
 
   if (!settings.sendMail || job.mode === "analyze_only") {
     await createAnalysisOnlyLog({

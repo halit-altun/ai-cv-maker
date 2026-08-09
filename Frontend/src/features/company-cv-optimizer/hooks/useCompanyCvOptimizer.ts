@@ -40,11 +40,15 @@ import {
   EMAIL_PREFIX_CATEGORIES,
   buildRecipientEmails,
   extractDomainFromUrl,
+  extractLocalPartFromInput,
   isExclusiveEmailCategory,
   normalizeEmailDomainInput,
   resolveOutreachEmailLanguage,
   resolvePageTypeLabel,
 } from '../constants/outreachConstants';
+import {
+  isInfoOrContactEmail,
+} from '@/lib/outreach/coldEmailGenericInbox';
 import {
   checkMailInfraRequest,
   createOutreachAiErrorLogRequest,
@@ -64,6 +68,53 @@ import {
 } from '@/lib/client-preferences/api';
 
 const EMAIL_CATEGORY_IDS = new Set(EMAIL_PREFIX_CATEGORIES.map((c) => c.id));
+
+/**
+ * Seçili alıcıların tamamı info@/contact@ ise cold mail prompt’una yönlendirme eki eklenir.
+ * Karışık listede false — gönderimde yalnızca info/contact sarmalanır; diğerleri birebir kalır.
+ */
+function resolveColdEmailGenericInboxRouting(params: {
+  emailDomainOverride: string;
+  companyWebsite?: string;
+  firstCompanyUrl?: string;
+  selectedCategoryIds: EmailPrefixCategoryId[];
+  customLocalPartsText: string;
+  includePrimaryEmail: boolean;
+}): boolean {
+  const domain = normalizeEmailDomainInput(
+    params.emailDomainOverride ||
+      extractDomainFromUrl(params.companyWebsite || '') ||
+      extractDomainFromUrl(params.firstCompanyUrl || '')
+  );
+  const rawDomainInput =
+    params.emailDomainOverride ||
+    params.companyWebsite ||
+    params.firstCompanyUrl ||
+    domain;
+  if (!domain && !String(rawDomainInput || '').includes('@')) {
+    const local = extractLocalPartFromInput(params.emailDomainOverride);
+    return Boolean(local && isInfoOrContactEmail(`${local}@x.com`));
+  }
+
+  const candidates = buildRecipientEmails({
+    domain,
+    selectedCategoryIds: params.selectedCategoryIds,
+    customLocalParts: params.customLocalPartsText
+      .split(/[\n,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+    rawDomainInput,
+    includePrimaryEmail: params.includePrimaryEmail,
+  });
+  const list = params.selectedCategoryIds.some(isExclusiveEmailCategory)
+    ? candidates
+    : candidates.slice(0, 3);
+  if (!list.length) {
+    const local = extractLocalPartFromInput(params.emailDomainOverride);
+    return Boolean(local && isInfoOrContactEmail(`${local}@${domain || 'x.com'}`));
+  }
+  return list.every(isInfoOrContactEmail);
+}
 
 export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
@@ -979,6 +1030,17 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         ? coverLetterSource
         : linkedinMessageSource;
 
+      const coldEmailGenericInboxRouting = shouldSendCompanyEmail
+        ? resolveColdEmailGenericInboxRouting({
+            emailDomainOverride,
+            companyWebsite: companyInfo?.website,
+            firstCompanyUrl: companyLinks[0]?.url,
+            selectedCategoryIds: selectedEmailPrefixCategories,
+            customLocalPartsText,
+            includePrimaryEmail: includePrimaryEmailInSend,
+          })
+        : false;
+
       // Tek AI: (şirket profili) + parse + uyarlama + outreach
       const bundle = await CompanyBasedCVService.runFullOptimizationBundle({
         cvText,
@@ -1009,6 +1071,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         coverLetterSource,
         linkedinMessageSource: outreachSourceForLinkedIn,
         coldEmailLanguage: coldLanguage,
+        coldEmailGenericInboxRouting,
         recipientName: coverLetterRecipientName.trim() || undefined,
         recipientCompanyName:
           coverLetterCompanyName.trim() || companyInfo?.name || undefined,
@@ -1537,6 +1600,14 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         portfolioUrl: outreachPortfolioUrl.trim() || undefined,
         websiteUrl: outreachWebsiteUrl.trim() || undefined,
         phoneOverride: outreachPhone.trim() || undefined,
+        genericInboxRouting: resolveColdEmailGenericInboxRouting({
+          emailDomainOverride,
+          companyWebsite: companyInfo?.website,
+          firstCompanyUrl: companyLinks[0]?.url,
+          selectedCategoryIds: selectedEmailPrefixCategories,
+          customLocalPartsText,
+          includePrimaryEmail: includePrimaryEmailInSend,
+        }),
       });
       setOutreachEmailSubject(cold.subject);
       setOutreachEmailBody(cold.body);

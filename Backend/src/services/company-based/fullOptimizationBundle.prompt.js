@@ -25,6 +25,17 @@ function buildFullOptimizationBundlePrompt(request) {
   const recipientCompany =
     (request.recipientCompanyName || "").trim() ||
     (request.companyInfo?.name || "").trim();
+  const {
+    buildGenericInboxRoutingPromptAddon,
+  } = require("../../utils/cold-email-generic-inbox");
+  const wantGenericInboxRouting = Boolean(request.coldEmailGenericInboxRouting);
+  const genericInboxAddon =
+    wantCold && wantGenericInboxRouting
+      ? `\n${buildGenericInboxRoutingPromptAddon({
+          language: coldLang,
+          companyName: recipientCompany,
+        })}\n`
+      : "";
   const hasCompanyPages =
     Array.isArray(request.companyPages) && request.companyPages.length > 0;
   const needCompanyExtract =
@@ -185,7 +196,7 @@ CRITICAL RULES:
 7) LinkedIn cold outreach (if YES) — ${linkedInLang}, plain text, NO markdown, NO signature/contact block (app appends it):
    LENGTH: 60-90 words body (hard). Aim ~400-600 characters; mobile-readable without scroll.
    FORMAT: Short paragraphs with blank lines between them; corporate-letter tone avoided; not an email essay.
-   GREETING: First line exactly "Merhaba," (TR) or "Hello," (EN). No invented person name. Optional: "Merhaba [Company] Ekibi," / "Hello [Company] team," ONLY if company name is known.
+   GREETING: First line exactly "Merhaba," (TR) or "Hi," (EN). LinkedIn is 1:1 to one person — never use "[Company] team/Ekibi", "Hiring Team", or put a company/person name in the greeting.
    A→Z FLOW (required):
      (A) Opening & context: 1 grounded sentence showing interest in THIS company's work (tech focus / sector / growth / recent focus) — ONLY from target pages/profile. No fake flattery.
      (B) Value proposition: 1-2 sentences summarizing the candidate (role + stack from CV) and how they can help THIS company's focus. Prefer real CV∩company overlap; never claim company-domain tech absent from CV.
@@ -207,7 +218,7 @@ CRITICAL RULES:
    - Avoid empty flattery without a grounded work-area detail.
    - Subject may lightly reflect role + grounded domain (keep short).
    - Do NOT mention CV attachment, filename, or "CV eki" in the body — PDF is attached separately; naming it is unprofessional.
-9) Recipient name: ${recipientName || "none"}; company for outreach: ${recipientCompany || "none"}.
+${genericInboxAddon}9) Recipient name: ${recipientName || "none"}; company for outreach: ${recipientCompany || "none"}.
 10) Outreach optional links if non-empty: LinkedIn=${request.outreachLinkedinUrl || "n/a"}, Portfolio=${request.outreachPortfolioUrl || "n/a"}, Website=${request.outreachWebsiteUrl || "n/a"}, Phone=${request.outreachPhone || "n/a"}.
 11) If a GENERATE flag is NO, return empty string / null for that field.
 12) If Extract companyInfo=YES, fill companyInfo from pages; extractedKeywords may list up to 10 candidate hints (pipeline will filter).

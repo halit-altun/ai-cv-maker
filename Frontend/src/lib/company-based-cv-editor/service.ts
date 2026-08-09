@@ -24,6 +24,10 @@ import {
   setGeminiKeyCount,
   syncGeminiKeyIndexAfterUse,
 } from '@/lib/ai/geminiKeyRotator';
+import {
+  buildGenericInboxRoutingPromptAddon,
+  wrapColdEmailForInfoContactInbox,
+} from '@/lib/outreach/coldEmailGenericInbox';
 
 /** Company-based optimizer Gemini modeli (3.5 yerine 2.5 Flash). */
 const COMPANY_BASED_GEMINI_MODEL = 'gemini-2.5-flash';
@@ -492,6 +496,9 @@ Kurallar:
         generateLinkedInMessage: Boolean(request.generateLinkedInMessage),
         generateColdEmail: Boolean(request.generateColdEmail),
         coldEmailLanguage: request.coldEmailLanguage,
+        coldEmailGenericInboxRouting: Boolean(
+          request.coldEmailGenericInboxRouting
+        ),
         recipientName: request.recipientName,
         recipientCompanyName: request.recipientCompanyName,
         outreachLinkedinUrl: request.outreachLinkedinUrl,
@@ -1306,6 +1313,8 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
     portfolioUrl?: string;
     websiteUrl?: string;
     phoneOverride?: string;
+    /** info@ / contact@ için yönlendirme girişi+teşekkür (yalnızca bu durumda true) */
+    genericInboxRouting?: boolean;
   }): Promise<{ subject: string; body: string }> {
     const {
       source,
@@ -1325,6 +1334,7 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
       portfolioUrl,
       websiteUrl,
       phoneOverride,
+      genericInboxRouting = false,
     } = params;
 
     const isEnglish = cvLanguage === 'english';
@@ -1392,6 +1402,13 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
       .filter(Boolean)
       .join('\n');
 
+    const genericInboxAddon = genericInboxRouting
+      ? `\n${buildGenericInboxRoutingPromptAddon({
+          language: isEnglish ? 'english' : 'turkish',
+          companyName: company === '[Şirket Adı]' ? '' : company,
+        })}\n`
+      : '';
+
     const prompt = `
 You are an expert. Write a cold email (soğuk e-posta) directly to an HR specialist or Hiring Manager.
 
@@ -1417,7 +1434,7 @@ E-MAIL WRITING RULES:
 6. CANDIDATE FACTS: Never invent metrics or technologies not supported by candidate data. ${experienceRule}
 7. Optional links below may be used in the signature only if provided; do not invent URLs.
 8. Language: ${isEnglish ? 'English only' : 'Turkish only'}.
-
+${genericInboxAddon}
 STYLE EXAMPLES (only when domain is grounded in target data — otherwise omit domain phrase):
 
 Example EN subject: "Full Stack (Next.js) – [Company] – [Name]"
@@ -1485,6 +1502,14 @@ Return ONLY valid JSON:
       body = `${body}\n${missingLinks.join(' | ')}`.trim();
     }
 
+    if (genericInboxRouting) {
+      body = wrapColdEmailForInfoContactInbox({
+        bodyText: body,
+        companyName: company === '[Şirket Adı]' ? '' : company,
+        language: isEnglish ? 'english' : 'turkish',
+      });
+    }
+
     return { subject, body };
   }
 
@@ -1534,8 +1559,9 @@ Return ONLY valid JSON:
     const targetPositionClean = sanitizeRoleTitle(targetPosition) || 'Full Stack Web Developer';
     const recipientNameClean = recipientName?.trim() ? recipientName.trim() : undefined;
     const recipientCompanyNameClean = recipientCompanyName?.trim() ? recipientCompanyName.trim() : undefined;
-    const englishGreeting = recipientNameClean ? `Dear ${recipientNameClean},` : 'Dear Hiring Team,';
-    const turkishGreeting = recipientNameClean ? `Sayın ${recipientNameClean},` : 'Sayın İşe Alma Ekibi,';
+    // LinkedIn DM: karşıdaki tek kişi — şirket/ekip hitabı yok; yalnızca kısa selam.
+    const englishGreeting = 'Hi,';
+    const turkishGreeting = 'Merhaba,';
     const candidateSkillsBlock = Array.isArray(candidateSkills) && candidateSkills.length > 0
       ? candidateSkills.join(', ')
       : 'N/A';
@@ -1599,6 +1625,8 @@ Return ONLY valid JSON:
       6. If the job mentions technologies you do NOT see in the CV text/skills, you MUST NOT claim experience. You may only mention willingness to learn/adapt.
       7. Formatting: plain text only, NO markdown, NO bullet lists, NO numbered lists.
       8. Greeting: The first line MUST be exactly: ${englishGreeting}
+         - LinkedIn is 1:1 messaging to one person. Do NOT use "Hi [Company] team,", "Hello [Company] team,", "Dear Hiring Team,", or any company/team address form.
+         - Do NOT put a person name or company name in the greeting line.
       9. Highlights facts:
          - Use only the provided Candidate CV highlights for achievements/metrics (if present). Do not invent numbers.
          - Candidate CV highlights (facts only):
@@ -1653,6 +1681,8 @@ Return ONLY valid JSON:
       6. CV’de olmayan teknolojiler için deneyim iddia etme; yalnızca öğrenme/adapte olma hevesinden bahsedebilirsin.
       7. Biçim: düz metin, markdown yok, madde işareti yok, numaralı liste yok.
       8. Selamlama: İlk satır TAM olarak şu olmalı: ${turkishGreeting}
+         - LinkedIn birebir mesajdır; "Merhaba [Şirket] Ekibi,", "Sayın İşe Alma Ekibi," veya şirket/ekip hitabı KULLANMA.
+         - Selamlama satırına kişi veya şirket adı ekleme.
       9. Aday CV kanıtları:
          - Başarı/iddialar için yalnızca sağlanan highlightları kullan. Rakam uydurma.
          - Aday CV highlightları:

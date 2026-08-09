@@ -60,6 +60,9 @@ async function optimizeBundleHandler(req, res, next) {
         generateColdEmail: Boolean(body.generateColdEmail),
         coldEmailLanguage:
           body.coldEmailLanguage === "english" ? "english" : "turkish",
+        coldEmailGenericInboxRouting: Boolean(
+          body.coldEmailGenericInboxRouting
+        ),
         recipientName: body.recipientName,
         recipientCompanyName: body.recipientCompanyName,
         outreachLinkedinUrl: body.outreachLinkedinUrl,

@@ -1,6 +1,10 @@
 const OutreachLog = require("../models/outreach-log.model");
 const MailTracking = require("../models/mail-tracking.model");
 const { enqueueEmail } = require("./email-queue.service");
+const {
+  isInfoOrContactEmail,
+  wrapColdEmailForInfoContactInbox,
+} = require("../utils/cold-email-generic-inbox");
 const { createMailTracking, generateTrackingPixelHtml } = require("./mail-tracking.service");
 const { createEmailHtmlTemplate } = require("../utils/email-template");
 const { AppError } = require("../utils/app-error");
@@ -344,19 +348,8 @@ async function sendCompanyOutreachEmails({
     String(subject || "").trim() ||
     `Başvuru${companyName ? ` — ${companyName}` : ""} | ${fromDisplayName}`;
 
-  const text = String(bodyText).trim();
-
-  // HTML şablon (gelecekte tekrar açılabilir) — şu an doğallık için sadece düz metin gönderiliyor.
-  // const html = `
-  // <!DOCTYPE html>
-  // <html lang="tr">
-  // <head><meta charset="UTF-8" /><title>${escapeHtml(safeSubject)}</title></head>
-  // <body style="margin:0;padding:16px;font-family:Arial,Helvetica,sans-serif;color:#222;background:#f5f5f5;">
-  //   <div style="max-width:640px;margin:0 auto;background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:24px;">
-  //     <div style="font-size:15px;line-height:1.7;">${escapeHtml(text)}</div>
-  //   </div>
-  // </body>
-  // </html>`;
+  const baseText = String(bodyText).trim();
+  const resolvedCompanyName = String(companyName || "").trim() || resolvedDomain;
 
   const results = [];
   const mailIds = [];
@@ -383,6 +376,14 @@ async function sendCompanyOutreachEmails({
 
   for (let i = 0; i < list.length; i += 1) {
     const to = list[i];
+    // info@ / contact@: mevcut cold mail aynı kalır; yalnızca yönlendirme girişi + teşekkür eklenir.
+    // Diğer alıcılar: baseText birebir (tek kelime değişmez).
+    const text = isInfoOrContactEmail(to)
+      ? wrapColdEmailForInfoContactInbox({
+          bodyText: baseText,
+          companyName: resolvedCompanyName,
+        })
+      : baseText;
     if (i > 0 && list.length > 1) {
       const waitMs = resolveInterSendDelayMs();
       console.log(
@@ -499,7 +500,7 @@ async function sendCompanyOutreachEmails({
     domain: resolvedDomain,
     status,
     subject: safeSubject,
-    bodyText: text,
+    bodyText: baseText,
     templateType: templateType || "cold_email",
     cvId: cvId || null,
     cvTitle: cvTitle || "",
