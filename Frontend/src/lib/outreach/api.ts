@@ -44,6 +44,8 @@ export type OutreachSendResult = {
   status?: string;
   domain?: string;
   logId?: string;
+  /** false = profil kaydetme tercihi kapalı; geçmiş DB’ye yazılmadı */
+  persisted?: boolean;
   attachmentIncluded?: boolean;
   selectedRecipient?: string | null;
   selectedRecipients?: string[];
