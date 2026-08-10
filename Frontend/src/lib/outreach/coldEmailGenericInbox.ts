@@ -106,6 +106,45 @@ export function wrapColdEmailForInfoContactInbox(params: {
   return `${dearLine}\n\n${routeLine}\n\n${core}`.trim();
 }
 
+/** LinkedIn DM — genel kutu bağlamı: Hi,/Merhaba, + yönlendirme + teşekkür */
+export function wrapLinkedInForGenericInbox(params: {
+  bodyText: string;
+  language?: 'english' | 'turkish';
+}): string {
+  const original = String(params.bodyText || '').trim();
+  if (!original) return original;
+
+  if (
+    original.includes(COLD_EMAIL_ROUTE_THANKS_EN) ||
+    original.includes(COLD_EMAIL_ROUTE_THANKS_TR)
+  ) {
+    return original;
+  }
+
+  const lang =
+    params.language === 'turkish' || params.language === 'english'
+      ? params.language
+      : detectColdEmailLanguage(original);
+  const isEnglish = lang === 'english';
+  const hiLine = isEnglish ? 'Hi,' : 'Merhaba,';
+  const routeLine = isEnglish ? COLD_EMAIL_ROUTE_ASK_EN : COLD_EMAIL_ROUTE_ASK_TR;
+  const thanksLine = isEnglish ? COLD_EMAIL_ROUTE_THANKS_EN : COLD_EMAIL_ROUTE_THANKS_TR;
+
+  let core = original.replace(
+    /^(Dear[^\n]*|Hello[^\n]*|Hi[^\n]*|Merhaba[^\n]*|Sayın[^\n]*)\s*\n+/i,
+    ''
+  );
+
+  const signRe = /(\n+)(Best regards,|Saygılarımla,)(\s*\n)/i;
+  if (signRe.test(core)) {
+    core = core.replace(signRe, `\n\n${thanksLine}$1$2$3`);
+  } else {
+    core = `${core}\n\n${thanksLine}`;
+  }
+
+  return `${hiLine}\n\n${routeLine}\n\n${core}`.trim();
+}
+
 /** Prompt eki — yalnızca generic inbox üretiminde. */
 export function buildGenericInboxRoutingPromptAddon(params: {
   language?: 'english' | 'turkish' | string;

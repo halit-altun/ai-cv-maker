@@ -1762,6 +1762,10 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         forceResend: opts?.forceResend ?? forceOutreachResend,
         pdfAttachment,
         projectId: selectedOutreachProjectId,
+        linkedinMessageText:
+          shouldGenerateLinkedInMessage && linkedinMessage.trim()
+            ? linkedinMessage.trim()
+            : undefined,
       });
       setOutreachSendResult(
         `${result.message || `${result.sentCount}/${result.total} alıcıya gönderildi.`}${

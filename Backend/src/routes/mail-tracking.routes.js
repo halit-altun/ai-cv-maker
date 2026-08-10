@@ -5,6 +5,7 @@ const {
   getMailTrackingDetails,
   getMailTrackingCvPdf,
   getMailTrackingColdMails,
+  getMailTrackingLinkedInMessages,
   setDeliveryOutcome,
 } = require("../services/mail-tracking.service");
 const MailTracking = require("../models/mail-tracking.model");
@@ -170,6 +171,28 @@ router.get("/:mailId/cold-mails", async (req, res, next) => {
     return res.json({
       ok: true,
       subject: result.subject,
+      standardBody: result.standardBody,
+      infoContactBody: result.infoContactBody,
+      company: result.company,
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * LinkedIn mesajları (standart / genel-kutu)
+ * GET /api/mail-tracking/:mailId/linkedin-messages
+ */
+router.get("/:mailId/linkedin-messages", async (req, res, next) => {
+  try {
+    const { mailId } = req.params;
+    const result = await getMailTrackingLinkedInMessages(mailId, req.user.id);
+    if (!result.found) {
+      return res.status(404).json({ ok: false, message: result.error });
+    }
+    return res.json({
+      ok: true,
       standardBody: result.standardBody,
       infoContactBody: result.infoContactBody,
       company: result.company,

@@ -128,6 +128,42 @@ function wrapColdEmailForInfoContactInbox(params) {
 }
 
 /**
+ * LinkedIn DM — genel kutu (info/contact/hello/sales) bağlamı için sarmalama.
+ * Selamlamayı Hi,/Merhaba, olarak tutar; yönlendirme + teşekkür ekler.
+ */
+function wrapLinkedInForGenericInbox(params) {
+  const original = String(params.bodyText || "").trim();
+  if (!original) return original;
+
+  if (original.includes(THANKS_EN) || original.includes(THANKS_TR)) {
+    return original;
+  }
+
+  const lang =
+    params.language === "turkish" || params.language === "english"
+      ? params.language
+      : detectColdEmailLanguage(original);
+  const isEnglish = lang === "english";
+  const hiLine = isEnglish ? "Hi," : "Merhaba,";
+  const routeLine = isEnglish ? ROUTE_EN : ROUTE_TR;
+  const thanksLine = isEnglish ? THANKS_EN : THANKS_TR;
+
+  let core = original.replace(
+    /^(Dear[^\n]*|Hello[^\n]*|Hi[^\n]*|Merhaba[^\n]*|Sayın[^\n]*)\s*\n+/i,
+    ""
+  );
+
+  const signRe = /(\n+)(Best regards,|Saygılarımla,)(\s*\n)/i;
+  if (signRe.test(core)) {
+    core = core.replace(signRe, `\n\n${thanksLine}$1$2$3`);
+  } else {
+    core = `${core}\n\n${thanksLine}`;
+  }
+
+  return `${hiLine}\n\n${routeLine}\n\n${core}`.trim();
+}
+
+/**
  * Prompt’a eklenecek koşullu blok (yalnızca generic inbox = YES iken).
  * Mevcut cold mail kurallarının üzerine eklenir; diğer maillerde çağrılmaz.
  */
@@ -168,5 +204,6 @@ module.exports = {
   hasStandardRecipientEmails,
   detectColdEmailLanguage,
   wrapColdEmailForInfoContactInbox,
+  wrapLinkedInForGenericInbox,
   buildGenericInboxRoutingPromptAddon,
 };

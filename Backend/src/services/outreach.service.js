@@ -5,6 +5,7 @@ const {
   isInfoOrContactEmail,
   anyInfoOrContactEmail,
   wrapColdEmailForInfoContactInbox,
+  wrapLinkedInForGenericInbox,
 } = require("../utils/cold-email-generic-inbox");
 const { createMailTracking, generateTrackingPixelHtml } = require("./mail-tracking.service");
 const { createEmailHtmlTemplate } = require("../utils/email-template");
@@ -148,6 +149,7 @@ async function sendCompanyOutreachEmails({
   trustedEmail,
   projectId,
   trackingPublicBaseUrl,
+  linkedinMessageText,
 }) {
   const limits = getOutreachLimits();
   const candidates = Array.isArray(recipients)
@@ -372,6 +374,13 @@ async function sendCompanyOutreachEmails({
       })
     : "";
 
+  const linkedinStandard = String(linkedinMessageText || "").trim();
+  const linkedinInfoContact = linkedinStandard && anyInfoOrContactEmail(list)
+    ? wrapLinkedInForGenericInbox({
+        bodyText: linkedinStandard,
+      })
+    : "";
+
   const results = [];
   const mailIds = [];
   const selectedSet = new Set(list.map((e) => String(e).toLowerCase()));
@@ -524,6 +533,8 @@ async function sendCompanyOutreachEmails({
     subject: safeSubject,
     bodyText: baseText,
     infoContactBodyText,
+    linkedinMessageText: linkedinStandard,
+    linkedinInfoContactMessageText: linkedinInfoContact,
     templateType: templateType || "cold_email",
     cvId: cvId || null,
     cvTitle: cvTitle || "",

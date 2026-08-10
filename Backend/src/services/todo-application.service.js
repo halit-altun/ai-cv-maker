@@ -1071,6 +1071,9 @@ async function processSingleJobItem(job, item) {
     rawDomainInput: item.emailDomainInput,
     trustedEmail,
     projectId: job.projectId,
+    linkedinMessageText: settings.shouldGenerateLinkedInMessage
+      ? String(item.linkedinMessage || "").trim() || undefined
+      : undefined,
   });
 
   item.outreachLogId = sendResult.logId || null;

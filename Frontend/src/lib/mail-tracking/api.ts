@@ -25,6 +25,8 @@ export type MailTrackingItem = {
   hasCvPdf?: boolean;
   hasStandardColdMail?: boolean;
   hasInfoContactColdMail?: boolean;
+  hasStandardLinkedIn?: boolean;
+  hasInfoContactLinkedIn?: boolean;
   cvFileName?: string;
 };
 
@@ -206,6 +208,25 @@ export async function getMailTrackingColdMailsRequest(mailId: string): Promise<{
   }
   return {
     subject: String(data.subject || ''),
+    standardBody: String(data.standardBody || ''),
+    infoContactBody: String(data.infoContactBody || ''),
+    company: data.company ? String(data.company) : undefined,
+  };
+}
+
+export async function getMailTrackingLinkedInMessagesRequest(mailId: string): Promise<{
+  standardBody: string;
+  infoContactBody: string;
+  company?: string;
+}> {
+  const res = await authFetch(
+    `/api/mail-tracking/${encodeURIComponent(mailId)}/linkedin-messages`
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    throw new Error(data.message || 'LinkedIn mesajı alınamadı.');
+  }
+  return {
     standardBody: String(data.standardBody || ''),
     infoContactBody: String(data.infoContactBody || ''),
     company: data.company ? String(data.company) : undefined,

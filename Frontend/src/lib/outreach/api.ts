@@ -26,6 +26,8 @@ export type OutreachSendPayload = {
   pdfAttachment?: OutreachPdfAttachment;
   /** Seçili outreach projesi — yoksa projesiz akış */
   projectId?: string | null;
+  /** LinkedIn mesajı açıksa gönderimle birlikte kaydedilir (Mail Takip) */
+  linkedinMessageText?: string;
 };
 
 export type OutreachSendResult = {

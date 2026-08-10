@@ -57,6 +57,7 @@ async function sendCompanyEmailHandler(req, res, next) {
       rawDomainInput,
       trustedEmail,
       projectId,
+      linkedinMessageText,
     } = req.body || {};
 
     const senderName = resolveOutreachSenderName(req.user);
@@ -98,6 +99,7 @@ async function sendCompanyEmailHandler(req, res, next) {
       trustedEmail,
       projectId: projectId || null,
       trackingPublicBaseUrl,
+      linkedinMessageText,
     });
 
     const selectedList = Array.isArray(result.selectedRecipients)

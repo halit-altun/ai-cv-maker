@@ -32,11 +32,13 @@ import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DownloadIcon from '@mui/icons-material/Download';
 import EmailIcon from '@mui/icons-material/Email';
+import LinkedInIcon from '@mui/icons-material/LinkedIn';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import {
   downloadMailTrackingCvRequest,
   getMailTrackingColdMailsRequest,
+  getMailTrackingLinkedInMessagesRequest,
   getMailTrackingDetailRequest,
   getMailTrackingStatsRequest,
   listMailTrackingsRequest,
@@ -318,12 +320,53 @@ export function MailTrackingView() {
         /* clipboard izni yoksa yine modal açılır */
       }
       setColdModalTitle(
-        kind === 'infoContact' ? 'info@ / contact@ / hello@ / sales@ cold mail' : 'Standart cold mail'
+        kind === 'infoContact'
+          ? 'info@ / contact@ / hello@ / sales@ cold mail'
+          : 'Standart cold mail'
       );
       setColdModalBody(body);
       setColdModalOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Cold mail alınamadı.');
+    } finally {
+      setColdBusyId(null);
+    }
+  };
+
+  const openLinkedInMessage = async (
+    row: MailTrackingItem,
+    kind: 'standard' | 'infoContact',
+    e?: MouseEvent
+  ) => {
+    e?.stopPropagation();
+    setColdBusyId(`${row.mailId}:li:${kind}`);
+    try {
+      const data = await getMailTrackingLinkedInMessagesRequest(row.mailId);
+      const body =
+        kind === 'infoContact' ? data.infoContactBody.trim() : data.standardBody.trim();
+      if (!body) {
+        setError(
+          kind === 'infoContact'
+            ? 'Genel kutu LinkedIn mesajı bulunamadı.'
+            : 'Standart LinkedIn mesajı bulunamadı.'
+        );
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(body);
+        setCopyToast(true);
+      } catch {
+        /* ignore */
+      }
+      setColdModalTitle(
+        kind === 'infoContact'
+          ? 'LinkedIn — genel kutu (info/contact/hello/sales)'
+          : 'LinkedIn — standart'
+      );
+      setColdModalBody(body);
+      setColdModalOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'LinkedIn mesajı alınamadı.');
     } finally {
       setColdBusyId(null);
     }
@@ -496,6 +539,7 @@ export function MailTrackingView() {
                 <TableCell>Gönderim</TableCell>
                 <TableCell>İlk açılış</TableCell>
                 <TableCell align="right">CV / Cold mail</TableCell>
+                <TableCell align="right">LinkedIn</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -607,6 +651,60 @@ export function MailTrackingView() {
                             </Button>
                           </span>
                         </Tooltip>
+                      )}
+                    </Stack>
+                  </TableCell>
+                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                    <Stack direction="row" spacing={0.5} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
+                      {row.hasStandardLinkedIn && (
+                        <Tooltip title="Standart LinkedIn — kopyala ve göster">
+                          <span>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={
+                                coldBusyId === `${row.mailId}:li:standard` ? (
+                                  <CircularProgress size={14} />
+                                ) : (
+                                  <LinkedInIcon fontSize="small" />
+                                )
+                              }
+                              disabled={coldBusyId === `${row.mailId}:li:standard`}
+                              onClick={(e) => void openLinkedInMessage(row, 'standard', e)}
+                              sx={{ textTransform: 'none', fontSize: '0.7rem' }}
+                            >
+                              Standart
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      )}
+                      {row.hasInfoContactLinkedIn && (
+                        <Tooltip title="Genel kutu LinkedIn — kopyala ve göster">
+                          <span>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="secondary"
+                              startIcon={
+                                coldBusyId === `${row.mailId}:li:infoContact` ? (
+                                  <CircularProgress size={14} />
+                                ) : (
+                                  <LinkedInIcon fontSize="small" />
+                                )
+                              }
+                              disabled={coldBusyId === `${row.mailId}:li:infoContact`}
+                              onClick={(e) => void openLinkedInMessage(row, 'infoContact', e)}
+                              sx={{ textTransform: 'none', fontSize: '0.7rem' }}
+                            >
+                              Genel kutu
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      )}
+                      {!row.hasStandardLinkedIn && !row.hasInfoContactLinkedIn && (
+                        <Typography variant="caption" color="text.secondary">
+                          —
+                        </Typography>
                       )}
                     </Stack>
                   </TableCell>
@@ -788,7 +886,11 @@ export function MailTrackingView() {
         open={copyToast}
         autoHideDuration={2200}
         onClose={() => setCopyToast(false)}
-        message="Cold mail panoya kopyalandı"
+        message={
+          coldModalTitle.toLowerCase().includes('linkedin')
+            ? 'LinkedIn mesajı panoya kopyalandı'
+            : 'Cold mail panoya kopyalandı'
+        }
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </Box>
