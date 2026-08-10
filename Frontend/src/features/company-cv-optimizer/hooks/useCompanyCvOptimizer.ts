@@ -246,11 +246,15 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
   const [cvRestoredFromCache, setCvRestoredFromCache] = useState(false);
   const [prefsReady, setPrefsReady] = useState(false);
+  /** Yeniden analiz / programatik domain set → JobAnalysis domain geçmişi sorgusu */
+  const [domainHistoryCheckNonce, setDomainHistoryCheckNonce] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prefsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Hydrate sonrası ilk effect tetiklemesini kaydetme — default’larla API ezilmesin */
   const prefsSkipNextSaveRef = useRef(true);
   const prefsBaselineRef = useRef<string>('');
+  const prefsPendingPatchRef = useRef<ClientUiPreferencesPatch | null>(null);
+  const prefsDirtyRef = useRef(false);
 
   // Outreach projeleri — GET; en son seçilen varsayılan
   useEffect(() => {
@@ -664,7 +668,10 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         if (cancelled) return;
         applyReanalyze(reanalyze);
         reanalyzeAppliedRef.current = true;
+        // Reanalyze alanları global tercihe yazılmasın
         prefsSkipNextSaveRef.current = true;
+        // Domain geçmişi sorgusu (JobAnalysis mount / zaten açıksa) hemen tetiklensin
+        setDomainHistoryCheckNonce((n) => n + 1);
       } catch (err) {
         if (!cancelled) {
           setError(
@@ -683,7 +690,34 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
   useEffect(() => {
     if (!prefsReady) return;
-    const patch = {
+
+    const flushPrefs = (patch: ClientUiPreferencesPatch, serialized: string) => {
+      prefsBaselineRef.current = serialized;
+      prefsPendingPatchRef.current = null;
+      prefsDirtyRef.current = false;
+      writeClientUiPreferencesLocalCache(patch);
+      void updateClientUiPreferencesRequest(patch).catch((err) => {
+        console.warn('Client tercihleri kaydedilemedi:', err);
+      });
+      try {
+        localStorage.setItem(
+          ANALYSIS_PREFS_STORAGE_KEY,
+          JSON.stringify({
+            targetPosition: patch.targetPosition,
+            manualMustMentionTopicsText: patch.manualMustMentionTopicsText,
+            manualMustNotMentionTopicsText: patch.manualMustNotMentionTopicsText,
+            coverLetterRecipientName: patch.coverLetterRecipientName,
+            coverLetterCompanyName: patch.coverLetterCompanyName,
+            lastCompanyPageType: patch.lastCompanyPageType,
+            lastCompanyPageTypeOther: patch.lastCompanyPageTypeOther,
+          })
+        );
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const patch: ClientUiPreferencesPatch = {
       targetPosition: targetPosition.trim(),
       cvLanguage,
       outreachEmailLanguageMode,
@@ -713,36 +747,24 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     if (prefsSkipNextSaveRef.current) {
       prefsSkipNextSaveRef.current = false;
       prefsBaselineRef.current = serialized;
+      prefsPendingPatchRef.current = null;
+      prefsDirtyRef.current = false;
       return;
     }
     if (serialized === prefsBaselineRef.current) return;
+
+    prefsPendingPatchRef.current = patch;
+    prefsDirtyRef.current = true;
     if (prefsSaveTimerRef.current) clearTimeout(prefsSaveTimerRef.current);
     prefsSaveTimerRef.current = setTimeout(() => {
-      prefsBaselineRef.current = serialized;
-      writeClientUiPreferencesLocalCache(patch);
-      void updateClientUiPreferencesRequest(patch).catch((err) => {
-        console.warn('Client tercihleri kaydedilemedi:', err);
-      });
-      try {
-        localStorage.setItem(
-          ANALYSIS_PREFS_STORAGE_KEY,
-          JSON.stringify({
-            targetPosition,
-            manualMustMentionTopicsText,
-            manualMustNotMentionTopicsText,
-            coverLetterRecipientName,
-            coverLetterCompanyName,
-            lastCompanyPageType,
-            lastCompanyPageTypeOther:
-              lastCompanyPageType === 'other' ? lastCompanyPageTypeOther : '',
-          })
-        );
-      } catch {
-        /* ignore */
-      }
-    }, 700);
+      flushPrefs(patch, serialized);
+    }, 250);
+
     return () => {
-      if (prefsSaveTimerRef.current) clearTimeout(prefsSaveTimerRef.current);
+      if (prefsSaveTimerRef.current) {
+        clearTimeout(prefsSaveTimerRef.current);
+        prefsSaveTimerRef.current = null;
+      }
     };
   }, [
     prefsReady,
@@ -770,6 +792,30 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     lastCompanyPageType,
     lastCompanyPageTypeOther,
   ]);
+
+  // Sayfa kapanınca / unmount’ta bekleyen tercihi kaybetme
+  useEffect(() => {
+    const flushPending = () => {
+      if (!prefsDirtyRef.current || !prefsPendingPatchRef.current) return;
+      const patch = prefsPendingPatchRef.current;
+      const serialized = JSON.stringify(patch);
+      prefsBaselineRef.current = serialized;
+      prefsPendingPatchRef.current = null;
+      prefsDirtyRef.current = false;
+      writeClientUiPreferencesLocalCache(patch);
+      void updateClientUiPreferencesRequest(patch).catch(() => undefined);
+    };
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushPending();
+    };
+    window.addEventListener('pagehide', flushPending);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('pagehide', flushPending);
+      document.removeEventListener('visibilitychange', onHide);
+      flushPending();
+    };
+  }, []);
 
   // Gönderen domain (SMTP) mail altyapısı — alıcı domain değişince reset YOK; 24s cache sunucuda
   const refreshDeliverabilityScore = async (
@@ -2170,6 +2216,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     setCustomEmailLocalPartsText,
     emailDomainOverride,
     setEmailDomainOverride,
+    domainHistoryCheckNonce,
     includePrimaryEmailInSend,
     setIncludePrimaryEmailInSend,
     skipPrimaryEmailVerification,

@@ -81,6 +81,8 @@ export interface CompanyCvOptimizerState {
   setCustomEmailLocalPartsText: (v: string) => void;
   emailDomainOverride: string;
   setEmailDomainOverride: (v: string) => void;
+  /** Yeniden analiz vb. sonrası domain geçmişi sorgusunu zorla */
+  domainHistoryCheckNonce: number;
   /** Ana adresi (girilen @ içeren) alıcı listesine ekle — varsayılan true */
   includePrimaryEmailInSend: boolean;
   setIncludePrimaryEmailInSend: (v: boolean) => void;

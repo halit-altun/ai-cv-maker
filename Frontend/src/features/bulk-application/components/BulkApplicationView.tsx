@@ -148,6 +148,8 @@ export function BulkApplicationView() {
   const prefsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefsSkipNextSaveRef = useRef(true);
   const prefsBaselineRef = useRef<string>('');
+  const prefsPendingPatchRef = useRef<ClientUiPreferencesPatch | null>(null);
+  const prefsDirtyRef = useRef(false);
   const clientFilterRef = useRef<SendHistoryFilter | null>(null);
 
   const loadProjects = useCallback(async () => {
@@ -355,7 +357,18 @@ export function BulkApplicationView() {
 
   useEffect(() => {
     if (!prefsReady) return;
-    const patch = {
+
+    const flushPrefs = (patch: ClientUiPreferencesPatch, serialized: string) => {
+      prefsBaselineRef.current = serialized;
+      prefsPendingPatchRef.current = null;
+      prefsDirtyRef.current = false;
+      writeClientUiPreferencesLocalCache(patch);
+      void updateClientUiPreferencesRequest(patch).catch((err) => {
+        console.warn('Client tercihleri kaydedilemedi:', err);
+      });
+    };
+
+    const patch: ClientUiPreferencesPatch = {
       cvLanguage,
       outreachEmailLanguageMode: emailLangMode,
       aiSettings: {
@@ -375,19 +388,24 @@ export function BulkApplicationView() {
     if (prefsSkipNextSaveRef.current) {
       prefsSkipNextSaveRef.current = false;
       prefsBaselineRef.current = serialized;
+      prefsPendingPatchRef.current = null;
+      prefsDirtyRef.current = false;
       return;
     }
     if (serialized === prefsBaselineRef.current) return;
+
+    prefsPendingPatchRef.current = patch;
+    prefsDirtyRef.current = true;
     if (prefsSaveTimerRef.current) clearTimeout(prefsSaveTimerRef.current);
     prefsSaveTimerRef.current = setTimeout(() => {
-      prefsBaselineRef.current = serialized;
-      writeClientUiPreferencesLocalCache(patch);
-      void updateClientUiPreferencesRequest(patch).catch((err) => {
-        console.warn('Client tercihleri kaydedilemedi:', err);
-      });
-    }, 600);
+      flushPrefs(patch, serialized);
+    }, 250);
+
     return () => {
-      if (prefsSaveTimerRef.current) clearTimeout(prefsSaveTimerRef.current);
+      if (prefsSaveTimerRef.current) {
+        clearTimeout(prefsSaveTimerRef.current);
+        prefsSaveTimerRef.current = null;
+      }
     };
   }, [
     prefsReady,
@@ -404,6 +422,28 @@ export function BulkApplicationView() {
     includeCvPhoto,
     sendFilter,
   ]);
+
+  useEffect(() => {
+    const flushPending = () => {
+      if (!prefsDirtyRef.current || !prefsPendingPatchRef.current) return;
+      const patch = prefsPendingPatchRef.current;
+      prefsBaselineRef.current = JSON.stringify(patch);
+      prefsPendingPatchRef.current = null;
+      prefsDirtyRef.current = false;
+      writeClientUiPreferencesLocalCache(patch);
+      void updateClientUiPreferencesRequest(patch).catch(() => undefined);
+    };
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushPending();
+    };
+    window.addEventListener('pagehide', flushPending);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('pagehide', flushPending);
+      document.removeEventListener('visibilitychange', onHide);
+      flushPending();
+    };
+  }, []);
 
   useEffect(() => {
     void loadProjects();

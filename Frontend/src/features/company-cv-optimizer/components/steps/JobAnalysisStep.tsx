@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -123,6 +123,7 @@ type JobAnalysisStepProps = Pick<
   | 'setCustomEmailLocalPartsText'
   | 'emailDomainOverride'
   | 'setEmailDomainOverride'
+  | 'domainHistoryCheckNonce'
   | 'includePrimaryEmailInSend'
   | 'setIncludePrimaryEmailInSend'
   | 'skipPrimaryEmailVerification'
@@ -176,38 +177,58 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
 
   const [domainHistory, setDomainHistory] = useState<DomainCheckResult | null>(null);
   const [domainCheckLoading, setDomainCheckLoading] = useState(false);
+  const domainCheckSeqRef = useRef(0);
+  const lastCheckedDomainRef = useRef('');
+  const lastHandledNonceRef = useRef(0);
 
   useEffect(() => {
     if (!props.shouldSendCompanyEmail || !typedEmailDomain) {
       setDomainHistory(null);
       setDomainCheckLoading(false);
+      lastCheckedDomainRef.current = '';
       return;
     }
 
     let cancelled = false;
-    setDomainCheckLoading(false);
-    // Yazmayı bıraktıktan 2 sn sonra sorgu
+    const seq = ++domainCheckSeqRef.current;
+    const programmatic =
+      props.domainHistoryCheckNonce > lastHandledNonceRef.current;
+    const firstFill = !lastCheckedDomainRef.current;
+    // Yeniden analiz / ilk dolum: hemen; elle yazım: 2 sn debounce
+    const delayMs = programmatic || firstFill ? 50 : 2000;
+
+    setDomainCheckLoading(programmatic || firstFill);
     const timer = setTimeout(() => {
       void (async () => {
-        if (cancelled) return;
+        if (cancelled || seq !== domainCheckSeqRef.current) return;
         setDomainCheckLoading(true);
         try {
           const result = await checkOutreachDomainRequest(typedEmailDomain);
-          if (cancelled) return;
+          if (cancelled || seq !== domainCheckSeqRef.current) return;
+          lastCheckedDomainRef.current = typedEmailDomain;
+          lastHandledNonceRef.current = props.domainHistoryCheckNonce;
           setDomainHistory(result);
         } catch {
-          if (!cancelled) setDomainHistory(null);
+          if (!cancelled && seq === domainCheckSeqRef.current) {
+            setDomainHistory(null);
+          }
         } finally {
-          if (!cancelled) setDomainCheckLoading(false);
+          if (!cancelled && seq === domainCheckSeqRef.current) {
+            setDomainCheckLoading(false);
+          }
         }
       })();
-    }, 2000);
+    }, delayMs);
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [props.shouldSendCompanyEmail, typedEmailDomain]);
+  }, [
+    props.shouldSendCompanyEmail,
+    typedEmailDomain,
+    props.domainHistoryCheckNonce,
+  ]);
 
   const previewRecipients = useMemo(() => {
     if (!props.shouldSendCompanyEmail) return [];
