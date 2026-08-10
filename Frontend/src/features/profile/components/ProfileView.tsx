@@ -77,6 +77,7 @@ export function ProfileView() {
   const [intervalMaxMinutes, setIntervalMaxMinutes] = useState(0);
   const [intervalMaxSecondsPart, setIntervalMaxSecondsPart] = useState(0);
   const [enableMailTracking, setEnableMailTracking] = useState(true);
+  const [persistOutreachHistory, setPersistOutreachHistory] = useState(true);
   const [emailVerifyQuota, setEmailVerifyQuota] = useState<EmailVerifyQuota | null>(null);
   const [outreachQuota, setOutreachQuota] = useState<{
     usedToday: number;
@@ -116,6 +117,7 @@ export function ProfileView() {
     setIntervalMaxMinutes(Math.floor(maxTotal / 60));
     setIntervalMaxSecondsPart(maxTotal % 60);
     setEnableMailTracking(u.enableMailTracking !== false);
+    setPersistOutreachHistory(u.persistOutreachHistory !== false);
   };
 
   useEffect(() => {
@@ -184,6 +186,7 @@ export function ProfileView() {
         gmailSendIntervalMinSeconds: minTotal,
         gmailSendIntervalMaxSeconds: maxTotal,
         enableMailTracking,
+        persistOutreachHistory,
       });
       applyUserToForm(updated);
       setSaveMessage(
@@ -635,6 +638,60 @@ export function ProfileView() {
               </Alert>
             )}
 
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 2 }}>
+              <Button
+                variant="outlined"
+                onClick={() => void handleSaveProfile()}
+                disabled={saving}
+                sx={{ textTransform: 'none' }}
+              >
+                {saving ? 'Kaydediliyor...' : 'Bu ayarı kaydet'}
+              </Button>
+            </Box>
+          </Box>
+
+          {/* Kaydetme tercihi */}
+          <Box
+            sx={{
+              p: 2.5,
+              borderRadius: 3,
+              border: `1px solid ${colors.outlineVariant}`,
+              bgcolor: colors.surfaceContainerLowest,
+            }}
+          >
+            <Typography fontWeight={700} sx={{ mb: 1 }}>
+              Kaydetme tercihi
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Açıkken Company Based ve Bulk analizleri ile mail gönderimleri Mail Log,
+              Mail Takip ve Outreach geçmişinde saklanır. Kapalıyken bu kayıtlar veritabanına
+              yazılmaz; sayfa yenilenince oturumdaki sonuçlar kaybolur (mail yine
+              gönderilebilir).
+            </Typography>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={persistOutreachHistory}
+                  onChange={(e) => setPersistOutreachHistory(e.target.checked)}
+                  color="secondary"
+                />
+              }
+              label="Analiz ve mail geçmişini kaydet"
+            />
+            {persistOutreachHistory ? (
+              <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
+                <Typography variant="body2">
+                  Kayıt açık. Geçmiş Mail Log / Mail Takip / Outreach sayfalarında görünür.
+                </Typography>
+              </Alert>
+            ) : (
+              <Alert severity="warning" sx={{ mt: 2, borderRadius: 2 }}>
+                <Typography variant="body2">
+                  Kayıt kapalı. Analiz ve gönderimler kalıcı yazılmaz; yenilemede geçmiş
+                  oluşmaz.
+                </Typography>
+              </Alert>
+            )}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 2 }}>
               <Button
                 variant="outlined"

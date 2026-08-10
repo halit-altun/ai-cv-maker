@@ -7,7 +7,7 @@ const { AppError } = require("../utils/app-error");
 const ALLOWED_SELF_REGISTER_ROLES = new Set(["user"]);
 
 const PUBLIC_USER_FIELDS =
-  "email fullName firstName lastName title contactEmail phone country city linkedinUrl portfolioUrl githubUrl autoSendOutreachAfterAnalysis preferredAiProvider gmailSendIntervalMinMinutes gmailSendIntervalMaxMinutes gmailSendIntervalMinSeconds gmailSendIntervalMaxSeconds enableMailTracking profileImageUrl profileImagePublicId clientId role isActive emailVerified emailVerifiedAt createdAt updatedAt";
+  "email fullName firstName lastName title contactEmail phone country city linkedinUrl portfolioUrl githubUrl autoSendOutreachAfterAnalysis preferredAiProvider gmailSendIntervalMinMinutes gmailSendIntervalMaxMinutes gmailSendIntervalMinSeconds gmailSendIntervalMaxSeconds enableMailTracking persistOutreachHistory profileImageUrl profileImagePublicId clientId role isActive emailVerified emailVerifiedAt createdAt updatedAt";
 
 function toPublicUser(user) {
   if (!user) {
@@ -43,6 +43,7 @@ function toPublicUser(user) {
       return (Number(user.gmailSendIntervalMaxMinutes) || 0) * 60;
     })(),
     enableMailTracking: user.enableMailTracking !== false,
+    persistOutreachHistory: user.persistOutreachHistory !== false,
     profileImageUrl: user.profileImageUrl || "",
     profileImagePublicId: user.profileImagePublicId || "",
     clientId: user.clientId || "",
@@ -177,6 +178,7 @@ async function updateUserProfile(
     gmailSendIntervalMinSeconds,
     gmailSendIntervalMaxSeconds,
     enableMailTracking,
+    persistOutreachHistory,
   } = {}
 ) {
   const updates = {};
@@ -246,6 +248,9 @@ async function updateUserProfile(
 
   if (enableMailTracking !== undefined) {
     updates.enableMailTracking = Boolean(enableMailTracking);
+  }
+  if (persistOutreachHistory !== undefined) {
+    updates.persistOutreachHistory = Boolean(persistOutreachHistory);
   }
 
   if (fullName !== undefined) {

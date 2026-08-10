@@ -20,6 +20,33 @@ const {
   toQueueAttachment,
 } = require("../utils/email-attachment.utils");
 const { resolveCompanyDisplayName } = require("../utils/company-display-name");
+const {
+  isPersistOutreachHistoryEnabled,
+} = require("../utils/persist-outreach-history");
+const User = require("../models/user.model");
+
+/** Aynı client+domain için paralel gönderimi sıraya al (çift API → çift mail) */
+const domainSendLocks = new Map();
+
+async function withDomainSendLock(clientId, domain, fn) {
+  const key = `${String(clientId || "")}:${String(domain || "").toLowerCase()}`;
+  const previous = domainSendLocks.get(key) || Promise.resolve();
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const chained = previous.catch(() => undefined).then(() => gate);
+  domainSendLocks.set(key, chained);
+  await previous.catch(() => undefined);
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (domainSendLocks.get(key) === chained) {
+      domainSendLocks.delete(key);
+    }
+  }
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -126,7 +153,23 @@ function buildPdfAttachment(attachment) {
 /**
  * Hedef firmaya CV + mail şablonu gönderir ve client bazlı log kaydeder.
  */
-async function sendCompanyOutreachEmails({
+async function sendCompanyOutreachEmails(params) {
+  const candidates = Array.isArray(params?.recipients)
+    ? [...new Set(params.recipients.map((r) => String(r || "").trim().toLowerCase()).filter(Boolean))]
+    : [];
+  const earlyDomain =
+    normalizeDomain(params?.domain) ||
+    normalizeDomain(candidates[0]) ||
+    "";
+  if (!earlyDomain || !params?.clientId) {
+    return sendCompanyOutreachEmailsImpl(params);
+  }
+  return withDomainSendLock(params.clientId, earlyDomain, () =>
+    sendCompanyOutreachEmailsImpl(params)
+  );
+}
+
+async function sendCompanyOutreachEmailsImpl({
   recipients,
   subject,
   bodyText,
@@ -200,6 +243,13 @@ async function sendCompanyOutreachEmails({
     resolvedProjectName = String(project.name || "").trim();
   }
 
+  const persistHistory = await isPersistOutreachHistoryEnabled(userId);
+  const userMailPrefs = await User.findById(userId)
+    .select("enableMailTracking")
+    .lean();
+  const trackingEnabled =
+    persistHistory && userMailPrefs?.enableMailTracking !== false;
+
   // --- Gönderimden hemen önce: MX + Reacher/EmailVerify doğrulama ---
   const verifyOn = isVerifyEnabled() && !skipVerification;
   let verificationMeta = {
@@ -260,36 +310,40 @@ async function sendCompanyOutreachEmails({
       const failMessage =
         picked.message || "Geçerli e-posta bulunamadı; gönderim iptal edildi.";
 
-      const failLog = await OutreachLog.create({
-        clientId,
-        userId,
-        projectId: resolvedProjectId,
-        companyName: String(companyName || "").trim() || resolvedDomain,
-        domain: resolvedDomain,
-        status: "verify_failed",
-        subject: String(subject || "").trim(),
-        bodyText: String(bodyText || "").trim(),
-        templateType: templateType || "cold_email",
-        cvId: cvId || null,
-        cvTitle: cvTitle || "",
-        cvFileName: cvFileName || "",
-        selectedCategories: Array.isArray(selectedCategories) ? selectedCategories : [],
-        recipients: failRecipients,
-        sentCount: 0,
-        failedCount: failRecipients.length,
-        loggedCount: 0,
-        totalRecipients: failRecipients.length,
-        errorMessage: failMessage,
-        targetPosition: targetPosition || "",
-        replyTo: replyTo || "",
-        verification: verificationMeta,
-        sentAt: new Date(),
-      });
+      let failLogId = null;
+      if (persistHistory) {
+        const failLog = await OutreachLog.create({
+          clientId,
+          userId,
+          projectId: resolvedProjectId,
+          companyName: String(companyName || "").trim() || resolvedDomain,
+          domain: resolvedDomain,
+          status: "verify_failed",
+          subject: String(subject || "").trim(),
+          bodyText: String(bodyText || "").trim(),
+          templateType: templateType || "cold_email",
+          cvId: cvId || null,
+          cvTitle: cvTitle || "",
+          cvFileName: cvFileName || "",
+          selectedCategories: Array.isArray(selectedCategories) ? selectedCategories : [],
+          recipients: failRecipients,
+          sentCount: 0,
+          failedCount: failRecipients.length,
+          loggedCount: 0,
+          totalRecipients: failRecipients.length,
+          errorMessage: failMessage,
+          targetPosition: targetPosition || "",
+          replyTo: replyTo || "",
+          verification: verificationMeta,
+          sentAt: new Date(),
+        });
+        failLogId = String(failLog._id);
+      }
 
       throw new AppError(failMessage, 422, picked.reason === "NO_MX" || picked.reason === "ENOTFOUND" ? "NO_MX" : "NO_VALID_EMAIL", {
         domain: resolvedDomain,
         verification: verificationMeta,
-        logId: String(failLog._id),
+        logId: failLogId,
       });
     }
 
@@ -314,7 +368,7 @@ async function sendCompanyOutreachEmails({
       $or: [
         { sentCount: { $gt: 0 } },
         { loggedCount: { $gt: 0 } },
-        { "recipients.status": { $in: ["sent", "logged"] } },
+        { "recipients.status": { $in: ["sent", "logged", "queued"] } },
       ],
     })
       .sort({ sentAt: -1 })
@@ -425,16 +479,11 @@ async function sendCompanyOutreachEmails({
       (c) => String(c.email || "").toLowerCase() === String(to).toLowerCase()
     );
     try {
-      // Kullanıcının tracking ayarını kontrol et
-      const User = require("../models/user.model");
-      const user = await User.findById(userId).select("enableMailTracking");
-      const trackingEnabled = user?.enableMailTracking !== false;
-
       let mailId = null;
       let pixelHtml = "";
       let htmlBody = text; // Plain text fallback
 
-      // Mail tracking oluştur + pixel (sadece aktifse)
+      // Mail tracking oluştur + pixel (kayıt + tracking açıksa)
       if (trackingEnabled) {
         const trackingResult = await createMailTracking({
           userId,
@@ -453,7 +502,7 @@ async function sendCompanyOutreachEmails({
         htmlBody = createEmailHtmlTemplate(text, pixelHtml);
       }
 
-      // Mail'i queue'ya ekle (interval 0 ise direkt gönderir)
+      // Mail'i queue'ya ekle (interval 0 veya kayıt kapalıysa direkt gönderir)
       const queueResult = await enqueueEmail(
         userId,
         {
@@ -472,6 +521,7 @@ async function sendCompanyOutreachEmails({
           cvTitle,
           selectedCategories,
           mailId, // Tracking ID
+          persistHistory,
         }
       );
 
@@ -523,48 +573,52 @@ async function sendCompanyOutreachEmails({
   else if (acceptedCount > 0 && failedCount > 0) status = "partial";
   else status = "failed";
 
-  const log = await OutreachLog.create({
-    clientId,
-    userId,
-    projectId: resolvedProjectId,
-    companyName: resolvedCompanyName,
-    domain: resolvedDomain,
-    status,
-    subject: safeSubject,
-    bodyText: baseText,
-    infoContactBodyText,
-    linkedinMessageText: linkedinStandard,
-    linkedinInfoContactMessageText: linkedinInfoContact,
-    templateType: templateType || "cold_email",
-    cvId: cvId || null,
-    cvTitle: cvTitle || "",
-    cvFileName: cvFileName || (storedPdf ? storedPdf.filename : "") || (attachment ? attachment.filename : ""),
-    pdfAttachment: storedPdf
-      ? {
-          filename: storedPdf.filename,
-          contentBase64: storedPdf.contentBase64,
-          contentType: storedPdf.contentType || "application/pdf",
-        }
-      : undefined,
-    selectedCategories: Array.isArray(selectedCategories) ? selectedCategories : [],
-    recipients: results,
-    sentCount: sentCount + queuedCount,
-    failedCount,
-    loggedCount,
-    totalRecipients: results.filter((r) => r.status === "sent" || r.status === "logged" || r.status === "failed").length,
-    errorMessage: failedCount ? `${failedCount} alıcıya gönderilemedi.` : "",
-    targetPosition: targetPosition || "",
-    replyTo: replyTo || "",
-    verification: verificationMeta,
-    sentAt: new Date(),
-  });
+  let logId = null;
+  if (persistHistory) {
+    const log = await OutreachLog.create({
+      clientId,
+      userId,
+      projectId: resolvedProjectId,
+      companyName: resolvedCompanyName,
+      domain: resolvedDomain,
+      status,
+      subject: safeSubject,
+      bodyText: baseText,
+      infoContactBodyText,
+      linkedinMessageText: linkedinStandard,
+      linkedinInfoContactMessageText: linkedinInfoContact,
+      templateType: templateType || "cold_email",
+      cvId: cvId || null,
+      cvTitle: cvTitle || "",
+      cvFileName: cvFileName || (storedPdf ? storedPdf.filename : "") || (attachment ? attachment.filename : ""),
+      pdfAttachment: storedPdf
+        ? {
+            filename: storedPdf.filename,
+            contentBase64: storedPdf.contentBase64,
+            contentType: storedPdf.contentType || "application/pdf",
+          }
+        : undefined,
+      selectedCategories: Array.isArray(selectedCategories) ? selectedCategories : [],
+      recipients: results,
+      sentCount: sentCount + queuedCount,
+      failedCount,
+      loggedCount,
+      totalRecipients: results.filter((r) => r.status === "sent" || r.status === "logged" || r.status === "failed").length,
+      errorMessage: failedCount ? `${failedCount} alıcıya gönderilemedi.` : "",
+      targetPosition: targetPosition || "",
+      replyTo: replyTo || "",
+      verification: verificationMeta,
+      sentAt: new Date(),
+    });
+    logId = String(log._id);
 
-  // Tracking kayıtlarını logId ile bağla
-  if (mailIds.length) {
-    await MailTracking.updateMany(
-      { mailId: { $in: mailIds } },
-      { $set: { outreachLogId: log._id } }
-    ).catch(() => null);
+    // Tracking kayıtlarını logId ile bağla
+    if (mailIds.length) {
+      await MailTracking.updateMany(
+        { mailId: { $in: mailIds } },
+        { $set: { outreachLogId: log._id } }
+      ).catch(() => null);
+    }
   }
 
   return {
@@ -574,10 +628,11 @@ async function sendCompanyOutreachEmails({
     failedCount,
     status,
     results,
-    mailIds,
+    mailIds: persistHistory ? mailIds : [],
     replyTo: replyTo || null,
     domain: resolvedDomain,
-    logId: String(log._id),
+    logId,
+    persisted: persistHistory,
     attachmentIncluded: Boolean(attachment),
     limits,
     verification: verificationMeta,
@@ -601,6 +656,10 @@ async function createAiErrorLog({
   targetPosition,
   projectId,
 }) {
+  if (!(await isPersistOutreachHistoryEnabled(userId))) {
+    return { logId: null, domain: normalizeDomain(domain) || "unknown", skipped: true };
+  }
+
   const resolvedDomain = normalizeDomain(domain);
   if (!resolvedDomain && !companyName) {
     throw new AppError("Domain veya şirket adı gerekli.", 400, "DOMAIN_REQUIRED");
@@ -658,6 +717,10 @@ async function createAnalysisOnlyLog({
   subject,
   bodyText,
 }) {
+  if (!(await isPersistOutreachHistoryEnabled(userId))) {
+    return { logId: null, domain: normalizeDomain(domain) || "unknown", skipped: true };
+  }
+
   if (!projectId) {
     throw new AppError("Proje seçili değil — analiz kaydı oluşturulmaz.", 400, "PROJECT_REQUIRED");
   }

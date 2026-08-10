@@ -26,6 +26,11 @@ export type AuthUser = {
   gmailSendIntervalMaxMinutes?: number;
   /** Mail okundu tracking (pixel) aktif mi */
   enableMailTracking?: boolean;
+  /**
+   * Kaydetme tercihi (varsayılan açık).
+   * Kapalıysa company-based / bulk analiz ve mail geçmişi DB’ye yazılmaz.
+   */
+  persistOutreachHistory?: boolean;
   /** Profil fotoğrafı (Cloudinary) */
   profileImageUrl?: string;
   profileImagePublicId?: string;

@@ -179,6 +179,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   const [outreachWebsiteUrl, setOutreachWebsiteUrl] = useState('');
   const [outreachPhone, setOutreachPhone] = useState('');
   const [outreachSending, setOutreachSending] = useState(false);
+  const outreachSendingLockRef = useRef(false);
   const [outreachSendResult, setOutreachSendResult] = useState<string | null>(null);
   const [outreachCvAttachmentSource, setOutreachCvAttachmentSource] =
     useState<OutreachCvAttachmentSource>('optimized');
@@ -1579,6 +1580,11 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     cvDataOverride?: CompanyBasedCVData | null;
     forceResend?: boolean;
   }) => {
+    // Çift tıklama / auto-send + manuel yarışı: aynı maili 2 kez göndermeyi engelle
+    if (outreachSendingLockRef.current || outreachSending) {
+      return;
+    }
+
     const isAutoSendPipelineCall = Boolean(
       opts?.recipientsOverride || opts?.bodyOverride || opts?.cvDataOverride
     );
@@ -1599,9 +1605,13 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
     const cvDataForSend = opts?.cvDataOverride ?? cvData;
 
-    const recipients = (opts?.recipientsOverride ?? selectedOutreachRecipients)
-      .map((r) => r.trim().toLowerCase())
-      .filter(Boolean);
+    const recipients = [
+      ...new Set(
+        (opts?.recipientsOverride ?? selectedOutreachRecipients)
+          .map((r) => r.trim().toLowerCase())
+          .filter(Boolean)
+      ),
+    ];
 
     if (!recipients.length) {
       setError('En az bir alıcı seçmelisiniz (tek tek işaretleyin).');
@@ -1646,6 +1656,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         extractDomainFromUrl(companyLinks[0]?.url || '')
     );
 
+    outreachSendingLockRef.current = true;
     setOutreachSending(true);
     setOutreachSendResult(null);
     setError(null);
@@ -1794,6 +1805,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         );
       }
     } finally {
+      outreachSendingLockRef.current = false;
       setOutreachSending(false);
     }
   };

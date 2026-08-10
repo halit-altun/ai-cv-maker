@@ -2,6 +2,8 @@ const TodoApplicationItem = require("../models/todo-application-item.model");
 const TodoApplicationJob = require("../models/todo-application-job.model");
 const TodoProjectSettings = require("../models/todo-project-settings.model");
 const MailTracking = require("../models/mail-tracking.model");
+const OutreachLog = require("../models/outreach-log.model");
+const EmailQueue = require("../models/email-queue.model");
 const User = require("../models/user.model");
 const { AppError } = require("../utils/app-error");
 const { isValidPdfBuffer } = require("../utils/email-attachment.utils");
@@ -27,8 +29,111 @@ const {
   extractPdfTextFromBase64,
   renderOptimizedCvPdfViaFrontend,
 } = require("./company-based");
+const {
+  isPersistOutreachHistoryEnabled,
+} = require("../utils/persist-outreach-history");
 
 let processingLock = false;
+
+/**
+ * Kaydetme tercihi kapalıysa bitmiş bulk job kaydını sil (geçmiş oluşmasın).
+ */
+async function maybeDeleteEphemeralTodoJob(job) {
+  if (!job?._id) return false;
+  if (!["completed", "failed", "cancelled"].includes(job.status)) return false;
+  const persist = await isPersistOutreachHistoryEnabled(job.userId);
+  if (persist) return false;
+  await TodoApplicationJob.deleteOne({ _id: job._id });
+  console.log(
+    `[TODO_JOB] Kayıt kapalı — ephemeral job silindi: ${job._id} (${job.status})`
+  );
+  return true;
+}
+
+function itemAlreadyMailed(item) {
+  return (
+    Boolean(item?.outreachLogId) ||
+    (Array.isArray(item?.mailIds) && item.mailIds.length > 0) ||
+    Number(item?.sentCount || 0) > 0 ||
+    Number(item?.queuedCount || 0) > 0
+  );
+}
+
+/**
+ * Yarıda kalan "sending" item: mail zaten gitmiş olabilir ama job kaydı güncellenmemiş.
+ * Çift gönderimi önlemek için OutreachLog / EmailQueue kontrolü.
+ */
+async function recoverOrBlockResend(job, item) {
+  const domain = normalizeEmailDomainInput(item.emailDomainInput);
+  const since = item.startedAt
+    ? new Date(item.startedAt)
+    : new Date(Date.now() - 2 * 60 * 60 * 1000);
+
+  if (domain) {
+    const recentLog = await OutreachLog.findOne({
+      clientId: job.clientId,
+      domain,
+      status: { $in: ["success", "partial"] },
+      sentAt: { $gte: since },
+      $or: [
+        { sentCount: { $gt: 0 } },
+        { "recipients.status": { $in: ["sent", "logged", "queued"] } },
+      ],
+    })
+      .sort({ sentAt: -1 })
+      .lean();
+
+    if (recentLog) {
+      item.outreachLogId = recentLog._id;
+      item.sentCount = Number(recentLog.sentCount || 0);
+      item.failedCount = Number(recentLog.failedCount || 0);
+      item.queuedCount = (recentLog.recipients || []).filter(
+        (r) => r.status === "queued"
+      ).length;
+      item.mailIds = [
+        ...new Set(
+          (recentLog.recipients || []).map((r) => r.mailId).filter(Boolean)
+        ),
+      ];
+      item.status = "completed";
+      item.step = "sent_recovered";
+      item.completedAt = new Date();
+      item.errorMessage = "";
+      item.errorCode = "";
+      return { recovered: true };
+    }
+  }
+
+  const recentQueueQuery = {
+    userId: job.userId,
+    status: { $in: ["pending", "processing", "sent"] },
+    createdAt: { $gte: since },
+  };
+  const queueOr = [
+    domain ? { domain } : null,
+    item.companyName ? { companyName: item.companyName } : null,
+  ].filter(Boolean);
+  if (queueOr.length) {
+    recentQueueQuery.$or = queueOr;
+  }
+
+  const recentQueue = await EmailQueue.findOne(recentQueueQuery)
+    .sort({ createdAt: -1 })
+    .lean();
+
+  if (recentQueue) {
+    item.status = "completed";
+    item.step = "sent_recovered_queue";
+    item.queuedCount = recentQueue.status === "sent" ? 0 : 1;
+    item.sentCount = recentQueue.status === "sent" ? 1 : 0;
+    item.completedAt = new Date();
+    item.errorMessage = "";
+    item.errorCode = "";
+    return { recovered: true };
+  }
+
+  return { recovered: false };
+}
 
 function mapItem(doc) {
   if (!doc) return null;
@@ -801,11 +906,157 @@ async function setTodoJobStatus(clientId, jobId, nextStatus) {
   return mapJob(job);
 }
 
+/**
+ * Analiz tamam, gönderim yarıda: fetch/AI tekrarlamadan yalnızca mail gönder.
+ */
+async function resumeSendOnlyForItem(job, item, settings, user) {
+  const domain = normalizeEmailDomainInput(item.emailDomainInput);
+  const selected = Array.isArray(item.selectedRecipients)
+    ? item.selectedRecipients
+    : [];
+
+  item.status = "sending";
+  item.step = "sending_mail";
+  job.currentItemId = item._id;
+  job.progress = computeProgress(job.items);
+  await job.save();
+
+  const senderName = resolveSenderName(user);
+  let pdf = null;
+  if (settings.pdfAttachment?.contentBase64) {
+    pdf = {
+      filename: settings.pdfAttachment.filename || "CV.pdf",
+      contentBase64: settings.pdfAttachment.contentBase64,
+      contentType: settings.pdfAttachment.contentType || "application/pdf",
+    };
+  }
+
+  const trustedEmail =
+    settings.includePrimaryEmailInSend !== false &&
+    settings.skipPrimaryEmailVerification &&
+    String(item.emailDomainInput || "").includes("@")
+      ? String(item.emailDomainInput).trim().toLowerCase()
+      : undefined;
+
+  const sendResult = await sendCompanyOutreachEmails({
+    recipients: selected,
+    subject: item.coldEmailSubject,
+    bodyText: item.coldEmailBody,
+    replyTo: settings.replyTo || user.email,
+    senderName,
+    companyName: item.companyName,
+    domain,
+    clientId: job.clientId,
+    userId: job.userId,
+    cvId: settings.cvId,
+    cvTitle: settings.cvTitle,
+    cvFileName: item.cvFileName || settings.cvFileName,
+    selectedCategories: settings.selectedEmailPrefixCategories,
+    templateType: "cold_email",
+    targetPosition: settings.targetPosition,
+    forceResend: Boolean(settings.forceResend),
+    pdfAttachment: pdf,
+    skipVerification: false,
+    rawDomainInput: item.emailDomainInput,
+    trustedEmail,
+    projectId: job.projectId,
+    linkedinMessageText: settings.shouldGenerateLinkedInMessage
+      ? String(item.linkedinMessage || "").trim() || undefined
+      : undefined,
+  });
+
+  item.outreachLogId = sendResult.logId || null;
+  item.verification = sendResult.verification || null;
+  item.sentCount = Number(sendResult.sentCount || 0);
+  item.failedCount = Number(sendResult.failedCount || 0);
+  item.queuedCount = (sendResult.results || []).filter(
+    (r) => r.status === "queued"
+  ).length;
+
+  const mailIds = Array.isArray(sendResult.mailIds)
+    ? sendResult.mailIds.filter(Boolean)
+    : (sendResult.results || []).map((r) => r.mailId).filter(Boolean);
+
+  item.mailIds = [...new Set(mailIds)];
+  item.recipientResults = (sendResult.results || []).map((r) => ({
+    email: r.email,
+    status: r.status,
+    errorMessage: r.errorMessage || "",
+    verifyProvider: r.verifyProvider || "",
+    verifyResult: r.verifyResult || "",
+    mailId: r.mailId || "",
+    openedCount: 0,
+    firstOpenedAt: null,
+    lastOpenedAt: null,
+  }));
+  item.selectedRecipients = sendResult.selectedRecipients || selected;
+
+  if (sendResult.status === "failed") {
+    item.status = "failed";
+    item.step = "send_failed";
+    item.errorMessage = sendResult.errorMessage || "Mail gönderimi başarısız.";
+    item.errorCode = "SEND_FAILED";
+  } else {
+    item.status = "completed";
+    item.step = "sent";
+  }
+  item.completedAt = new Date();
+}
+
 async function processSingleJobItem(job, item) {
   const settings = job.settings || {};
   const user = await User.findById(job.userId).lean();
   if (!user) {
     throw new AppError("Kullanıcı bulunamadı.", 404, "USER_NOT_FOUND");
+  }
+
+  // Çift mail: item zaten gönderilmişse pipeline'ı baştan çalıştırma
+  if (itemAlreadyMailed(item)) {
+    item.status = "completed";
+    item.step = item.step === "send_failed" ? "send_failed" : "sent";
+    item.completedAt = item.completedAt || new Date();
+    job.progress = computeProgress(job.items);
+    job.currentItemId = null;
+    await job.save();
+    console.log(
+      `[TODO_JOB] Item zaten gönderilmiş, atlandı: ${item._id} (log=${item.outreachLogId || "-"})`
+    );
+    return;
+  }
+
+  // "sending" iken crash/restart: tam pipeline yeniden mail atar → önce recover
+  if (item.status === "sending") {
+    const recovery = await recoverOrBlockResend(job, item);
+    if (recovery.recovered) {
+      job.progress = computeProgress(job.items);
+      job.currentItemId = null;
+      await job.save();
+      console.log(
+        `[TODO_JOB] Sending item recover edildi (çift mail önlendi): ${item._id} step=${item.step}`
+      );
+      return;
+    }
+    // Log/kuyruk yok ama cold mail hazırsa yalnızca gönderimi dene (fetch+AI tekrar yok)
+    if (
+      String(item.coldEmailBody || "").trim() &&
+      Array.isArray(item.selectedRecipients) &&
+      item.selectedRecipients.length > 0
+    ) {
+      console.log(
+        `[TODO_JOB] Sending resume (send-only): ${item._id}`
+      );
+      await resumeSendOnlyForItem(job, item, settings, user);
+      return;
+    }
+    item.status = "failed";
+    item.step = "failed";
+    item.errorMessage =
+      "Gönderim yarıda kaldı; çift mail riski nedeniyle otomatik yeniden başlatılmadı.";
+    item.errorCode = "SEND_INTERRUPTED";
+    item.completedAt = new Date();
+    job.progress = computeProgress(job.items);
+    await job.save();
+    return;
   }
 
   item.status = "fetching";
@@ -1165,6 +1416,7 @@ async function processNextTodoApplicationItem() {
       job.pauseAfterCurrent = false;
       job.progress = computeProgress(job.items);
       await job.save();
+      await maybeDeleteEphemeralTodoJob(job);
     }
     return { processed: false, jobId: String(job._id), done: true };
   }
@@ -1219,13 +1471,14 @@ async function processNextTodoApplicationItem() {
 
   await job.save();
   await refreshJobMailTracking(job).catch(() => null);
+  const deleted = await maybeDeleteEphemeralTodoJob(job);
 
   return {
     processed: true,
     jobId: String(job._id),
     itemId: String(item._id),
     itemStatus: item.status,
-    jobStatus: job.status,
+    jobStatus: deleted ? "deleted_ephemeral" : job.status,
   };
 }
 

@@ -258,6 +258,7 @@ export async function updateProfileRequest(payload: {
   gmailSendIntervalMinMinutes?: number;
   gmailSendIntervalMaxMinutes?: number;
   enableMailTracking?: boolean;
+  persistOutreachHistory?: boolean;
 }): Promise<AuthUser> {
   const accessToken = getAccessToken();
   const response = await fetch(`${getApiBaseUrl()}/api/auth/me`, {

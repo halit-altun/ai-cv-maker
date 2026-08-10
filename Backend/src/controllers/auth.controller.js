@@ -241,6 +241,7 @@ async function updateMeHandler(req, res, next) {
       gmailSendIntervalMinSeconds,
       gmailSendIntervalMaxSeconds,
       enableMailTracking,
+      persistOutreachHistory,
     } = req.body || {};
 
     const user = await updateCurrentUserProfile(req.user.id, {
@@ -262,6 +263,7 @@ async function updateMeHandler(req, res, next) {
       gmailSendIntervalMinSeconds,
       gmailSendIntervalMaxSeconds,
       enableMailTracking,
+      persistOutreachHistory,
     });
 
     return res.json({ ok: true, user });

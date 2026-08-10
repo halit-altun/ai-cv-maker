@@ -2,8 +2,14 @@ const EmailQueue = require("../models/email-queue.model");
 const User = require("../models/user.model");
 const { sendMail } = require("./email.service");
 const { serializeAttachmentsForQueue } = require("../utils/email-attachment.utils");
+const {
+  isPersistOutreachHistoryEnabled,
+} = require("../utils/persist-outreach-history");
 
 const MAX_INTERVAL_SECONDS = 86400; // 24 saat
+
+/** Aynı process içinde örtüşen setInterval turlarını engelle */
+let queueProcessingLock = false;
 
 /**
  * Random interval (saniye) — min-max arası (dahil)
@@ -162,21 +168,28 @@ async function rescheduleUserPendingEmails(userId) {
  * Mail'i kuyruğa ekle — her seferinde güncel profil aralığını okur.
  */
 async function enqueueEmail(userId, emailData, metadata = {}) {
+  const persistHistory =
+    metadata.persistHistory !== undefined
+      ? Boolean(metadata.persistHistory)
+      : await isPersistOutreachHistoryEnabled(userId);
   const { minSeconds, maxSeconds, intervalSeconds } = await getUserIntervalSeconds(userId);
 
-  if (intervalSeconds === 0) {
-    console.log(`[EMAIL_QUEUE] Interval 0, direkt gönderiliyor: ${emailData.to?.join(", ")}`);
+  // Kayıt kapalı veya interval 0 → kuyruk dokümanı yazmadan direkt gönder
+  if (!persistHistory || intervalSeconds === 0) {
+    console.log(
+      `[EMAIL_QUEUE] ${!persistHistory ? "Kayıt kapalı," : "Interval 0,"} direkt gönderiliyor: ${emailData.to?.join(", ")}`
+    );
     try {
       const result = await sendMail({
         ...emailData,
         html: emailData.html || emailData.bodyHtml,
-        // Buffer veya contentBase64 — sendMail normalize eder
         attachments: emailData.attachments,
       });
       return {
         queued: false,
         sent: true,
         immediate: true,
+        persisted: persistHistory,
         result,
       };
     } catch (error) {
@@ -269,139 +282,164 @@ async function enqueueEmail(userId, emailData, metadata = {}) {
 
 /**
  * Kuyruktaki mail'leri işle.
+ * Atomik claim: aynı pending kayıt iki worker/interval turunda iki kez gönderilmesin.
  */
 async function processEmailQueue() {
-  const now = new Date();
-
-  const pendingEmails = await EmailQueue.find({
-    status: "pending",
-    scheduledAt: { $lte: now },
-  })
-    .sort({ scheduledAt: 1, priority: -1 })
-    .limit(10);
-
-  if (pendingEmails.length === 0) {
-    return { processed: 0 };
+  if (queueProcessingLock) {
+    return { processed: 0, skipped: true, reason: "busy" };
   }
+  queueProcessingLock = true;
 
-  console.log(`[EMAIL_QUEUE_PROCESSOR] ${pendingEmails.length} mail işlenecek.`);
-
+  const now = new Date();
   let successCount = 0;
   let failCount = 0;
   let deferredCount = 0;
+  let claimedCount = 0;
 
-  for (const item of pendingEmails) {
-    try {
-      const { minSeconds, maxSeconds, intervalSeconds } = await getUserIntervalSeconds(
-        item.userId
+  try {
+    for (let i = 0; i < 10; i += 1) {
+      // Atomic claim — find + update yarışını kapatır (çoklu instance / örtüşen interval)
+      const item = await EmailQueue.findOneAndUpdate(
+        {
+          status: "pending",
+          scheduledAt: { $lte: now },
+        },
+        {
+          $set: {
+            status: "processing",
+            processedAt: new Date(),
+          },
+        },
+        {
+          sort: { scheduledAt: 1, priority: -1 },
+          new: true,
+        }
       );
 
-      if (intervalSeconds > 0) {
-        const lastSent = await EmailQueue.findOne({
-          userId: item.userId,
-          status: "sent",
-        })
-          .sort({ sentAt: -1 })
-          .select("sentAt")
-          .lean();
+      if (!item) break;
+      claimedCount += 1;
 
-        if (lastSent?.sentAt) {
-          const requiredGapMs = intervalSeconds * 1000;
-          const elapsed = Date.now() - new Date(lastSent.sentAt).getTime();
-          if (elapsed < requiredGapMs) {
-            item.scheduledAt = new Date(
-              new Date(lastSent.sentAt).getTime() + requiredGapMs
-            );
-            item.metadata = {
-              ...(item.metadata && typeof item.metadata === "object" ? item.metadata : {}),
-              deferredByLiveInterval: true,
-              appliedIntervalSeconds: intervalSeconds,
-              appliedIntervalRangeSeconds: [minSeconds, maxSeconds],
-            };
-            await item.save();
-            deferredCount += 1;
-            console.log(
-              `[EMAIL_QUEUE_PROCESSOR] Mail ertelendi (güncel aralık ${formatIntervalLabel(intervalSeconds)}): ${item._id} → ${item.scheduledAt.toLocaleString("tr-TR")}`
-            );
-            continue;
+      try {
+        const { minSeconds, maxSeconds, intervalSeconds } = await getUserIntervalSeconds(
+          item.userId
+        );
+
+        if (intervalSeconds > 0) {
+          const lastSent = await EmailQueue.findOne({
+            userId: item.userId,
+            status: "sent",
+            _id: { $ne: item._id },
+          })
+            .sort({ sentAt: -1 })
+            .select("sentAt")
+            .lean();
+
+          if (lastSent?.sentAt) {
+            const requiredGapMs = intervalSeconds * 1000;
+            const elapsed = Date.now() - new Date(lastSent.sentAt).getTime();
+            if (elapsed < requiredGapMs) {
+              item.status = "pending";
+              item.scheduledAt = new Date(
+                new Date(lastSent.sentAt).getTime() + requiredGapMs
+              );
+              item.processedAt = undefined;
+              item.metadata = {
+                ...(item.metadata && typeof item.metadata === "object"
+                  ? item.metadata
+                  : {}),
+                deferredByLiveInterval: true,
+                appliedIntervalSeconds: intervalSeconds,
+                appliedIntervalRangeSeconds: [minSeconds, maxSeconds],
+              };
+              await item.save();
+              deferredCount += 1;
+              console.log(
+                `[EMAIL_QUEUE_PROCESSOR] Mail ertelendi (güncel aralık ${formatIntervalLabel(intervalSeconds)}): ${item._id} → ${item.scheduledAt.toLocaleString("tr-TR")}`
+              );
+              continue;
+            }
           }
         }
-      }
 
-      item.status = "processing";
-      item.processedAt = new Date();
-      await item.save();
+        const expectedAtt =
+          Number(item.metadata?.attachmentCount) ||
+          (Array.isArray(item.attachments) ? item.attachments.length : 0);
+        const hasUsableAtt =
+          Array.isArray(item.attachments) &&
+          item.attachments.some(
+            (a) => a && String(a.contentBase64 || "").trim().length > 100
+          );
 
-      const expectedAtt =
-        Number(item.metadata?.attachmentCount) ||
-        (Array.isArray(item.attachments) ? item.attachments.length : 0);
-      const hasUsableAtt =
-        Array.isArray(item.attachments) &&
-        item.attachments.some((a) => a && String(a.contentBase64 || "").trim().length > 100);
+        if (expectedAtt > 0 && !hasUsableAtt) {
+          throw new Error(
+            "Kuyruktaki CV eki boş/bozuk (eski kayıt). Bu mail yeniden gönderilmeli — yeni gönderimlerde ek düzgün saklanır."
+          );
+        }
 
-      if (expectedAtt > 0 && !hasUsableAtt) {
-        throw new Error(
-          "Kuyruktaki CV eki boş/bozuk (eski kayıt). Bu mail yeniden gönderilmeli — yeni gönderimlerde ek düzgün saklanır."
+        await sendMail({
+          to: item.to,
+          subject: item.subject,
+          text: item.bodyText,
+          html: item.bodyHtml,
+          fromName: item.fromName,
+          replyTo: item.replyTo,
+          attachments: item.attachments,
+        });
+
+        item.status = "sent";
+        item.sentAt = new Date();
+        await item.save();
+
+        const attInfo = Array.isArray(item.attachments)
+          ? item.attachments
+              .map((a) => {
+                const approx = a?.contentBase64
+                  ? Math.round(String(a.contentBase64).length * 0.75)
+                  : 0;
+                return `${a?.filename || "?"} (${approx}b)`;
+              })
+              .join(", ")
+          : "yok";
+        console.log(
+          `[EMAIL_QUEUE_PROCESSOR] Mail gönderildi: ${item._id} | Alıcı: ${item.to?.join(", ")} | Ek: ${attInfo}`
         );
+        successCount += 1;
+      } catch (error) {
+        console.error(
+          `[EMAIL_QUEUE_PROCESSOR] Mail gönderimi hatası: ${item._id}`,
+          error
+        );
+
+        item.retryCount = Number(item.retryCount || 0) + 1;
+        item.lastError = error instanceof Error ? error.message : String(error);
+
+        if (item.retryCount >= (item.maxRetries || 3)) {
+          item.status = "failed";
+          failCount += 1;
+        } else {
+          item.status = "pending";
+          item.scheduledAt = new Date(Date.now() + 5 * 60 * 1000);
+        }
+
+        await item.save();
       }
-
-      // contentBase64 → Buffer (nodemailer); sendMail içinde normalize edilir
-      await sendMail({
-        to: item.to,
-        subject: item.subject,
-        text: item.bodyText,
-        html: item.bodyHtml,
-        fromName: item.fromName,
-        replyTo: item.replyTo,
-        attachments: item.attachments,
-      });
-
-      item.status = "sent";
-      item.sentAt = new Date();
-      await item.save();
-
-      const attInfo = Array.isArray(item.attachments)
-        ? item.attachments
-            .map((a) => {
-              const approx = a?.contentBase64
-                ? Math.round(String(a.contentBase64).length * 0.75)
-                : 0;
-              return `${a?.filename || "?"} (${approx}b)`;
-            })
-            .join(", ")
-        : "yok";
-      console.log(
-        `[EMAIL_QUEUE_PROCESSOR] Mail gönderildi: ${item._id} | Alıcı: ${item.to?.join(", ")} | Ek: ${attInfo}`
-      );
-      successCount++;
-    } catch (error) {
-      console.error(`[EMAIL_QUEUE_PROCESSOR] Mail gönderimi hatası: ${item._id}`, error);
-
-      item.retryCount += 1;
-      item.lastError = error.message;
-
-      if (item.retryCount >= item.maxRetries) {
-        item.status = "failed";
-        failCount++;
-      } else {
-        item.status = "pending";
-        item.scheduledAt = new Date(Date.now() + 5 * 60 * 1000);
-      }
-
-      await item.save();
     }
+
+    if (claimedCount > 0) {
+      console.log(
+        `[EMAIL_QUEUE_PROCESSOR] İşlem tamamlandı: ${successCount} başarılı, ${failCount} başarısız, ${deferredCount} ertelendi (claim=${claimedCount}).`
+      );
+    }
+
+    return {
+      processed: claimedCount,
+      success: successCount,
+      failed: failCount,
+      deferred: deferredCount,
+    };
+  } finally {
+    queueProcessingLock = false;
   }
-
-  console.log(
-    `[EMAIL_QUEUE_PROCESSOR] İşlem tamamlandı: ${successCount} başarılı, ${failCount} başarısız, ${deferredCount} ertelendi.`
-  );
-
-  return {
-    processed: pendingEmails.length,
-    success: successCount,
-    failed: failCount,
-    deferred: deferredCount,
-  };
 }
 
 async function getUserPendingEmailCount(userId) {

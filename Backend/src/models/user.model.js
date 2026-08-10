@@ -57,6 +57,15 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true, // Varsayılan olarak açık
     },
+    /**
+     * Kaydetme tercihi (varsayılan açık).
+     * Açık: analiz / mail log / mail takip / outreach kaydı DB'ye yazılır.
+     * Kapalı: company-based ve bulk sonuçları kalıcı kaydedilmez.
+     */
+    persistOutreachHistory: {
+      type: Boolean,
+      default: true,
+    },
     /** Cloudinary profil fotoğrafı (hesap başına tek) */
     profileImageUrl: {
       type: String,
