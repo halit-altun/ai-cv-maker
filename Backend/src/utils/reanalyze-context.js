@@ -2,23 +2,24 @@
  * Company Based “Yeniden analiz et” için gönderim anı snapshot.
  */
 
+const {
+  pickBestCompanyUrl,
+  resolveCompanyDisplayName,
+} = require("./company-display-name");
+
 function cleanString(value) {
   return String(value || "").trim();
 }
 
+/** Path (/about, /careers …) korunur; boşsa domain köküne düşer. */
 function ensureCompanyUrl(companyUrl, domain) {
   const raw = cleanString(companyUrl);
-  if (raw) {
-    if (/^https?:\/\//i.test(raw)) return raw;
-    if (raw.includes("@")) {
-      // email girilmişse URL değil
-    } else {
-      return `https://${raw.replace(/^\/+/, "")}`;
-    }
-  }
   const d = cleanString(domain).toLowerCase().replace(/^@+/, "");
-  if (!d || d.includes("@")) return "";
-  return `https://${d}`;
+  const domainUrl = d && !d.includes("@") ? `https://${d}` : "";
+  if (raw && raw.includes("@") && !/^https?:\/\//i.test(raw)) {
+    return domainUrl;
+  }
+  return pickBestCompanyUrl(raw, domainUrl);
 }
 
 function normalizeReanalyzeContext(input = {}, fallbacks = {}) {
@@ -49,11 +50,20 @@ function normalizeReanalyzeContext(input = {}, fallbacks = {}) {
 
   const ai = input.aiSettings || fallbacks.aiSettings || null;
 
+  const rawCompanyName = cleanString(
+    input.companyName || fallbacks.companyName
+  );
+
   return {
     companyUrl,
     rawDomainInput,
     domain,
-    companyName: cleanString(input.companyName || fallbacks.companyName),
+    companyName:
+      resolveCompanyDisplayName({
+        name: rawCompanyName,
+        website: companyUrl,
+        domain,
+      }) || rawCompanyName,
     targetPosition: cleanString(
       input.targetPosition || fallbacks.targetPosition
     ),

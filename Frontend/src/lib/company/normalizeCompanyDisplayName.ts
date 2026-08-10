@@ -1,6 +1,6 @@
 /**
  * Şirket görünen adı — URL/domain etiketlerini marka adına çevirir.
- * Örn. www.acme.com → Acme, https://acme-corp.io/careers → Acme Corp
+ * Domain ile uyuşmayan sticky isimleri (örn. Leobit @ oakslab.com) reddeder.
  */
 
 export function isDomainLikeCompanyLabel(value: string): boolean {
@@ -9,18 +9,16 @@ export function isDomainLikeCompanyLabel(value: string): boolean {
   if (/\s/.test(v)) return false;
   if (/^https?:\/\//i.test(v)) return true;
   if (/^www\./i.test(v)) return true;
-  // host.tld veya host.tld/path
   if (/^[a-z0-9.-]+\.[a-z]{2,}([/:?#].*)?$/i.test(v)) return true;
   return false;
 }
 
-function extractHostname(raw: string): string {
+export function extractHostname(raw: string): string {
   let value = String(raw || '').trim();
   if (!value) return '';
   try {
     if (!/^https?:\/\//i.test(value)) value = `https://${value}`;
-    const host = new URL(value).hostname.replace(/^www\./i, '');
-    return host.toLowerCase();
+    return new URL(value).hostname.replace(/^www\./i, '').toLowerCase();
   } catch {
     return value
       .replace(/^https?:\/\//i, '')
@@ -31,7 +29,47 @@ function extractHostname(raw: string): string {
   }
 }
 
-/** host → okunabilir marka (acme-corp.io → Acme Corp) */
+function compactAlnum(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function brandTokens(value: string): string[] {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((t) => t.length >= 2);
+}
+
+/** "Oaks Lab" ↔ oakslab.com uyumlu; "Leobit" ↔ oakslab.com uyumsuz */
+export function companyNameAlignedWithDomain(
+  name: string,
+  domainOrUrl: string
+): boolean {
+  const nameCompact = compactAlnum(name);
+  const host = extractHostname(domainOrUrl);
+  if (!nameCompact || !host) return true;
+
+  const label = (host.split('.')[0] || '').replace(/[^a-z0-9]+/g, '');
+  if (!label) return true;
+
+  if (nameCompact === label) return true;
+  if (nameCompact.includes(label) || label.includes(nameCompact)) return true;
+
+  const tokens = brandTokens(name);
+  const meaningful = tokens.filter((t) => t.length >= 3);
+  if (meaningful.length && meaningful.every((t) => label.includes(t))) {
+    return true;
+  }
+  if (meaningful.some((t) => label.includes(t) && t.length >= 4)) {
+    return true;
+  }
+  return false;
+}
+
 export function brandifyFromHostOrUrl(raw: string): string {
   const host = extractHostname(raw);
   if (!host) return '';
@@ -43,18 +81,47 @@ export function brandifyFromHostOrUrl(raw: string): string {
     .join(' ');
 }
 
-/**
- * Gerçek şirket adı tercih edilir; URL/domain ise markaya çevrilir.
- */
+/** Path’li URL’yi koru; birden fazla adaydan path’i olanı tercih et */
+export function pickBestCompanyUrl(...candidates: Array<string | null | undefined>): string {
+  const cleaned = candidates
+    .map((c) => String(c || '').trim())
+    .filter(Boolean)
+    .map((raw) => {
+      if (/^https?:\/\//i.test(raw)) return raw;
+      if (raw.includes('@')) return '';
+      return `https://${raw.replace(/^\/+/, '')}`;
+    })
+    .filter(Boolean);
+
+  const withPath = cleaned.find((u) => {
+    try {
+      const path = new URL(u).pathname || '';
+      return Boolean(path && path !== '/');
+    } catch {
+      return /\/.+/.test(u.replace(/^https?:\/\//i, ''));
+    }
+  });
+  return withPath || cleaned[0] || '';
+}
+
 export function resolveCompanyDisplayName(params: {
   name?: string | null;
   website?: string | null;
   domain?: string | null;
 }): string {
   const name = String(params.name || '').trim();
-  if (name && !isDomainLikeCompanyLabel(name)) return name;
+  const domainSrc =
+    String(params.domain || '').trim() || String(params.website || '').trim();
 
-  const source = name || String(params.website || '').trim() || String(params.domain || '').trim();
+  if (name && !isDomainLikeCompanyLabel(name)) {
+    if (!domainSrc || companyNameAlignedWithDomain(name, domainSrc)) {
+      return name;
+    }
+    return brandifyFromHostOrUrl(domainSrc) || name;
+  }
+
+  const source =
+    name || String(params.website || '').trim() || String(params.domain || '').trim();
   if (!source) return '';
   if (isDomainLikeCompanyLabel(source) || extractHostname(source).includes('.')) {
     return brandifyFromHostOrUrl(source) || name;
@@ -62,7 +129,6 @@ export function resolveCompanyDisplayName(params: {
   return name || source;
 }
 
-/** PDF dosya adı için güvenli segment */
 export function sanitizeCompanyForFileName(company: string): string {
   return (
     String(company || '')

@@ -1,5 +1,6 @@
 /**
  * Şirket görünen adı — URL/domain etiketlerini marka adına çevirir.
+ * Domain ile uyuşmayan sticky isimleri (örn. Leobit @ oakslab.com) reddeder.
  */
 
 function isDomainLikeCompanyLabel(value) {
@@ -28,6 +29,47 @@ function extractHostname(raw) {
   }
 }
 
+function compactAlnum(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function brandTokens(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((t) => t.length >= 2);
+}
+
+/**
+ * "Oaks Lab" ↔ oakslab.com uyumlu; "Leobit" ↔ oakslab.com uyumsuz.
+ */
+function companyNameAlignedWithDomain(name, domainOrUrl) {
+  const nameCompact = compactAlnum(name);
+  const host = extractHostname(domainOrUrl);
+  if (!nameCompact || !host) return true;
+
+  const label = (host.split(".")[0] || "").replace(/[^a-z0-9]+/g, "");
+  if (!label) return true;
+
+  if (nameCompact === label) return true;
+  if (nameCompact.includes(label) || label.includes(nameCompact)) return true;
+
+  const tokens = brandTokens(name);
+  // En az bir anlamlı token (3+ harf) domain etiketinde geçmeli
+  const meaningful = tokens.filter((t) => t.length >= 3);
+  if (meaningful.length && meaningful.every((t) => label.includes(t))) {
+    return true;
+  }
+  if (meaningful.some((t) => label.includes(t) && t.length >= 4)) {
+    return true;
+  }
+  return false;
+}
+
 function brandifyFromHostOrUrl(raw) {
   const host = extractHostname(raw);
   if (!host) return "";
@@ -39,12 +81,45 @@ function brandifyFromHostOrUrl(raw) {
     .join(" ");
 }
 
+/**
+ * Path’li URL’yi koru; birden fazla adaydan path’i olanı tercih et.
+ */
+function pickBestCompanyUrl(...candidates) {
+  const cleaned = candidates
+    .map((c) => String(c || "").trim())
+    .filter(Boolean)
+    .map((raw) => {
+      if (/^https?:\/\//i.test(raw)) return raw;
+      if (raw.includes("@")) return "";
+      return `https://${raw.replace(/^\/+/, "")}`;
+    })
+    .filter(Boolean);
+
+  const withPath = cleaned.find((u) => {
+    try {
+      const path = new URL(u).pathname || "";
+      return path && path !== "/";
+    } catch {
+      return /\/.+/.test(u.replace(/^https?:\/\//i, ""));
+    }
+  });
+  return withPath || cleaned[0] || "";
+}
+
 function resolveCompanyDisplayName({ name, website, domain } = {}) {
   const rawName = String(name || "").trim();
-  if (rawName && !isDomainLikeCompanyLabel(rawName)) return rawName;
+  const domainSrc =
+    String(domain || "").trim() || String(website || "").trim();
 
-  const source =
-    rawName || String(website || "").trim() || String(domain || "").trim();
+  if (rawName && !isDomainLikeCompanyLabel(rawName)) {
+    if (!domainSrc || companyNameAlignedWithDomain(rawName, domainSrc)) {
+      return rawName;
+    }
+    // Sticky / yanlış şirket adı — domain markasına dön
+    return brandifyFromHostOrUrl(domainSrc) || rawName;
+  }
+
+  const source = rawName || String(website || "").trim() || String(domain || "").trim();
   if (!source) return "";
   if (isDomainLikeCompanyLabel(source) || extractHostname(source).includes(".")) {
     return brandifyFromHostOrUrl(source) || rawName;
@@ -81,7 +156,10 @@ function replaceCompanySegmentInPdfFilename(filename, companyDisplay) {
 module.exports = {
   isDomainLikeCompanyLabel,
   brandifyFromHostOrUrl,
+  companyNameAlignedWithDomain,
+  pickBestCompanyUrl,
   resolveCompanyDisplayName,
   sanitizeCompanyForFileName,
   replaceCompanySegmentInPdfFilename,
+  extractHostname,
 };

@@ -7,25 +7,61 @@ import {
   AccordionSummary,
   Alert,
   Box,
+  Button,
   Chip,
   CircularProgress,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import HistoryIcon from '@mui/icons-material/History';
+import FilterAltOffIcon from '@mui/icons-material/FilterAltOff';
 import { useSearchParams } from 'next/navigation';
 import {
   listOutreachCompaniesRequest,
   type OutreachCompanyGroup,
+  type OutreachLogItem,
 } from '@/lib/outreach/api';
 import { dashboardTokens } from '@/features/dashboard/styles/dashboardTokens';
 import { ListTablePagination, useListPagination } from '@/shared/list-pagination';
+
+type LogFilters = {
+  domain: string;
+  companyName: string;
+  status: string;
+  targetPosition: string;
+  recipient: string;
+  subject: string;
+  cvFileName: string;
+  templateType: string;
+  recipientStatus: string;
+  dateFrom: string;
+  dateTo: string;
+};
+
+const EMPTY_FILTERS: LogFilters = {
+  domain: '',
+  companyName: '',
+  status: '',
+  targetPosition: '',
+  recipient: '',
+  subject: '',
+  cvFileName: '',
+  templateType: '',
+  recipientStatus: '',
+  dateFrom: '',
+  dateTo: '',
+};
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -98,25 +134,8 @@ function recipientStatusColor(
   }
 }
 
-function formatDateTime(value?: string | null): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('tr-TR', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
-
 function verifyProviderLabel(provider?: string): string {
-  const p = String(provider || '').toLowerCase();
-  switch (p) {
-    case 'reacher':
-      return 'Reacher API';
+  switch (String(provider || '').toLowerCase()) {
     case 'emailverify':
       return 'EmailVerify.io';
     case 'abstract':
@@ -167,6 +186,101 @@ function verifyResultLabel(result?: string): string {
   }
 }
 
+function formatDateTime(value?: string | null): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('tr-TR', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function includesCI(haystack: string | undefined | null, needle: string): boolean {
+  if (!needle.trim()) return true;
+  return String(haystack || '')
+    .toLowerCase()
+    .includes(needle.trim().toLowerCase());
+}
+
+function logMatchesFilters(log: OutreachLogItem, f: LogFilters): boolean {
+  if (f.status && log.status !== f.status) return false;
+  if (f.templateType && String(log.templateType || '') !== f.templateType) return false;
+  if (!includesCI(log.targetPosition, f.targetPosition)) return false;
+  if (!includesCI(log.subject, f.subject)) return false;
+  if (!includesCI(log.cvFileName || log.cvTitle, f.cvFileName)) return false;
+  if (f.recipient.trim()) {
+    const q = f.recipient.trim().toLowerCase();
+    const hit = (log.recipients || []).some((r) =>
+      String(r.email || '')
+        .toLowerCase()
+        .includes(q)
+    );
+    if (!hit) return false;
+  }
+  if (f.recipientStatus) {
+    const hit = (log.recipients || []).some((r) => r.status === f.recipientStatus);
+    if (!hit) return false;
+  }
+  if (f.dateFrom) {
+    const from = new Date(f.dateFrom);
+    const sent = new Date(log.sentAt);
+    if (!Number.isNaN(from.getTime()) && sent < from) return false;
+  }
+  if (f.dateTo) {
+    const to = new Date(f.dateTo);
+    to.setHours(23, 59, 59, 999);
+    const sent = new Date(log.sentAt);
+    if (!Number.isNaN(to.getTime()) && sent > to) return false;
+  }
+  return true;
+}
+
+function filterCompanies(
+  companies: OutreachCompanyGroup[],
+  f: LogFilters,
+  focusDomain: string
+): OutreachCompanyGroup[] {
+  return companies
+    .map((company) => {
+      if (f.domain.trim() && !includesCI(company.domain, f.domain)) {
+        return null;
+      }
+      if (f.companyName.trim() && !includesCI(company.companyName, f.companyName)) {
+        return null;
+      }
+      const logs = (company.logs || []).filter((log) => logMatchesFilters(log, f));
+      const hasLogFilters =
+        Boolean(f.status) ||
+        Boolean(f.templateType) ||
+        Boolean(f.targetPosition.trim()) ||
+        Boolean(f.recipient.trim()) ||
+        Boolean(f.subject.trim()) ||
+        Boolean(f.cvFileName.trim()) ||
+        Boolean(f.recipientStatus) ||
+        Boolean(f.dateFrom) ||
+        Boolean(f.dateTo);
+      if (hasLogFilters && logs.length === 0) return null;
+      return {
+        ...company,
+        logs: hasLogFilters ? logs : company.logs,
+      };
+    })
+    .filter((c): c is OutreachCompanyGroup => Boolean(c))
+    .sort((a, b) => {
+      if (focusDomain) {
+        if (a.domain === focusDomain) return -1;
+        if (b.domain === focusDomain) return 1;
+      }
+      return (
+        new Date(b.lastSentAt).getTime() - new Date(a.lastSentAt).getTime()
+      );
+    });
+}
+
 export function OutreachLogsView() {
   const { colors, fonts } = dashboardTokens;
   const searchParams = useSearchParams();
@@ -175,6 +289,18 @@ export function OutreachLogsView() {
   const [companies, setCompanies] = useState<OutreachCompanyGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<LogFilters>(() => ({
+    ...EMPTY_FILTERS,
+    domain: focusDomain || '',
+  }));
+
+  useEffect(() => {
+    if (focusDomain) {
+      setFilters((prev) =>
+        prev.domain === focusDomain ? prev : { ...prev, domain: focusDomain }
+      );
+    }
+  }, [focusDomain]);
 
   useEffect(() => {
     let cancelled = false;
@@ -197,18 +323,27 @@ export function OutreachLogsView() {
     };
   }, []);
 
-  const sorted = useMemo(() => {
-    if (!focusDomain) return companies;
-    return [...companies].sort((a, b) => {
-      if (a.domain === focusDomain) return -1;
-      if (b.domain === focusDomain) return 1;
-      return 0;
-    });
-  }, [companies, focusDomain]);
+  const filtered = useMemo(
+    () => filterCompanies(companies, filters, focusDomain),
+    [companies, filters, focusDomain]
+  );
 
-  const { pageItems: pagedCompanies, tablePaginationProps } = useListPagination(sorted, [
-    focusDomain,
-  ]);
+  const activeFilterCount = useMemo(() => {
+    return (Object.keys(EMPTY_FILTERS) as Array<keyof LogFilters>).filter((key) => {
+      const v = filters[key];
+      if (key === 'domain' && focusDomain && v === focusDomain) return false;
+      return Boolean(String(v || '').trim());
+    }).length;
+  }, [filters, focusDomain]);
+
+  const { pageItems: pagedCompanies, tablePaginationProps } = useListPagination(
+    filtered,
+    [filters, focusDomain]
+  );
+
+  const setFilter = <K extends keyof LogFilters>(key: K, value: LogFilters[K]) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -239,6 +374,142 @@ export function OutreachLogsView() {
         </Alert>
       )}
 
+      <Box
+        sx={{
+          p: 2,
+          borderRadius: 3,
+          border: `1px solid ${colors.outlineVariant}`,
+          bgcolor: colors.surfaceContainerLowest,
+          display: 'grid',
+          gap: 1.5,
+          gridTemplateColumns: {
+            xs: '1fr',
+            sm: '1fr 1fr',
+            md: '1fr 1fr 1fr 1fr',
+          },
+        }}
+      >
+        <TextField
+          size="small"
+          label="Domain"
+          value={filters.domain}
+          onChange={(e) => setFilter('domain', e.target.value)}
+          placeholder="oakslab.com"
+        />
+        <TextField
+          size="small"
+          label="Firma adı"
+          value={filters.companyName}
+          onChange={(e) => setFilter('companyName', e.target.value)}
+        />
+        <FormControl size="small">
+          <InputLabel>Gönderim durumu</InputLabel>
+          <Select
+            label="Gönderim durumu"
+            value={filters.status}
+            onChange={(e) => setFilter('status', String(e.target.value))}
+          >
+            <MenuItem value="">Tümü</MenuItem>
+            <MenuItem value="success">Başarılı</MenuItem>
+            <MenuItem value="partial">Kısmi</MenuItem>
+            <MenuItem value="failed">Başarısız</MenuItem>
+            <MenuItem value="verify_failed">Doğrulama başarısız</MenuItem>
+            <MenuItem value="ai_error">AI hatası</MenuItem>
+            <MenuItem value="analysis_only">Sadece analiz</MenuItem>
+          </Select>
+        </FormControl>
+        <TextField
+          size="small"
+          label="Pozisyon"
+          value={filters.targetPosition}
+          onChange={(e) => setFilter('targetPosition', e.target.value)}
+        />
+        <TextField
+          size="small"
+          label="Alıcı e-posta"
+          value={filters.recipient}
+          onChange={(e) => setFilter('recipient', e.target.value)}
+          placeholder="hello@"
+        />
+        <FormControl size="small">
+          <InputLabel>Alıcı sonucu</InputLabel>
+          <Select
+            label="Alıcı sonucu"
+            value={filters.recipientStatus}
+            onChange={(e) => setFilter('recipientStatus', String(e.target.value))}
+          >
+            <MenuItem value="">Tümü</MenuItem>
+            <MenuItem value="sent">Gitti</MenuItem>
+            <MenuItem value="logged">SMTP yok (loglandı)</MenuItem>
+            <MenuItem value="failed">Gönderilemedi</MenuItem>
+            <MenuItem value="invalid">Doğrulanamadı</MenuItem>
+            <MenuItem value="skipped">Atlandı</MenuItem>
+          </Select>
+        </FormControl>
+        <TextField
+          size="small"
+          label="Konu"
+          value={filters.subject}
+          onChange={(e) => setFilter('subject', e.target.value)}
+        />
+        <TextField
+          size="small"
+          label="CV dosya / başlık"
+          value={filters.cvFileName}
+          onChange={(e) => setFilter('cvFileName', e.target.value)}
+        />
+        <FormControl size="small">
+          <InputLabel>Şablon tipi</InputLabel>
+          <Select
+            label="Şablon tipi"
+            value={filters.templateType}
+            onChange={(e) => setFilter('templateType', String(e.target.value))}
+          >
+            <MenuItem value="">Tümü</MenuItem>
+            <MenuItem value="cold_email">Cold mail</MenuItem>
+            <MenuItem value="cover_letter">Kapak mektubu</MenuItem>
+            <MenuItem value="linkedin">LinkedIn</MenuItem>
+            <MenuItem value="none">Şablon yok</MenuItem>
+            <MenuItem value="ai_error">AI hata</MenuItem>
+          </Select>
+        </FormControl>
+        <TextField
+          size="small"
+          label="Başlangıç tarihi"
+          type="date"
+          InputLabelProps={{ shrink: true }}
+          value={filters.dateFrom}
+          onChange={(e) => setFilter('dateFrom', e.target.value)}
+        />
+        <TextField
+          size="small"
+          label="Bitiş tarihi"
+          type="date"
+          InputLabelProps={{ shrink: true }}
+          value={filters.dateTo}
+          onChange={(e) => setFilter('dateTo', e.target.value)}
+        />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<FilterAltOffIcon />}
+            disabled={activeFilterCount === 0 && !filters.domain}
+            onClick={() =>
+              setFilters({
+                ...EMPTY_FILTERS,
+                domain: focusDomain || '',
+              })
+            }
+          >
+            Temizle{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+          </Button>
+          <Typography variant="caption" color="text.secondary">
+            {filtered.length} firma
+          </Typography>
+        </Box>
+      </Box>
+
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress />
@@ -251,10 +522,16 @@ export function OutreachLogsView() {
         </Alert>
       )}
 
-      {!loading && !error && sorted.length === 0 && (
+      {!loading && !error && companies.length === 0 && (
         <Alert severity="info" sx={{ borderRadius: 2 }}>
           Henüz kayıt yok. Company-based CV editöründen mail gönderdiğinizde burada
           listelenir.
+        </Alert>
+      )}
+
+      {!loading && !error && companies.length > 0 && filtered.length === 0 && (
+        <Alert severity="info" sx={{ borderRadius: 2 }}>
+          Filtrelere uyan kayıt yok. Filtreleri temizleyip tekrar deneyin.
         </Alert>
       )}
 
@@ -538,7 +815,7 @@ export function OutreachLogsView() {
             </AccordionDetails>
           </Accordion>
         ))}
-        {sorted.length > 0 ? <ListTablePagination {...tablePaginationProps} /> : null}
+        {filtered.length > 0 ? <ListTablePagination {...tablePaginationProps} /> : null}
       </Stack>
     </Box>
   );

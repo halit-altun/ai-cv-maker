@@ -240,6 +240,15 @@ async function sendCompanyOutreachEmailsImpl({
     throw new AppError("Geçerli bir e-posta domaini gerekli.", 400, "DOMAIN_REQUIRED");
   }
 
+  const resolvedCompanyName =
+    resolveCompanyDisplayName({
+      name: companyName,
+      website: companyUrl,
+      domain: resolvedDomain,
+    }) ||
+    String(companyName || "").trim() ||
+    resolvedDomain;
+
   const resolvedReanalyzeContext = normalizeReanalyzeContext(
     {
       ...(reanalyzeContext && typeof reanalyzeContext === "object"
@@ -248,7 +257,7 @@ async function sendCompanyOutreachEmailsImpl({
       companyUrl,
       rawDomainInput,
       domain: resolvedDomain,
-      companyName,
+      companyName: resolvedCompanyName,
       targetPosition,
       projectId,
       selectedCategories,
@@ -338,7 +347,7 @@ async function sendCompanyOutreachEmailsImpl({
           clientId,
           userId,
           projectId: resolvedProjectId,
-          companyName: String(companyName || "").trim() || resolvedDomain,
+          companyName: resolvedCompanyName,
           domain: resolvedDomain,
           status: "verify_failed",
           subject: String(subject || "").trim(),
@@ -434,16 +443,9 @@ async function sendCompanyOutreachEmailsImpl({
 
   const safeSubject =
     String(subject || "").trim() ||
-    `Başvuru${companyName ? ` — ${companyName}` : ""} | ${fromDisplayName}`;
+    `Başvuru${resolvedCompanyName ? ` — ${resolvedCompanyName}` : ""} | ${fromDisplayName}`;
 
   const baseText = String(bodyText).trim();
-  const resolvedCompanyName =
-    resolveCompanyDisplayName({
-      name: companyName,
-      domain: resolvedDomain,
-    }) ||
-    String(companyName || "").trim() ||
-    resolvedDomain;
   const infoContactBodyText = anyInfoOrContactEmail(list)
     ? wrapColdEmailForInfoContactInbox({
         bodyText: baseText,
@@ -970,12 +972,21 @@ async function getOutreachLogById(clientId, id) {
 }
 
 function mapLog(doc) {
+  const domain = doc.domain || "";
+  const companyName =
+    resolveCompanyDisplayName({
+      name: doc.companyName,
+      domain,
+      website: doc.reanalyzeContext?.companyUrl,
+    }) ||
+    doc.companyName ||
+    "";
   return {
     id: String(doc._id),
     clientId: doc.clientId,
     projectId: doc.projectId ? String(doc.projectId) : null,
-    companyName: doc.companyName || "",
-    domain: doc.domain || "",
+    companyName,
+    domain,
     status: doc.status,
     subject: doc.subject || "",
     bodyText: doc.bodyText || "",

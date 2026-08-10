@@ -162,14 +162,18 @@ Kurallar:
       }));
     }
 
-    if (!finalResult.website && companyUrls[0]?.url) {
+    // Path’li kullanıcı URL’sini AI’nin origin-only website’ine tercih et
+    if (companyUrls[0]?.url) {
       finalResult.website = companyUrls[0].url;
+    } else if (!finalResult.website) {
+      finalResult.website = '';
     }
 
-    // name asla URL/domain olmasın
+    // name asla URL/domain olmasın; domain ile uyuşmayan sticky isimleri reddet
     finalResult.name = resolveCompanyDisplayName({
       name: finalResult.name,
       website: finalResult.website || companyUrls[0]?.url,
+      domain: companyUrls[0]?.url || finalResult.website,
     });
 
     console.log('=== COMPANY ANALYSIS COMPLETED (single AI) ===');

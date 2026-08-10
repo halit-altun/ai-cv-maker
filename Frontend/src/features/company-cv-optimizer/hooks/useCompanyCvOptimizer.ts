@@ -73,7 +73,11 @@ import {
   readClientUiPreferencesLocalCache,
   writeClientUiPreferencesLocalCache,
 } from '@/lib/client-preferences/localCache';
-import { resolveCompanyDisplayName } from '@/lib/company/normalizeCompanyDisplayName';
+import {
+  resolveCompanyDisplayName,
+  pickBestCompanyUrl,
+  companyNameAlignedWithDomain,
+} from '@/lib/company/normalizeCompanyDisplayName';
 import {
   getMailTrackingReanalyzeRequest,
   type MailTrackingReanalyzeContext,
@@ -422,9 +426,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       if (prefs.coverLetterRecipientName !== undefined) {
         setCoverLetterRecipientName(prefs.coverLetterRecipientName || '');
       }
-      if (prefs.coverLetterCompanyName !== undefined) {
-        setCoverLetterCompanyName(prefs.coverLetterCompanyName || '');
-      }
+      // coverLetterCompanyName şirket-özel; sticky prefs’ten uygulanmaz (Leobit→OaksLab hatası)
       if (prefs.outreachEmailLanguageMode !== undefined) {
         setOutreachEmailLanguageMode(
           prefs.outreachEmailLanguageMode === 'turkish' ||
@@ -567,6 +569,12 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         : 'homepage';
       const pageTypeOther = pageType === 'other' ? String(ctx.pageTypeOther || '') : '';
       const companyUrl =
+        pickBestCompanyUrl(
+          ctx.companyUrl || '',
+          ctx.domain || '',
+          ensureHttpsCompanyUrl(ctx.companyUrl || '') ||
+            ensureHttpsCompanyUrl(ctx.domain || '')
+        ) ||
         ensureHttpsCompanyUrl(ctx.companyUrl || '') ||
         ensureHttpsCompanyUrl(ctx.domain || '');
       const domainValue = String(ctx.rawDomainInput || ctx.domain || '').trim();
@@ -585,7 +593,14 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       }
 
       if (domainValue) setEmailDomainOverride(domainValue);
-      if (ctx.companyName) setCoverLetterCompanyName(String(ctx.companyName));
+      if (ctx.companyName) {
+        const aligned = resolveCompanyDisplayName({
+          name: String(ctx.companyName),
+          website: companyUrl,
+          domain: String(ctx.domain || domainValue || ''),
+        });
+        setCoverLetterCompanyName(aligned || String(ctx.companyName));
+      }
       if (ctx.targetPosition) setTargetPosition(String(ctx.targetPosition));
 
       if (Array.isArray(ctx.selectedCategories) && ctx.selectedCategories.length) {
@@ -688,6 +703,36 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     };
   }, [prefsReady, reanalyzeMailId]);
 
+  // Domain değişince sticky yanlış şirket adını (Leobit @ oakslab) düzelt
+  const lastAlignedDomainRef = useRef('');
+  useEffect(() => {
+    const domain = normalizeEmailDomainInput(
+      emailDomainOverride.trim() ||
+        extractDomainFromUrl(companyLinks[0]?.url || '') ||
+        extractDomainFromUrl(companyInfo?.website || '')
+    );
+    if (!domain) return;
+    if (domain === lastAlignedDomainRef.current) return;
+    lastAlignedDomainRef.current = domain;
+
+    setCoverLetterCompanyName((prev) => {
+      if (!prev.trim()) return prev;
+      if (companyNameAlignedWithDomain(prev, domain)) return prev;
+      return (
+        resolveCompanyDisplayName({
+          name: companyInfo?.name,
+          website: pickBestCompanyUrl(companyLinks[0]?.url, companyInfo?.website),
+          domain,
+        }) || ''
+      );
+    });
+  }, [
+    emailDomainOverride,
+    companyLinks,
+    companyInfo?.website,
+    companyInfo?.name,
+  ]);
+
   useEffect(() => {
     if (!prefsReady) return;
 
@@ -707,7 +752,6 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
             manualMustMentionTopicsText: patch.manualMustMentionTopicsText,
             manualMustNotMentionTopicsText: patch.manualMustNotMentionTopicsText,
             coverLetterRecipientName: patch.coverLetterRecipientName,
-            coverLetterCompanyName: patch.coverLetterCompanyName,
             lastCompanyPageType: patch.lastCompanyPageType,
             lastCompanyPageTypeOther: patch.lastCompanyPageTypeOther,
           })
@@ -738,7 +782,6 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       manualMustMentionTopicsText,
       manualMustNotMentionTopicsText,
       coverLetterRecipientName,
-      coverLetterCompanyName,
       lastCompanyPageType,
       lastCompanyPageTypeOther:
         lastCompanyPageType === 'other' ? lastCompanyPageTypeOther : '',
@@ -788,7 +831,6 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     manualMustMentionTopicsText,
     manualMustNotMentionTopicsText,
     coverLetterRecipientName,
-    coverLetterCompanyName,
     lastCompanyPageType,
     lastCompanyPageTypeOther,
   ]);
@@ -1430,14 +1472,33 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
       const resolvedCompany = bundle.companyInfo || companyInfo;
       if (bundle.companyInfo) {
+        const bestWebsite = pickBestCompanyUrl(
+          companyLinks[0]?.url,
+          bundle.companyInfo.website
+        );
+        const domainForName = normalizeEmailDomainInput(
+          emailDomainOverride.trim() ||
+            extractDomainFromUrl(bestWebsite) ||
+            extractDomainFromUrl(companyLinks[0]?.url || '')
+        );
         const cleaned = {
           ...bundle.companyInfo,
+          website: bestWebsite || bundle.companyInfo.website,
           name: resolveCompanyDisplayName({
             name: bundle.companyInfo.name,
-            website: bundle.companyInfo.website,
+            website: bestWebsite || bundle.companyInfo.website,
+            domain: domainForName,
           }),
         };
         setCompanyInfo(cleaned);
+        if (cleaned.name) {
+          setCoverLetterCompanyName((prev) => {
+            if (!prev.trim()) return cleaned.name;
+            if (!domainForName) return prev;
+            if (companyNameAlignedWithDomain(prev, domainForName)) return prev;
+            return cleaned.name;
+          });
+        }
       }
 
       const parsedCVData = bundle.parsedCV;
@@ -1470,7 +1531,16 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
             resolvedCompany?.name ||
             companyInfo?.name ||
             '',
-          website: resolvedCompany?.website || companyInfo?.website,
+          website: pickBestCompanyUrl(
+            companyLinks[0]?.url,
+            resolvedCompany?.website,
+            companyInfo?.website
+          ),
+          domain: normalizeEmailDomainInput(
+            emailDomainOverride.trim() ||
+              extractDomainFromUrl(companyLinks[0]?.url || '') ||
+              extractDomainFromUrl(resolvedCompany?.website || companyInfo?.website || '')
+          ),
         });
         const candidateEmails = resolveOutreachCandidateEmails({
           emailDomainOverride,
@@ -1601,13 +1671,24 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         void createOutreachAnalysisOnlyLogRequest({
           projectId: selectedOutreachProjectId,
           domain: analysisDomain || undefined,
-          companyName: coverLetterCompanyName || resolvedCompany?.name || undefined,
+          companyName: resolveCompanyDisplayName({
+            name: coverLetterCompanyName || resolvedCompany?.name,
+            website: pickBestCompanyUrl(
+              companyLinks[0]?.url,
+              resolvedCompany?.website
+            ),
+            domain: analysisDomain,
+          }) || undefined,
           cvFileName: cvFile?.name,
           targetPosition: targetPosition || undefined,
           matchScore: analysis.matchScore,
-          companyUrl: companyLinks[0]?.url || resolvedCompany?.website || undefined,
+          companyUrl:
+            pickBestCompanyUrl(companyLinks[0]?.url, resolvedCompany?.website) ||
+            undefined,
           reanalyzeContext: {
-            companyUrl: companyLinks[0]?.url || resolvedCompany?.website || '',
+            companyUrl:
+              pickBestCompanyUrl(companyLinks[0]?.url, resolvedCompany?.website) ||
+              '',
             rawDomainInput:
               emailDomainOverride ||
               companyLinks[0]?.url ||
@@ -1615,7 +1696,14 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
               analysisDomain ||
               '',
             domain: analysisDomain || '',
-            companyName: coverLetterCompanyName || resolvedCompany?.name || '',
+            companyName: resolveCompanyDisplayName({
+              name: coverLetterCompanyName || resolvedCompany?.name,
+              website: pickBestCompanyUrl(
+                companyLinks[0]?.url,
+                resolvedCompany?.website
+              ),
+              domain: analysisDomain,
+            }) || '',
             targetPosition: targetPosition || '',
             projectId: selectedOutreachProjectId,
             selectedCategories: selectedEmailPrefixCategories,
@@ -1858,7 +1946,12 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
     const companyLabel = resolveCompanyDisplayName({
       name: coverLetterCompanyName.trim() || companyInfo?.name,
-      website: companyInfo?.website,
+      website: pickBestCompanyUrl(companyLinks[0]?.url, companyInfo?.website),
+      domain: normalizeEmailDomainInput(
+        emailDomainOverride.trim() ||
+          extractDomainFromUrl(companyLinks[0]?.url || '') ||
+          extractDomainFromUrl(companyInfo?.website || '')
+      ),
     });
     const coldLangResolved = resolveOutreachEmailLanguage({
       mode: outreachEmailLanguageMode,
@@ -1917,11 +2010,25 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
       let pdfAttachment: { filename: string; contentBase64: string; contentType: string } | undefined;
 
+      const bestCompanyUrl = pickBestCompanyUrl(
+        companyLinks[0]?.url,
+        companyInfo?.website,
+        cvDataForSend?.companyInfo?.website
+      );
+
       const displayCompanyName = resolveCompanyDisplayName({
         name: coverLetterCompanyName || companyInfo?.name || cvDataForSend?.companyInfo?.name,
-        website: companyInfo?.website || cvDataForSend?.companyInfo?.website,
+        website: bestCompanyUrl,
         domain: inferredDomain,
       });
+      if (
+        displayCompanyName &&
+        displayCompanyName !== coverLetterCompanyName.trim() &&
+        inferredDomain &&
+        !companyNameAlignedWithDomain(coverLetterCompanyName.trim(), inferredDomain)
+      ) {
+        setCoverLetterCompanyName(displayCompanyName);
+      }
 
       if (outreachCvAttachmentSource === 'optimized') {
         const sourceData = opts?.cvDataOverride || editableCVData || cvDataForSend;
@@ -1940,7 +2047,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
                   ...sourceData,
                   companyInfo: {
                     name: displayCompanyName,
-                    website: companyInfo?.website || '',
+                    website: bestCompanyUrl || companyInfo?.website || '',
                     description: '',
                     industry: '',
                     values: [],
@@ -2015,13 +2122,13 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           shouldGenerateLinkedInMessage && linkedinMessage.trim()
             ? linkedinMessage.trim()
             : undefined,
-        companyUrl: companyLinks[0]?.url || companyInfo?.website || undefined,
+        companyUrl: bestCompanyUrl || undefined,
         reanalyzeContext: {
-          companyUrl: companyLinks[0]?.url || companyInfo?.website || '',
+          companyUrl: bestCompanyUrl || '',
           rawDomainInput:
             emailDomainOverride.trim() ||
-            companyInfo?.website ||
             companyLinks[0]?.url ||
+            companyInfo?.website ||
             inferredDomain,
           domain: inferredDomain,
           companyName: displayCompanyName || '',

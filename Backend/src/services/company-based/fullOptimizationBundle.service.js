@@ -163,11 +163,12 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
           name: resolveCompanyDisplayName({
             name: String(raw.name || "").trim(),
             website: String(
-              raw.website || request.companyPages?.[0]?.url || ""
+              request.companyPages?.[0]?.url || raw.website || ""
             ).trim(),
+            domain: String(request.companyPages?.[0]?.url || raw.website || "").trim(),
           }) || "Şirket",
           website: String(
-            raw.website || request.companyPages?.[0]?.url || ""
+            request.companyPages?.[0]?.url || raw.website || ""
           ).trim(),
           description: String(raw.description || "").trim(),
           industry: String(raw.industry || "").trim(),

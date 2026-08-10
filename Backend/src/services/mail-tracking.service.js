@@ -4,8 +4,16 @@ const MailOpenEvent = require("../models/mail-open-event.model");
 const {
   resolveCompanyDisplayName,
   isDomainLikeCompanyLabel,
+  companyNameAlignedWithDomain,
   replaceCompanySegmentInPdfFilename,
 } = require("../utils/company-display-name");
+
+function domainFromRecipientEmail(recipient) {
+  const email = String(recipient || "").trim().toLowerCase();
+  const at = email.lastIndexOf("@");
+  if (at < 0) return "";
+  return email.slice(at + 1).replace(/^www\./i, "");
+}
 
 /**
  * Yeni mail tracking kaydı oluştur
@@ -367,16 +375,23 @@ async function enrichMailTrackingRows(trackings = []) {
       }
     }
 
-    // www.domain.com → marka adı (gösterim + backfill)
+    // www.domain.com → marka; Leobit @ oakslab.com gibi domain uyumsuzluğunu düzelt
+    const recipientDomain = domainFromRecipientEmail(row.recipient);
+    const currentCompany = String(row.company || "").trim();
     const cleanedCompany = resolveCompanyDisplayName({
-      name: row.company,
-      domain: undefined,
+      name: currentCompany,
+      domain: recipientDomain,
     });
+    const mismatched =
+      Boolean(currentCompany) &&
+      Boolean(recipientDomain) &&
+      !companyNameAlignedWithDomain(currentCompany, recipientDomain);
     if (
       cleanedCompany &&
-      cleanedCompany !== String(row.company || "").trim() &&
-      (isDomainLikeCompanyLabel(String(row.company || "")) ||
-        !String(row.company || "").trim())
+      cleanedCompany !== currentCompany &&
+      (mismatched ||
+        isDomainLikeCompanyLabel(currentCompany) ||
+        !currentCompany)
     ) {
       row.company = cleanedCompany;
       changed = true;
