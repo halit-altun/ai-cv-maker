@@ -2013,7 +2013,13 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           result.verification?.provider
             ? ` Doğrulama: ${result.verification.provider}.`
             : ''
-        } Log kaydı oluşturuldu.`
+        }${
+          result.persisted === false
+            ? ' (Kaydetme tercihi kapalı — geçmişe yazılmadı.)'
+            : result.logId
+              ? ' Log kaydı oluşturuldu.'
+              : ''
+        }`
       );
       // Gönderim sonrası itibar skorunu yenile (engagement sayısı güncellensin)
       void refreshDeliverabilityScore(false);

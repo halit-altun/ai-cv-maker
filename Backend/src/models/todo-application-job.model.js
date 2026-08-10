@@ -89,6 +89,8 @@ const jobItemSchema = new mongoose.Schema(
     errorMessage: { type: String, default: "" },
     errorCode: { type: String, default: "" },
     verification: { type: mongoose.Schema.Types.Mixed, default: null },
+    /** SMTP/kuyruk gönderimi başladı — crash sonrası çift mail engeli */
+    mailDispatchStartedAt: { type: Date, default: null },
     startedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
   },

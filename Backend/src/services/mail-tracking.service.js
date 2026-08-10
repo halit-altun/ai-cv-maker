@@ -562,13 +562,22 @@ async function getMailTrackingReanalyzeContext(mailId, userId) {
   const log = await findOutreachLogForTracking(tracking);
   const { buildReanalyzePayloadFromLog, normalizeReanalyzeContext } = require("../utils/reanalyze-context");
 
-  let reanalyze = log ? buildReanalyzePayloadFromLog(log) : null;
+  let reanalyze = log
+    ? buildReanalyzePayloadFromLog(log, {
+        recipientFallback: tracking.recipient,
+      })
+    : null;
   if (!reanalyze) {
+    // Log yok: yalnızca tracking alıcısından tahmin
     reanalyze = normalizeReanalyzeContext(
       {
         companyName: tracking.company,
         targetPosition: tracking.jobTitle,
         projectId: tracking.projectId,
+        rawDomainInput: tracking.recipient,
+        domain: String(tracking.recipient || "").includes("@")
+          ? String(tracking.recipient).split("@")[1]
+          : "",
       },
       {}
     );

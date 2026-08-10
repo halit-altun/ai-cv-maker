@@ -91,6 +91,19 @@ function buildTodoReanalyzeContext(job, item, settings = {}) {
  * Çift gönderimi önlemek için OutreachLog / EmailQueue kontrolü.
  */
 async function recoverOrBlockResend(job, item) {
+  // Persist kapalı / interval 0: log-queue yokken de çift mail olmasın
+  if (item.mailDispatchStartedAt && !itemAlreadyMailed(item)) {
+    item.status = "completed";
+    item.step = "sent_assumed_after_interrupt";
+    item.completedAt = new Date();
+    item.errorMessage = "";
+    item.errorCode = "";
+    console.log(
+      `[TODO_JOB] Dispatch başlamış item recover (resend yok): ${item._id}`
+    );
+    return { recovered: true };
+  }
+
   const domain = normalizeEmailDomainInput(item.emailDomainInput);
   const since = item.startedAt
     ? new Date(item.startedAt)
@@ -965,6 +978,9 @@ async function resumeSendOnlyForItem(job, item, settings, user) {
       ? String(item.emailDomainInput).trim().toLowerCase()
       : undefined;
 
+  item.mailDispatchStartedAt = new Date();
+  await job.save();
+
   const sendResult = await sendCompanyOutreachEmails({
     recipients: selected,
     subject: item.coldEmailSubject,
@@ -1330,6 +1346,9 @@ async function processSingleJobItem(job, item) {
     String(item.emailDomainInput || "").includes("@")
       ? String(item.emailDomainInput).trim().toLowerCase()
       : undefined;
+
+  item.mailDispatchStartedAt = new Date();
+  await job.save();
 
   const sendResult = await sendCompanyOutreachEmails({
     recipients: selected,

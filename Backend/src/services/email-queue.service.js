@@ -297,6 +297,27 @@ async function processEmailQueue() {
   let claimedCount = 0;
 
   try {
+    // Crash sonrası stuck "processing" kayıtlarını geri al (15 dk)
+    const staleBefore = new Date(Date.now() - 15 * 60 * 1000);
+    const stale = await EmailQueue.updateMany(
+      {
+        status: "processing",
+        processedAt: { $lte: staleBefore },
+      },
+      {
+        $set: {
+          status: "pending",
+          scheduledAt: now,
+        },
+        $unset: { processedAt: 1 },
+      }
+    );
+    if (stale.modifiedCount > 0) {
+      console.log(
+        `[EMAIL_QUEUE_PROCESSOR] ${stale.modifiedCount} stuck processing → pending`
+      );
+    }
+
     for (let i = 0; i < 10; i += 1) {
       // Atomic claim — find + update yarışını kapatır (çoklu instance / örtüşen interval)
       const item = await EmailQueue.findOneAndUpdate(

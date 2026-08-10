@@ -83,16 +83,16 @@ function normalizeReanalyzeContext(input = {}, fallbacks = {}) {
         : fallbacks.includePrimaryEmailInSend !== undefined
           ? Boolean(fallbacks.includePrimaryEmailInSend)
           : true,
-    skipPrimaryEmailVerification:
-      input.skipPrimaryEmailVerification !== undefined
-        ? Boolean(input.skipPrimaryEmailVerification)
-        : Boolean(fallbacks.skipPrimaryEmailVerification),
     shouldSendCompanyEmail:
       input.shouldSendCompanyEmail !== undefined
         ? Boolean(input.shouldSendCompanyEmail)
         : fallbacks.shouldSendCompanyEmail !== undefined
           ? Boolean(fallbacks.shouldSendCompanyEmail)
           : true,
+    skipPrimaryEmailVerification:
+      input.skipPrimaryEmailVerification !== undefined
+        ? Boolean(input.skipPrimaryEmailVerification)
+        : Boolean(fallbacks.skipPrimaryEmailVerification),
     shouldGenerateCoverLetter:
       input.shouldGenerateCoverLetter !== undefined
         ? Boolean(input.shouldGenerateCoverLetter)
@@ -132,19 +132,42 @@ function normalizeReanalyzeContext(input = {}, fallbacks = {}) {
   };
 }
 
-function buildReanalyzePayloadFromLog(log) {
+/**
+ * Snapshot varsa rawDomainInput’a birebir güven.
+ * Recipient fallback yalnızca reanalyzeContext hiç yokken (eski kayıtlar).
+ */
+function buildReanalyzePayloadFromLog(log, options = {}) {
   if (!log) return null;
-  const ctx = log.reanalyzeContext && typeof log.reanalyzeContext === "object"
-    ? log.reanalyzeContext
-    : {};
+  const hasSnapshot =
+    log.reanalyzeContext != null && typeof log.reanalyzeContext === "object";
+  const ctx = hasSnapshot ? log.reanalyzeContext : {};
+  const domain = cleanString(log.domain).toLowerCase();
+
+  let rawDomainInput = "";
+  if (hasSnapshot) {
+    // Kullanıcı domain-only girdiyse onu koru; alıcıyla ezme
+    rawDomainInput = cleanString(ctx.rawDomainInput) || domain;
+  } else {
+    const recipientCandidates = [
+      options.recipientFallback,
+      ...((log.recipients || []).map((r) => r?.email)),
+    ]
+      .map((e) => cleanString(e).toLowerCase())
+      .filter((e) => e.includes("@"));
+    const matchingRecipient = recipientCandidates.find(
+      (email) => !domain || email.endsWith(`@${domain}`)
+    );
+    rawDomainInput = matchingRecipient || recipientCandidates[0] || domain;
+  }
+
   return normalizeReanalyzeContext(ctx, {
-    domain: log.domain,
+    domain,
     companyName: log.companyName,
     targetPosition: log.targetPosition,
     projectId: log.projectId,
     selectedCategories: log.selectedCategories,
     companyUrl: ctx.companyUrl,
-    rawDomainInput: ctx.rawDomainInput || log.domain,
+    rawDomainInput,
   });
 }
 
