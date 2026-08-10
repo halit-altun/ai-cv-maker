@@ -23,6 +23,10 @@ const { resolveCompanyDisplayName } = require("../utils/company-display-name");
 const {
   isPersistOutreachHistoryEnabled,
 } = require("../utils/persist-outreach-history");
+const {
+  normalizeReanalyzeContext,
+  buildReanalyzePayloadFromLog,
+} = require("../utils/reanalyze-context");
 const User = require("../models/user.model");
 
 /** Aynı client+domain için paralel gönderimi sıraya al (çift API → çift mail) */
@@ -193,6 +197,8 @@ async function sendCompanyOutreachEmailsImpl({
   projectId,
   trackingPublicBaseUrl,
   linkedinMessageText,
+  companyUrl,
+  reanalyzeContext,
 }) {
   const limits = getOutreachLimits();
   const candidates = Array.isArray(recipients)
@@ -233,6 +239,22 @@ async function sendCompanyOutreachEmailsImpl({
   if (!resolvedDomain) {
     throw new AppError("Geçerli bir e-posta domaini gerekli.", 400, "DOMAIN_REQUIRED");
   }
+
+  const resolvedReanalyzeContext = normalizeReanalyzeContext(
+    {
+      ...(reanalyzeContext && typeof reanalyzeContext === "object"
+        ? reanalyzeContext
+        : {}),
+      companyUrl,
+      rawDomainInput,
+      domain: resolvedDomain,
+      companyName,
+      targetPosition,
+      projectId,
+      selectedCategories,
+    },
+    {}
+  );
 
   let resolvedProjectId = null;
   let resolvedProjectName = "";
@@ -335,6 +357,7 @@ async function sendCompanyOutreachEmailsImpl({
           targetPosition: targetPosition || "",
           replyTo: replyTo || "",
           verification: verificationMeta,
+          reanalyzeContext: resolvedReanalyzeContext,
           sentAt: new Date(),
         });
         failLogId = String(failLog._id);
@@ -608,6 +631,7 @@ async function sendCompanyOutreachEmailsImpl({
       targetPosition: targetPosition || "",
       replyTo: replyTo || "",
       verification: verificationMeta,
+      reanalyzeContext: resolvedReanalyzeContext,
       sentAt: new Date(),
     });
     logId = String(log._id);
@@ -716,6 +740,8 @@ async function createAnalysisOnlyLog({
   matchScore,
   subject,
   bodyText,
+  companyUrl,
+  reanalyzeContext,
 }) {
   if (!(await isPersistOutreachHistoryEnabled(userId))) {
     return { logId: null, domain: normalizeDomain(domain) || "unknown", skipped: true };
@@ -728,6 +754,19 @@ async function createAnalysisOnlyLog({
   const { getProjectOrThrow } = require("./outreach-project.service");
   const project = await getProjectOrThrow(clientId, projectId);
   const resolvedDomain = normalizeDomain(domain) || "unknown";
+  const resolvedReanalyzeContext = normalizeReanalyzeContext(
+    {
+      ...(reanalyzeContext && typeof reanalyzeContext === "object"
+        ? reanalyzeContext
+        : {}),
+      companyUrl,
+      domain: resolvedDomain,
+      companyName,
+      targetPosition,
+      projectId,
+    },
+    {}
+  );
 
   const log = await OutreachLog.create({
     clientId,
@@ -742,7 +781,9 @@ async function createAnalysisOnlyLog({
     cvId: cvId || null,
     cvTitle: cvTitle || "",
     cvFileName: cvFileName || "",
-    selectedCategories: [],
+    selectedCategories: Array.isArray(reanalyzeContext?.selectedCategories)
+      ? reanalyzeContext.selectedCategories
+      : [],
     recipients: [],
     sentCount: 0,
     failedCount: 0,
@@ -751,6 +792,7 @@ async function createAnalysisOnlyLog({
     errorMessage: "",
     targetPosition: targetPosition || "",
     replyTo: "",
+    reanalyzeContext: resolvedReanalyzeContext,
     verification: {
       enabled: false,
       mxOk: false,

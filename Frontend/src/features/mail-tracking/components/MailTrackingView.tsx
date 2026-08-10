@@ -35,11 +35,13 @@ import EmailIcon from '@mui/icons-material/Email';
 import LinkedInIcon from '@mui/icons-material/LinkedIn';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import {
   downloadMailTrackingCvRequest,
   getMailTrackingColdMailsRequest,
   getMailTrackingLinkedInMessagesRequest,
   getMailTrackingDetailRequest,
+  getMailTrackingReanalyzeRequest,
   getMailTrackingStatsRequest,
   listMailTrackingsRequest,
   setMailDeliveryOutcomeRequest,
@@ -158,6 +160,7 @@ export function MailTrackingView() {
   const [trackingBaseIsLocal, setTrackingBaseIsLocal] = useState(false);
 
   const [cvBusyId, setCvBusyId] = useState<string | null>(null);
+  const [reanalyzeBusyId, setReanalyzeBusyId] = useState<string | null>(null);
   const [coldBusyId, setColdBusyId] = useState<string | null>(null);
   const [coldModalOpen, setColdModalOpen] = useState(false);
   const [coldModalTitle, setColdModalTitle] = useState('');
@@ -291,6 +294,23 @@ export function MailTrackingView() {
       setError(err instanceof Error ? err.message : 'CV indirilemedi.');
     } finally {
       setCvBusyId(null);
+    }
+  };
+
+  const openReanalyzeInCompanyBased = async (row: MailTrackingItem, e?: MouseEvent) => {
+    e?.stopPropagation();
+    setReanalyzeBusyId(row.mailId);
+    setError(null);
+    try {
+      await getMailTrackingReanalyzeRequest(row.mailId);
+      const url = `/company-based-cv-editor?reanalyzeMailId=${encodeURIComponent(row.mailId)}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Yeniden analiz başlatılamadı.'
+      );
+    } finally {
+      setReanalyzeBusyId(null);
     }
   };
 
@@ -538,6 +558,7 @@ export function MailTrackingView() {
                 <TableCell>Okundu</TableCell>
                 <TableCell>Gönderim</TableCell>
                 <TableCell>İlk açılış</TableCell>
+                <TableCell align="right">Yeniden analiz</TableCell>
                 <TableCell align="right">CV / Cold mail</TableCell>
                 <TableCell align="right">LinkedIn</TableCell>
               </TableRow>
@@ -588,6 +609,29 @@ export function MailTrackingView() {
                   </TableCell>
                   <TableCell>{formatDateTime(row.sentAt || row.createdAt)}</TableCell>
                   <TableCell>{formatDateTime(row.firstOpenedAt)}</TableCell>
+                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                    <Tooltip title="Company Based’te aynı firma / tercihlerle yeniden analiz et">
+                      <span>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="secondary"
+                          startIcon={
+                            reanalyzeBusyId === row.mailId ? (
+                              <CircularProgress size={14} />
+                            ) : (
+                              <TravelExploreIcon fontSize="small" />
+                            )
+                          }
+                          disabled={reanalyzeBusyId === row.mailId}
+                          onClick={(e) => void openReanalyzeInCompanyBased(row, e)}
+                          sx={{ textTransform: 'none', fontSize: '0.7rem', whiteSpace: 'nowrap' }}
+                        >
+                          Yeniden analiz et
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  </TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                     <Stack direction="row" spacing={0.5} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
                       <Tooltip title={row.hasCvPdf ? 'Gönderilen CV’yi indir' : 'CV kaydı yok'}>

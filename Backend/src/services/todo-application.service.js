@@ -59,6 +59,33 @@ function itemAlreadyMailed(item) {
   );
 }
 
+function buildTodoReanalyzeContext(job, item, settings = {}) {
+  return {
+    companyUrl: item.companyUrl || "",
+    rawDomainInput: item.emailDomainInput || "",
+    pageType: item.pageType || "careers",
+    pageTypeOther: item.pageTypeOther || "",
+    cvLanguage: settings.cvLanguage || "turkish",
+    outreachEmailLanguageMode: settings.outreachEmailLanguageMode || "auto",
+    selectedCategories: settings.selectedEmailPrefixCategories || [],
+    customEmailLocalParts: settings.customEmailLocalParts || [],
+    includePrimaryEmailInSend: settings.includePrimaryEmailInSend !== false,
+    skipPrimaryEmailVerification: Boolean(settings.skipPrimaryEmailVerification),
+    shouldSendCompanyEmail: settings.sendMail !== false,
+    shouldGenerateCoverLetter: Boolean(settings.shouldGenerateCoverLetter),
+    shouldGenerateLinkedInMessage: Boolean(settings.shouldGenerateLinkedInMessage),
+    coverLetterSource: settings.coverLetterSource || "company",
+    linkedinMessageSource: settings.linkedinMessageSource || "company",
+    cvAdaptationSource: settings.cvAdaptationSource || "company",
+    outreachCvAttachmentSource: settings.outreachCvAttachmentSource || "optimized",
+    includeCvPhoto: Boolean(settings.includeCvPhoto),
+    aiSettings: settings.aiSettings || null,
+    companyName: item.companyName || "",
+    targetPosition: settings.targetPosition || "",
+    projectId: job.projectId || null,
+  };
+}
+
 /**
  * Yarıda kalan "sending" item: mail zaten gitmiş olabilir ama job kaydı güncellenmemiş.
  * Çift gönderimi önlemek için OutreachLog / EmailQueue kontrolü.
@@ -963,6 +990,8 @@ async function resumeSendOnlyForItem(job, item, settings, user) {
     linkedinMessageText: settings.shouldGenerateLinkedInMessage
       ? String(item.linkedinMessage || "").trim() || undefined
       : undefined,
+    companyUrl: item.companyUrl,
+    reanalyzeContext: buildTodoReanalyzeContext(job, item, settings),
   });
 
   item.outreachLogId = sendResult.logId || null;
@@ -1235,6 +1264,8 @@ async function processSingleJobItem(job, item) {
       projectId: job.projectId,
       subject: item.coldEmailSubject,
       bodyText: item.coldEmailBody,
+      companyUrl: item.companyUrl,
+      reanalyzeContext: buildTodoReanalyzeContext(job, item, settings),
     }).catch(() => null);
 
     item.status = "completed";
@@ -1325,6 +1356,8 @@ async function processSingleJobItem(job, item) {
     linkedinMessageText: settings.shouldGenerateLinkedInMessage
       ? String(item.linkedinMessage || "").trim() || undefined
       : undefined,
+    companyUrl: item.companyUrl,
+    reanalyzeContext: buildTodoReanalyzeContext(job, item, settings),
   });
 
   item.outreachLogId = sendResult.logId || null;

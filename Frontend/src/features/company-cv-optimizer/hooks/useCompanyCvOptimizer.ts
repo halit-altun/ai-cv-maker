@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import type React from 'react';
+import { useSearchParams } from 'next/navigation';
 import { CompanyBasedCVService } from '@/lib/company-based-cv-editor/service';
 import {
   clearCachedCompanyCvPdf,
@@ -73,8 +74,30 @@ import {
   writeClientUiPreferencesLocalCache,
 } from '@/lib/client-preferences/localCache';
 import { resolveCompanyDisplayName } from '@/lib/company/normalizeCompanyDisplayName';
+import {
+  getMailTrackingReanalyzeRequest,
+  type MailTrackingReanalyzeContext,
+} from '@/lib/mail-tracking/api';
 
 const EMAIL_CATEGORY_IDS = new Set(EMAIL_PREFIX_CATEGORIES.map((c) => c.id));
+const COMPANY_PAGE_TYPES = new Set([
+  'homepage',
+  'careers',
+  'contact',
+  'about',
+  'blog',
+  'products',
+  'team',
+  'other',
+]);
+
+function ensureHttpsCompanyUrl(urlOrDomain: string): string {
+  const raw = String(urlOrDomain || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.includes('@')) return '';
+  return `https://${raw.replace(/^\/+/, '')}`;
+}
 
 /** Analiz / önizleme için aday alıcı listesini üretir. */
 function resolveOutreachCandidateEmails(params: {
@@ -129,6 +152,9 @@ function buildInfoContactColdBody(params: {
 }
 
 export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
+  const searchParams = useSearchParams();
+  const reanalyzeMailId = String(searchParams.get('reanalyzeMailId') || '').trim();
+  const reanalyzeAppliedRef = useRef(false);
 
   const [activeStep, setActiveStep] = useState(0);
   const [cvFile, setCvFile] = useState<File | null>(null);
@@ -525,6 +551,135 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only hydrate
   }, []);
+
+  /** Mail Takip → Yeniden analiz et: alanları gönderim anındaki tercihlerle doldur */
+  useEffect(() => {
+    if (!prefsReady || !reanalyzeMailId || reanalyzeAppliedRef.current) return;
+    let cancelled = false;
+
+    const applyReanalyze = (ctx: MailTrackingReanalyzeContext) => {
+      const pageType = COMPANY_PAGE_TYPES.has(String(ctx.pageType || ''))
+        ? (ctx.pageType as CompanyPageType)
+        : 'homepage';
+      const pageTypeOther = pageType === 'other' ? String(ctx.pageTypeOther || '') : '';
+      const companyUrl =
+        ensureHttpsCompanyUrl(ctx.companyUrl || '') ||
+        ensureHttpsCompanyUrl(ctx.domain || '');
+      const domainValue = String(ctx.rawDomainInput || ctx.domain || '').trim();
+
+      if (companyUrl) {
+        setCompanyLinks([
+          {
+            url: companyUrl,
+            description: resolvePageTypeLabel(pageType, pageTypeOther),
+            pageType,
+            pageTypeOther,
+          },
+        ]);
+        setLastCompanyPageType(pageType);
+        setLastCompanyPageTypeOther(pageTypeOther);
+      }
+
+      if (domainValue) setEmailDomainOverride(domainValue);
+      if (ctx.companyName) setCoverLetterCompanyName(String(ctx.companyName));
+      if (ctx.targetPosition) setTargetPosition(String(ctx.targetPosition));
+
+      if (Array.isArray(ctx.selectedCategories) && ctx.selectedCategories.length) {
+        const cats = ctx.selectedCategories.filter((id): id is EmailPrefixCategoryId =>
+          EMAIL_CATEGORY_IDS.has(id as EmailPrefixCategoryId)
+        );
+        if (cats.length) setSelectedEmailPrefixCategories(cats);
+      }
+
+      if (Array.isArray(ctx.customEmailLocalParts) && ctx.customEmailLocalParts.length) {
+        setCustomEmailLocalPartsText(ctx.customEmailLocalParts.join('\n'));
+      }
+
+      if (ctx.cvLanguage === 'english' || ctx.cvLanguage === 'turkish') {
+        setCvLanguage(ctx.cvLanguage);
+      }
+      if (
+        ctx.outreachEmailLanguageMode === 'auto' ||
+        ctx.outreachEmailLanguageMode === 'turkish' ||
+        ctx.outreachEmailLanguageMode === 'english'
+      ) {
+        setOutreachEmailLanguageMode(ctx.outreachEmailLanguageMode);
+      }
+
+      if (ctx.includePrimaryEmailInSend !== undefined) {
+        setIncludePrimaryEmailInSend(Boolean(ctx.includePrimaryEmailInSend));
+      }
+      if (ctx.skipPrimaryEmailVerification !== undefined) {
+        setSkipPrimaryEmailVerification(Boolean(ctx.skipPrimaryEmailVerification));
+      }
+      if (ctx.shouldSendCompanyEmail !== undefined) {
+        setShouldSendCompanyEmail(Boolean(ctx.shouldSendCompanyEmail));
+      }
+      if (ctx.shouldGenerateCoverLetter !== undefined) {
+        setShouldGenerateCoverLetter(Boolean(ctx.shouldGenerateCoverLetter));
+      }
+      if (ctx.shouldGenerateLinkedInMessage !== undefined) {
+        setShouldGenerateLinkedInMessage(Boolean(ctx.shouldGenerateLinkedInMessage));
+      }
+      if (ctx.coverLetterSource === 'text' || ctx.coverLetterSource === 'company') {
+        setCoverLetterSource(ctx.coverLetterSource);
+      }
+      if (ctx.linkedinMessageSource === 'text' || ctx.linkedinMessageSource === 'company') {
+        setLinkedinMessageSource(ctx.linkedinMessageSource);
+      }
+      if (ctx.cvAdaptationSource === 'text' || ctx.cvAdaptationSource === 'company') {
+        setCvAdaptationSource(ctx.cvAdaptationSource);
+      }
+      if (
+        ctx.outreachCvAttachmentSource === 'original' ||
+        ctx.outreachCvAttachmentSource === 'optimized'
+      ) {
+        setOutreachCvAttachmentSource(ctx.outreachCvAttachmentSource);
+      }
+      if (ctx.includeCvPhoto !== undefined) {
+        setIncludeCvPhoto(Boolean(ctx.includeCvPhoto));
+      }
+      if (ctx.aiSettings && typeof ctx.aiSettings === 'object') {
+        setAiSettings({
+          about: ctx.aiSettings.about !== false,
+          workExperience: Boolean(ctx.aiSettings.workExperience),
+          skills: Boolean(ctx.aiSettings.skills),
+        });
+      }
+
+      if (ctx.projectId) {
+        const projectId = String(ctx.projectId);
+        setSelectedOutreachProjectId(projectId);
+        void selectOutreachProjectRequest(projectId).catch(() => undefined);
+      }
+
+      setActiveStep(0);
+      setOutreachSendResult(null);
+      setError(null);
+    };
+
+    void (async () => {
+      try {
+        const { reanalyze } = await getMailTrackingReanalyzeRequest(reanalyzeMailId);
+        if (cancelled) return;
+        applyReanalyze(reanalyze);
+        reanalyzeAppliedRef.current = true;
+        prefsSkipNextSaveRef.current = true;
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Yeniden analiz bağlamı yüklenemedi.'
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [prefsReady, reanalyzeMailId]);
 
   useEffect(() => {
     if (!prefsReady) return;
@@ -1404,6 +1559,43 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           cvFileName: cvFile?.name,
           targetPosition: targetPosition || undefined,
           matchScore: analysis.matchScore,
+          companyUrl: companyLinks[0]?.url || resolvedCompany?.website || undefined,
+          reanalyzeContext: {
+            companyUrl: companyLinks[0]?.url || resolvedCompany?.website || '',
+            rawDomainInput:
+              emailDomainOverride ||
+              companyLinks[0]?.url ||
+              resolvedCompany?.website ||
+              analysisDomain ||
+              '',
+            domain: analysisDomain || '',
+            companyName: coverLetterCompanyName || resolvedCompany?.name || '',
+            targetPosition: targetPosition || '',
+            projectId: selectedOutreachProjectId,
+            selectedCategories: selectedEmailPrefixCategories,
+            pageType: companyLinks[0]?.pageType || lastCompanyPageType,
+            pageTypeOther:
+              (companyLinks[0]?.pageType || lastCompanyPageType) === 'other'
+                ? companyLinks[0]?.pageTypeOther || lastCompanyPageTypeOther
+                : '',
+            cvLanguage,
+            outreachEmailLanguageMode,
+            customEmailLocalParts: customEmailLocalPartsText
+              .split(/[\n,;]+/)
+              .map((s) => s.trim())
+              .filter(Boolean),
+            includePrimaryEmailInSend,
+            skipPrimaryEmailVerification,
+            shouldSendCompanyEmail,
+            shouldGenerateCoverLetter,
+            shouldGenerateLinkedInMessage,
+            coverLetterSource,
+            linkedinMessageSource,
+            cvAdaptationSource,
+            outreachCvAttachmentSource,
+            includeCvPhoto,
+            aiSettings,
+          },
         }).catch(() => undefined);
       }
 
@@ -1777,6 +1969,42 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           shouldGenerateLinkedInMessage && linkedinMessage.trim()
             ? linkedinMessage.trim()
             : undefined,
+        companyUrl: companyLinks[0]?.url || companyInfo?.website || undefined,
+        reanalyzeContext: {
+          companyUrl: companyLinks[0]?.url || companyInfo?.website || '',
+          rawDomainInput:
+            emailDomainOverride.trim() ||
+            companyInfo?.website ||
+            companyLinks[0]?.url ||
+            inferredDomain,
+          domain: inferredDomain,
+          companyName: displayCompanyName || '',
+          targetPosition: targetPosition || '',
+          projectId: selectedOutreachProjectId,
+          selectedCategories: selectedEmailPrefixCategories,
+          pageType: companyLinks[0]?.pageType || lastCompanyPageType,
+          pageTypeOther:
+            (companyLinks[0]?.pageType || lastCompanyPageType) === 'other'
+              ? companyLinks[0]?.pageTypeOther || lastCompanyPageTypeOther
+              : '',
+          cvLanguage,
+          outreachEmailLanguageMode,
+          customEmailLocalParts: customEmailLocalPartsText
+            .split(/[\n,;]+/)
+            .map((s) => s.trim())
+            .filter(Boolean),
+          includePrimaryEmailInSend,
+          skipPrimaryEmailVerification,
+          shouldSendCompanyEmail,
+          shouldGenerateCoverLetter,
+          shouldGenerateLinkedInMessage,
+          coverLetterSource,
+          linkedinMessageSource,
+          cvAdaptationSource,
+          outreachCvAttachmentSource,
+          includeCvPhoto,
+          aiSettings,
+        },
       });
       setOutreachSendResult(
         `${result.message || `${result.sentCount}/${result.total} alıcıya gönderildi.`}${

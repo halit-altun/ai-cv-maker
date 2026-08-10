@@ -92,6 +92,14 @@ const outreachLogSchema = new mongoose.Schema(
     errorMessage: { type: String, default: "" },
     targetPosition: { type: String, default: "" },
     replyTo: { type: String, default: "" },
+    /**
+     * Company Based “Yeniden analiz et” için gönderim anı snapshot
+     * (site URL, domain, sayfa tipi, mail/CV tercihleri).
+     */
+    reanalyzeContext: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     /** Doğrulama özeti (MX / Reacher / EmailVerify) */
     verification: {
       enabled: { type: Boolean, default: false },

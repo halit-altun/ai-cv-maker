@@ -28,6 +28,39 @@ export type MailTrackingItem = {
   hasStandardLinkedIn?: boolean;
   hasInfoContactLinkedIn?: boolean;
   cvFileName?: string;
+  /** Company Based yeniden analiz */
+  canReanalyze?: boolean;
+  reanalyze?: MailTrackingReanalyzeContext | null;
+};
+
+export type MailTrackingReanalyzeContext = {
+  companyUrl?: string;
+  rawDomainInput?: string;
+  domain?: string;
+  companyName?: string;
+  targetPosition?: string;
+  projectId?: string;
+  selectedCategories?: string[];
+  pageType?: string;
+  pageTypeOther?: string;
+  cvLanguage?: string;
+  outreachEmailLanguageMode?: string;
+  customEmailLocalParts?: string[];
+  includePrimaryEmailInSend?: boolean;
+  skipPrimaryEmailVerification?: boolean;
+  shouldSendCompanyEmail?: boolean;
+  shouldGenerateCoverLetter?: boolean;
+  shouldGenerateLinkedInMessage?: boolean;
+  coverLetterSource?: string;
+  linkedinMessageSource?: string;
+  cvAdaptationSource?: string;
+  outreachCvAttachmentSource?: string;
+  includeCvPhoto?: boolean;
+  aiSettings?: {
+    about?: boolean;
+    workExperience?: boolean;
+    skills?: boolean;
+  } | null;
 };
 
 export type MailOpenEvent = {
@@ -230,5 +263,22 @@ export async function getMailTrackingLinkedInMessagesRequest(mailId: string): Pr
     standardBody: String(data.standardBody || ''),
     infoContactBody: String(data.infoContactBody || ''),
     company: data.company ? String(data.company) : undefined,
+  };
+}
+
+export async function getMailTrackingReanalyzeRequest(mailId: string): Promise<{
+  mailId: string;
+  reanalyze: MailTrackingReanalyzeContext;
+}> {
+  const res = await authFetch(
+    `/api/mail-tracking/${encodeURIComponent(mailId)}/reanalyze`
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !data.reanalyze) {
+    throw new Error(data.message || 'Yeniden analiz bilgisi alınamadı.');
+  }
+  return {
+    mailId: String(data.mailId || mailId),
+    reanalyze: data.reanalyze as MailTrackingReanalyzeContext,
   };
 }

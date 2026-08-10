@@ -28,6 +28,10 @@ export type OutreachSendPayload = {
   projectId?: string | null;
   /** LinkedIn mesajı açıksa gönderimle birlikte kaydedilir (Mail Takip) */
   linkedinMessageText?: string;
+  /** Analiz edilen şirket sayfa URL’i */
+  companyUrl?: string;
+  /** Yeniden analiz için tercih snapshot */
+  reanalyzeContext?: Record<string, unknown>;
 };
 
 export type OutreachSendResult = {
@@ -376,6 +380,8 @@ export async function createOutreachAnalysisOnlyLogRequest(payload: {
   targetPosition?: string;
   projectId: string;
   matchScore?: number;
+  companyUrl?: string;
+  reanalyzeContext?: Record<string, unknown>;
 }): Promise<{ logId: string }> {
   const response = await authFetch('/api/outreach/analysis-only', {
     method: 'POST',

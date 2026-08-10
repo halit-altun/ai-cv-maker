@@ -58,6 +58,8 @@ async function sendCompanyEmailHandler(req, res, next) {
       trustedEmail,
       projectId,
       linkedinMessageText,
+      companyUrl,
+      reanalyzeContext,
     } = req.body || {};
 
     const senderName = resolveOutreachSenderName(req.user);
@@ -100,6 +102,8 @@ async function sendCompanyEmailHandler(req, res, next) {
       projectId: projectId || null,
       trackingPublicBaseUrl,
       linkedinMessageText,
+      companyUrl,
+      reanalyzeContext,
     });
 
     const selectedList = Array.isArray(result.selectedRecipients)
@@ -249,6 +253,10 @@ async function createAnalysisOnlyLogHandler(req, res, next) {
       targetPosition: req.body?.targetPosition,
       projectId: req.body?.projectId,
       matchScore: req.body?.matchScore,
+      subject: req.body?.subject,
+      bodyText: req.body?.bodyText,
+      companyUrl: req.body?.companyUrl,
+      reanalyzeContext: req.body?.reanalyzeContext,
     });
     return res.status(201).json({ ok: true, ...result });
   } catch (error) {

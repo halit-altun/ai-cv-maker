@@ -6,6 +6,7 @@ const {
   getMailTrackingCvPdf,
   getMailTrackingColdMails,
   getMailTrackingLinkedInMessages,
+  getMailTrackingReanalyzeContext,
   setDeliveryOutcome,
 } = require("../services/mail-tracking.service");
 const MailTracking = require("../models/mail-tracking.model");
@@ -196,6 +197,35 @@ router.get("/:mailId/linkedin-messages", async (req, res, next) => {
       standardBody: result.standardBody,
       infoContactBody: result.infoContactBody,
       company: result.company,
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * Company Based yeniden analiz bağlamı
+ * GET /api/mail-tracking/:mailId/reanalyze
+ */
+router.get("/:mailId/reanalyze", async (req, res, next) => {
+  try {
+    const { mailId } = req.params;
+    const result = await getMailTrackingReanalyzeContext(mailId, req.user.id);
+    if (!result.found) {
+      return res.status(404).json({ ok: false, message: result.error });
+    }
+    if (!result.canReanalyze) {
+      return res.status(422).json({
+        ok: false,
+        message:
+          "Bu kayıt için domain veya site URL bulunamadı; yeniden analiz başlatılamaz.",
+        reanalyze: result.reanalyze,
+      });
+    }
+    return res.json({
+      ok: true,
+      mailId: result.mailId,
+      reanalyze: result.reanalyze,
     });
   } catch (error) {
     return next(error);

@@ -426,7 +426,7 @@ async function enrichMailTrackingRows(trackings = []) {
   if (logIds.length) {
     const logs = await OutreachLog.find({ _id: { $in: logIds } })
       .select(
-        "companyName bodyText infoContactBodyText linkedinMessageText linkedinInfoContactMessageText pdfAttachment.contentBase64 pdfAttachment.filename cvFileName recipients.email"
+        "companyName domain targetPosition projectId selectedCategories reanalyzeContext bodyText infoContactBodyText linkedinMessageText linkedinInfoContactMessageText pdfAttachment.contentBase64 pdfAttachment.filename cvFileName recipients.email"
       )
       .lean();
     for (const log of logs) {
@@ -439,7 +439,7 @@ async function enrichMailTrackingRows(trackings = []) {
       "recipients.mailId": { $in: mailIdsForLog },
     })
       .select(
-        "companyName bodyText infoContactBodyText linkedinMessageText linkedinInfoContactMessageText pdfAttachment.contentBase64 pdfAttachment.filename cvFileName recipients.mailId recipients.email"
+        "companyName domain targetPosition projectId selectedCategories reanalyzeContext bodyText infoContactBodyText linkedinMessageText linkedinInfoContactMessageText pdfAttachment.contentBase64 pdfAttachment.filename cvFileName recipients.mailId recipients.email"
       )
       .lean();
     for (const log of logs) {
@@ -464,6 +464,7 @@ async function enrichMailTrackingRows(trackings = []) {
         hasStandardLinkedIn: false,
         hasInfoContactLinkedIn: false,
         cvFileName: "",
+        reanalyze: null,
       };
     row.hasCvPdf = summary.hasCvPdf;
     row.hasStandardColdMail = summary.hasStandardColdMail;
@@ -471,6 +472,10 @@ async function enrichMailTrackingRows(trackings = []) {
     row.hasStandardLinkedIn = summary.hasStandardLinkedIn;
     row.hasInfoContactLinkedIn = summary.hasInfoContactLinkedIn;
     row.cvFileName = summary.cvFileName || "";
+    row.reanalyze = summary.reanalyze || null;
+    row.canReanalyze = Boolean(
+      summary.reanalyze?.domain || summary.reanalyze?.companyUrl || row.company
+    );
   }
 
   return rows;
@@ -485,6 +490,7 @@ function summarizeOutreachContent(log) {
     wrapColdEmailForInfoContactInbox,
     wrapLinkedInForGenericInbox,
   } = require("../utils/cold-email-generic-inbox");
+  const { buildReanalyzePayloadFromLog } = require("../utils/reanalyze-context");
 
   let infoBody = String(log?.infoContactBodyText || "").trim();
   if (!infoBody && body && anyInfoOrContactEmail(emails)) {
@@ -521,6 +527,7 @@ function summarizeOutreachContent(log) {
     cvFileName: String(
       log?.cvFileName || log?.pdfAttachment?.filename || ""
     ).trim(),
+    reanalyze: buildReanalyzePayloadFromLog(log),
   };
 }
 
@@ -541,6 +548,49 @@ async function findOutreachLogForTracking(tracking) {
       .lean();
   }
   return null;
+}
+
+/**
+ * Mail takip satırından Company Based yeniden analiz bağlamı.
+ */
+async function getMailTrackingReanalyzeContext(mailId, userId) {
+  const tracking = await MailTracking.findOne({ mailId, userId }).lean();
+  if (!tracking) {
+    return { found: false, error: "Mail tracking bulunamadı." };
+  }
+
+  const log = await findOutreachLogForTracking(tracking);
+  const { buildReanalyzePayloadFromLog, normalizeReanalyzeContext } = require("../utils/reanalyze-context");
+
+  let reanalyze = log ? buildReanalyzePayloadFromLog(log) : null;
+  if (!reanalyze) {
+    reanalyze = normalizeReanalyzeContext(
+      {
+        companyName: tracking.company,
+        targetPosition: tracking.jobTitle,
+        projectId: tracking.projectId,
+      },
+      {}
+    );
+  }
+
+  if (!reanalyze.companyName && tracking.company) {
+    reanalyze.companyName = String(tracking.company || "").trim();
+  }
+  if (!reanalyze.targetPosition && tracking.jobTitle) {
+    reanalyze.targetPosition = String(tracking.jobTitle || "").trim();
+  }
+  if (!reanalyze.projectId && tracking.projectId) {
+    reanalyze.projectId = String(tracking.projectId);
+  }
+
+  const canReanalyze = Boolean(reanalyze.domain || reanalyze.companyUrl);
+  return {
+    found: true,
+    canReanalyze,
+    mailId: tracking.mailId,
+    reanalyze,
+  };
 }
 
 /**
@@ -876,6 +926,7 @@ module.exports = {
   getMailTrackingCvPdf,
   getMailTrackingColdMails,
   getMailTrackingLinkedInMessages,
+  getMailTrackingReanalyzeContext,
   setDeliveryOutcome,
   getTrackingPublicBaseUrl,
   resolveTrackingBaseFromRequest,
