@@ -139,6 +139,9 @@ function normalizeReanalyzeContext(input = {}, fallbacks = {}) {
           skills: Boolean(ai.skills),
         }
       : null,
+    linkedinMessageSnapshot: cleanString(
+      input.linkedinMessageSnapshot || fallbacks.linkedinMessageSnapshot
+    ),
   };
 }
 

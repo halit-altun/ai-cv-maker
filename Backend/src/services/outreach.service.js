@@ -453,7 +453,16 @@ async function sendCompanyOutreachEmailsImpl({
       })
     : "";
 
-  const linkedinStandard = String(linkedinMessageText || "").trim();
+  const linkedinStandard =
+    String(linkedinMessageText || "").trim() ||
+    String(
+      resolvedReanalyzeContext?.linkedinMessageSnapshot ||
+        reanalyzeContext?.linkedinMessageSnapshot ||
+        ""
+    ).trim();
+  if (linkedinStandard && resolvedReanalyzeContext) {
+    resolvedReanalyzeContext.linkedinMessageSnapshot = linkedinStandard;
+  }
   const linkedinInfoContact = linkedinStandard && anyInfoOrContactEmail(list)
     ? wrapLinkedInForGenericInbox({
         bodyText: linkedinStandard,

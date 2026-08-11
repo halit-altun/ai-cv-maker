@@ -507,6 +507,7 @@ async function enrichMailTrackingRows(trackings = []) {
     const fromTracking = summarizeOutreachContent(null, {
       linkedinMessageText: row.linkedinMessageText,
       linkedinInfoContactMessageText: row.linkedinInfoContactMessageText,
+      linkedinMessageSnapshot: row.reanalyze?.linkedinMessageSnapshot,
       recipient: row.recipient,
     });
     const summary = {
@@ -563,7 +564,11 @@ function summarizeOutreachContent(log, trackingFallback = {}) {
     (hasStandardRecipientEmails(emails) || (!hasInfo && Boolean(body)));
 
   const linkedinStandard = String(
-    log?.linkedinMessageText || trackingFallback.linkedinMessageText || ""
+    log?.linkedinMessageText ||
+      trackingFallback.linkedinMessageText ||
+      log?.reanalyzeContext?.linkedinMessageSnapshot ||
+      trackingFallback.linkedinMessageSnapshot ||
+      ""
   ).trim();
   let linkedinInfo = String(
     log?.linkedinInfoContactMessageText ||
@@ -588,12 +593,8 @@ function summarizeOutreachContent(log, trackingFallback = {}) {
   }
 
   const hasInfoLi = Boolean(linkedinInfo);
-  const hasStandardLi =
-    Boolean(linkedinStandard) &&
-    (hasStandardRecipientEmails(emails) ||
-      (!hasInfoLi && Boolean(linkedinStandard)) ||
-      // Mesaj var ama alıcı listesi boş / yalnızca tracking fallback
-      (emails.length === 0 && Boolean(linkedinStandard)));
+  // Mesaj kaydı varsa listede mutlaka LinkedIn butonu göster (alıcı tipine takılma)
+  const hasStandardLi = Boolean(linkedinStandard);
 
   return {
     hasCvPdf: Boolean(log?.pdfAttachment?.contentBase64),
@@ -771,14 +772,16 @@ async function getMailTrackingLinkedInMessages(mailId, userId) {
 
   const {
     anyInfoOrContactEmail,
-    hasStandardRecipientEmails,
     wrapLinkedInForGenericInbox,
     isInfoOrContactEmail,
   } = require("../utils/cold-email-generic-inbox");
 
   const emails = (log?.recipients || []).map((r) => r.email);
   const linkedinStandard = String(
-    (log && log.linkedinMessageText) || tracking.linkedinMessageText || ""
+    (log && log.linkedinMessageText) ||
+      tracking.linkedinMessageText ||
+      (log && log.reanalyzeContext?.linkedinMessageSnapshot) ||
+      ""
   ).trim();
   let linkedinInfo = String(
     (log && log.linkedinInfoContactMessageText) ||
@@ -802,15 +805,10 @@ async function getMailTrackingLinkedInMessages(mailId, userId) {
 
   const hasInfoRecipients =
     anyInfoOrContactEmail(emails) || isInfoOrContactEmail(tracking.recipient);
-  const hasStandardRecipients =
-    hasStandardRecipientEmails(emails) ||
-    (Boolean(tracking.recipient) && !isInfoOrContactEmail(tracking.recipient));
 
-  // Cold mail ile aynı görünürlük: yalnızca info alıcıları → yalnızca info LinkedIn
+  // Mesaj varsa standart butonu her zaman göster
+  const showStandard = Boolean(linkedinStandard);
   const showInfo = Boolean(linkedinInfo) && hasInfoRecipients;
-  const showStandard =
-    Boolean(linkedinStandard) &&
-    (hasStandardRecipients || (!showInfo && Boolean(linkedinStandard)));
 
   return {
     found: true,

@@ -1481,7 +1481,10 @@ export function PreviewStep(props: PreviewStepProps) {
                 color="warning"
                 onClick={() => {
                   props.setError(null);
-                  void props.handleSendCompanyEmail({ forceResend: true });
+                  void props.handleSendCompanyEmail({
+                    forceResend: true,
+                    linkedinMessageOverride: props.linkedinMessage,
+                  });
                 }}
                 disabled={props.outreachSending || props.selectedOutreachRecipients.length === 0}
                 sx={{ textTransform: 'none', fontWeight: 600 }}
@@ -1614,7 +1617,9 @@ export function PreviewStep(props: PreviewStepProps) {
                 }
                 onClick={() => {
                   void (async () => {
-                    await props.handleSendCompanyEmail();
+                    await props.handleSendCompanyEmail({
+                      linkedinMessageOverride: props.linkedinMessage,
+                    });
                     setConfirmOpen(false);
                   })();
                 }}

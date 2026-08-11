@@ -178,7 +178,16 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   const [coverLetterSource, setCoverLetterSource] = useState<'company' | 'text'>('company');
   const [coverLetterRecipientName, setCoverLetterRecipientName] = useState<string>('');
   const [coverLetterCompanyName, setCoverLetterCompanyName] = useState<string>('');
-  const [linkedinMessage, setLinkedinMessage] = useState('');
+  const [linkedinMessage, setLinkedinMessageState] = useState('');
+  /** Gönderim anında stale closure olmasın diye senkron kopya */
+  const linkedinMessageRef = useRef('');
+  const setLinkedinMessage = (value: string | ((prev: string) => string)) => {
+    setLinkedinMessageState((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      linkedinMessageRef.current = String(next || '');
+      return next;
+    });
+  };
   const [linkedinMessageLanguage, setLinkedinMessageLanguage] = useState<'turkish' | 'english'>('turkish');
   const [shouldGenerateLinkedInMessage, setShouldGenerateLinkedInMessage] = useState(false);
   const [linkedinMessageSource, setLinkedinMessageSource] = useState<'company' | 'text'>('company');
@@ -1569,7 +1578,11 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       setAnalysisResult(analysis);
       setCoverLetter(shouldGenerateCoverLetter ? generatedCoverLetter : '');
       setCoverLetterLanguage(cvLanguage);
-      setLinkedinMessage(shouldGenerateLinkedInMessage ? generatedLinkedInMessage : '');
+      const linkedinText = shouldGenerateLinkedInMessage
+        ? String(generatedLinkedInMessage || '').trim()
+        : '';
+      linkedinMessageRef.current = linkedinText;
+      setLinkedinMessage(linkedinText);
       setLinkedinMessageLanguage(cvLanguage);
 
       const adaptedCVData: CompanyBasedCVData = {
@@ -1616,7 +1629,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         analysisResult: analysis,
         coverLetter: shouldGenerateCoverLetter ? generatedCoverLetter : undefined,
         linkedinMessage: shouldGenerateLinkedInMessage
-          ? generatedLinkedInMessage
+          ? linkedinText || generatedLinkedInMessage
           : undefined,
         analysisPreferences: {
           targetPosition: sanitizeRoleTitle(targetPosition) || undefined,
@@ -1745,10 +1758,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           bodyOverride: bundle.coldEmail.body,
           subjectOverride: bundle.coldEmail.subject,
           cvDataOverride: adaptedCVData,
-          // setState henüz flush olmadan gönderildiği için LinkedIn’i override ile ver
-          linkedinMessageOverride: shouldGenerateLinkedInMessage
-            ? String(generatedLinkedInMessage || '').trim()
-            : undefined,
+          linkedinMessageOverride: linkedinText || undefined,
         });
       }
     } catch (err) {
@@ -2125,10 +2135,11 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         projectId: selectedOutreachProjectId,
         linkedinMessageText: (() => {
           const fromOverride = String(opts?.linkedinMessageOverride || '').trim();
+          const fromRef = String(linkedinMessageRef.current || '').trim();
           const fromState = String(linkedinMessage || '').trim();
           const fromCv = String(cvDataForSend?.linkedinMessage || '').trim();
-          const text = fromOverride || fromState || fromCv;
-          // Metin varsa kaydet (flag kapalı olsa bile — boş sütun bug’ını önler)
+          const text = fromOverride || fromRef || fromState || fromCv;
+          if (text) linkedinMessageRef.current = text;
           return text || undefined;
         })(),
         companyUrl: bestCompanyUrl || undefined,
@@ -2166,6 +2177,13 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           outreachCvAttachmentSource,
           includeCvPhoto,
           aiSettings,
+          linkedinMessageSnapshot: (() => {
+            const fromOverride = String(opts?.linkedinMessageOverride || '').trim();
+            const fromRef = String(linkedinMessageRef.current || '').trim();
+            const fromState = String(linkedinMessage || '').trim();
+            const fromCv = String(cvDataForSend?.linkedinMessage || '').trim();
+            return fromOverride || fromRef || fromState || fromCv || '';
+          })(),
         },
       });
       setOutreachSendResult(

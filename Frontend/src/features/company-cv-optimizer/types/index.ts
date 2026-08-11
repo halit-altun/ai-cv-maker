@@ -126,6 +126,7 @@ export interface CompanyCvOptimizerState {
     bodyOverride?: string;
     subjectOverride?: string;
     cvDataOverride?: CompanyBasedCVData | null;
+    linkedinMessageOverride?: string;
     forceResend?: boolean;
   }) => Promise<void>;
   handleRegenerateColdEmail: () => Promise<void>;

@@ -83,6 +83,7 @@ function buildTodoReanalyzeContext(job, item, settings = {}) {
     companyName: item.companyName || "",
     targetPosition: settings.targetPosition || "",
     projectId: job.projectId || null,
+    linkedinMessageSnapshot: String(item.linkedinMessage || "").trim(),
   };
 }
 
