@@ -7,6 +7,10 @@ const {
   companyNameAlignedWithDomain,
   replaceCompanySegmentInPdfFilename,
 } = require("../utils/company-display-name");
+const {
+  classifyMailOpen,
+  decideMailOpenUpdate,
+} = require("../utils/mail-open-classifier");
 
 function domainFromRecipientEmail(recipient) {
   const email = String(recipient || "").trim().toLowerCase();
@@ -68,6 +72,7 @@ async function createMailTracking({
 
 /**
  * Mail açılışını kaydet (pixel tetiklendi)
+ * Prefetch/bot → OPENED sayılmaz; yalnızca insan-benzeri açılış status=OPENED yapar.
  */
 async function recordMailOpen(mailId, { ip, userAgent, referer } = {}) {
   const tracking = await MailTracking.findOne({ mailId });
@@ -79,49 +84,68 @@ async function recordMailOpen(mailId, { ip, userAgent, referer } = {}) {
 
   const now = new Date();
   const sentAt = tracking.sentAt || tracking.createdAt;
-  const openedInSeconds = Math.floor((now - sentAt) / 1000);
+  const openedInSeconds = Math.max(
+    0,
+    Math.floor((now - new Date(sentAt)) / 1000)
+  );
 
-  // Bot detection: 3 saniye içinde açıldıysa muhtemelen bot
-  const isLikelyBot = openedInSeconds < 3;
+  const classification = classifyMailOpen({
+    openedInSeconds,
+    userAgent,
+    ip,
+    referer,
+  });
 
-  // MailOpenEvent kaydet
+  const decision = decideMailOpenUpdate(
+    {
+      status: tracking.status,
+      openedCount: tracking.openedCount,
+      prefetchCount: tracking.prefetchCount,
+      isLikelyBot: tracking.isLikelyBot,
+      firstOpenedAt: tracking.firstOpenedAt,
+      lastOpenedAt: tracking.lastOpenedAt,
+      firstPrefetchAt: tracking.firstPrefetchAt,
+      lastPrefetchAt: tracking.lastPrefetchAt,
+    },
+    classification,
+    now
+  );
+
   const openEvent = new MailOpenEvent({
     mailId,
     ip,
     userAgent,
     referer,
     openedInSeconds,
-    isLikelyBot,
+    isLikelyBot: classification.isLikelyBot,
+    classificationReason: classification.reason,
+    countedAsHuman: decision.countedAsHuman,
   });
 
   await openEvent.save();
 
-  // MailTracking güncelle
-  tracking.openedCount += 1;
-  tracking.status = "OPENED";
-
-  if (!tracking.firstOpenedAt) {
-    tracking.firstOpenedAt = now;
-  }
-
-  tracking.lastOpenedAt = now;
-
-  // İlk açılış bot ise işaretle
-  if (tracking.openedCount === 1 && isLikelyBot) {
-    tracking.isLikelyBot = true;
-  }
+  tracking.openedCount = decision.openedCount;
+  tracking.prefetchCount = decision.prefetchCount;
+  tracking.status = decision.status;
+  tracking.isLikelyBot = decision.isLikelyBot;
+  tracking.firstOpenedAt = decision.firstOpenedAt || undefined;
+  tracking.lastOpenedAt = decision.lastOpenedAt || undefined;
+  tracking.firstPrefetchAt = decision.firstPrefetchAt || undefined;
+  tracking.lastPrefetchAt = decision.lastPrefetchAt || undefined;
 
   await tracking.save();
 
   console.log(
-    `[MAIL_TRACKING] Recorded open: ${mailId} | count: ${tracking.openedCount} | bot: ${isLikelyBot} | ${openedInSeconds}s`
+    `[MAIL_TRACKING] Recorded open: ${mailId} | human=${decision.countedAsHuman} | opened=${tracking.openedCount} | prefetch=${tracking.prefetchCount} | reason=${classification.reason} | ${openedInSeconds}s`
   );
 
   return {
     found: true,
     tracking,
     openEvent,
-    isLikelyBot,
+    isLikelyBot: classification.isLikelyBot,
+    countedAsHuman: decision.countedAsHuman,
+    classification,
   };
 }
 

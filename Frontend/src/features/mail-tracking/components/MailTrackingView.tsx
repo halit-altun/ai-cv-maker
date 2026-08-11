@@ -624,7 +624,20 @@ export function MailTrackingView() {
                     </ButtonGroup>
                   </TableCell>
                   <TableCell>
-                    {row.status === 'OPENED' ? `✅ ${row.openedCount} kez` : '—'}
+                    {row.status === 'OPENED' ? (
+                      `✅ ${row.openedCount} kez`
+                    ) : Number(row.prefetchCount || 0) > 0 || row.isLikelyBot ? (
+                      <Tooltip title="Gmail/Outlook/güvenlik proxy pixel’i çekti — insan okuması sayılmaz (aynı dakika false positive)">
+                        <Chip
+                          size="small"
+                          color="warning"
+                          variant="outlined"
+                          label={`Ön yükleme ${row.prefetchCount || 1}×`}
+                        />
+                      </Tooltip>
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell>{formatDateTime(row.sentAt || row.createdAt)}</TableCell>
                   <TableCell>{formatDateTime(row.firstOpenedAt)}</TableCell>
@@ -804,6 +817,14 @@ export function MailTrackingView() {
                 {selected.status === 'OPENED' && (
                   <Chip size="small" label={`Opened: ✅ (${selected.openedCount} kez)`} color="success" />
                 )}
+                {(Number(selected.prefetchCount || 0) > 0 || selected.isLikelyBot) && (
+                  <Chip
+                    size="small"
+                    color="warning"
+                    variant="outlined"
+                    label={`Ön yükleme/bot: ${selected.prefetchCount || 0}×`}
+                  />
+                )}
               </Stack>
               <Typography variant="body2">
                 <strong>Şirket:</strong> {formatCompanyName(selected.company)}
@@ -881,6 +902,12 @@ export function MailTrackingView() {
                     <Typography variant="caption" color="text.secondary" display="block">
                       {ev.openedInSeconds != null ? `${ev.openedInSeconds}s sonra` : '—'}
                       {ev.ip ? ` · IP: ${ev.ip}` : ''}
+                      {ev.countedAsHuman
+                        ? ' · insan'
+                        : ev.isLikelyBot
+                          ? ' · ön yükleme/bot'
+                          : ''}
+                      {ev.classificationReason ? ` · ${ev.classificationReason}` : ''}
                     </Typography>
                     <Typography
                       variant="caption"
