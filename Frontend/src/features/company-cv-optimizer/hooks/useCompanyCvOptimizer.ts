@@ -230,6 +230,8 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       bodyOverride?: string;
       subjectOverride?: string;
       cvDataOverride?: CompanyBasedCVData | null;
+      linkedinMessageOverride?: string;
+      forceResend?: boolean;
     }) => Promise<void>
   >(async () => undefined);
   const [loading, setLoading] = useState(false);
