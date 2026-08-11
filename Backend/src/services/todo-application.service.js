@@ -1003,9 +1003,7 @@ async function resumeSendOnlyForItem(job, item, settings, user) {
     rawDomainInput: item.emailDomainInput,
     trustedEmail,
     projectId: job.projectId,
-    linkedinMessageText: settings.shouldGenerateLinkedInMessage
-      ? String(item.linkedinMessage || "").trim() || undefined
-      : undefined,
+    linkedinMessageText: String(item.linkedinMessage || "").trim() || undefined,
     companyUrl: item.companyUrl,
     reanalyzeContext: buildTodoReanalyzeContext(job, item, settings),
   });
@@ -1372,9 +1370,7 @@ async function processSingleJobItem(job, item) {
     rawDomainInput: item.emailDomainInput,
     trustedEmail,
     projectId: job.projectId,
-    linkedinMessageText: settings.shouldGenerateLinkedInMessage
-      ? String(item.linkedinMessage || "").trim() || undefined
-      : undefined,
+    linkedinMessageText: String(item.linkedinMessage || "").trim() || undefined,
     companyUrl: item.companyUrl,
     reanalyzeContext: buildTodoReanalyzeContext(job, item, settings),
   });

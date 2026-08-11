@@ -1745,6 +1745,10 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           bodyOverride: bundle.coldEmail.body,
           subjectOverride: bundle.coldEmail.subject,
           cvDataOverride: adaptedCVData,
+          // setState henüz flush olmadan gönderildiği için LinkedIn’i override ile ver
+          linkedinMessageOverride: shouldGenerateLinkedInMessage
+            ? String(generatedLinkedInMessage || '').trim()
+            : undefined,
         });
       }
     } catch (err) {
@@ -1904,6 +1908,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     bodyOverride?: string;
     subjectOverride?: string;
     cvDataOverride?: CompanyBasedCVData | null;
+    linkedinMessageOverride?: string;
     forceResend?: boolean;
   }) => {
     // Çift tıklama / auto-send + manuel yarışı: aynı maili 2 kez göndermeyi engelle
@@ -2118,10 +2123,14 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         forceResend: opts?.forceResend ?? forceOutreachResend,
         pdfAttachment,
         projectId: selectedOutreachProjectId,
-        linkedinMessageText:
-          shouldGenerateLinkedInMessage && linkedinMessage.trim()
-            ? linkedinMessage.trim()
-            : undefined,
+        linkedinMessageText: (() => {
+          const fromOverride = String(opts?.linkedinMessageOverride || '').trim();
+          const fromState = String(linkedinMessage || '').trim();
+          const fromCv = String(cvDataForSend?.linkedinMessage || '').trim();
+          const text = fromOverride || fromState || fromCv;
+          // Metin varsa kaydet (flag kapalı olsa bile — boş sütun bug’ını önler)
+          return text || undefined;
+        })(),
         companyUrl: bestCompanyUrl || undefined,
         reanalyzeContext: {
           companyUrl: bestCompanyUrl || '',

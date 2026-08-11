@@ -519,6 +519,12 @@ async function sendCompanyOutreachEmailsImpl({
           outreachLogId: null,
           projectId: resolvedProjectId || null,
           projectName: resolvedProjectName,
+          linkedinMessageText: linkedinStandard,
+          linkedinInfoContactMessageText:
+            isInfoOrContactEmail(to) && linkedinStandard
+              ? linkedinInfoContact ||
+                wrapLinkedInForGenericInbox({ bodyText: linkedinStandard })
+              : "",
         });
         
         mailId = trackingResult.mailId;
@@ -642,7 +648,17 @@ async function sendCompanyOutreachEmailsImpl({
     if (mailIds.length) {
       await MailTracking.updateMany(
         { mailId: { $in: mailIds } },
-        { $set: { outreachLogId: log._id } }
+        {
+          $set: {
+            outreachLogId: log._id,
+            ...(linkedinStandard
+              ? {
+                  linkedinMessageText: linkedinStandard,
+                  linkedinInfoContactMessageText: linkedinInfoContact,
+                }
+              : {}),
+          },
+        }
       ).catch(() => null);
     }
   }

@@ -27,6 +27,8 @@ async function createMailTracking({
   outreachLogId,
   projectId,
   projectName,
+  linkedinMessageText,
+  linkedinInfoContactMessageText,
 }) {
   const mailId = crypto.randomUUID();
 
@@ -39,6 +41,10 @@ async function createMailTracking({
     subject,
     status: "SENT",
     sentAt: new Date(),
+    linkedinMessageText: String(linkedinMessageText || "").trim(),
+    linkedinInfoContactMessageText: String(
+      linkedinInfoContactMessageText || ""
+    ).trim(),
     outreachLogId,
     projectId: projectId || null,
     projectName: String(projectName || "").trim(),
@@ -49,7 +55,9 @@ async function createMailTracking({
   console.log(
     `[MAIL_TRACKING] Created tracking: ${mailId} | recipient: ${recipient} | company: ${
       company || "-"
-    } | project: ${projectName || projectId || "-"}`
+    } | project: ${projectName || projectId || "-"} | linkedin: ${
+      tracking.linkedinMessageText ? "yes" : "no"
+    }`
   );
 
   return {
@@ -492,18 +500,28 @@ async function enrichMailTrackingRows(trackings = []) {
   }
 
   for (const row of rows) {
-    const summary =
+    const fromLog =
       (row.outreachLogId && contentByLogId.get(String(row.outreachLogId))) ||
       (row.mailId && contentByMailId.get(String(row.mailId))) ||
-      {
-        hasCvPdf: false,
-        hasStandardColdMail: false,
-        hasInfoContactColdMail: false,
-        hasStandardLinkedIn: false,
-        hasInfoContactLinkedIn: false,
-        cvFileName: "",
-        reanalyze: null,
-      };
+      null;
+    const fromTracking = summarizeOutreachContent(null, {
+      linkedinMessageText: row.linkedinMessageText,
+      linkedinInfoContactMessageText: row.linkedinInfoContactMessageText,
+      recipient: row.recipient,
+    });
+    const summary = {
+      hasCvPdf: Boolean(fromLog?.hasCvPdf),
+      hasStandardColdMail: Boolean(fromLog?.hasStandardColdMail),
+      hasInfoContactColdMail: Boolean(fromLog?.hasInfoContactColdMail),
+      hasStandardLinkedIn: Boolean(
+        fromLog?.hasStandardLinkedIn || fromTracking.hasStandardLinkedIn
+      ),
+      hasInfoContactLinkedIn: Boolean(
+        fromLog?.hasInfoContactLinkedIn || fromTracking.hasInfoContactLinkedIn
+      ),
+      cvFileName: fromLog?.cvFileName || "",
+      reanalyze: fromLog?.reanalyze || null,
+    };
     row.hasCvPdf = summary.hasCvPdf;
     row.hasStandardColdMail = summary.hasStandardColdMail;
     row.hasInfoContactColdMail = summary.hasInfoContactColdMail;
@@ -519,7 +537,7 @@ async function enrichMailTrackingRows(trackings = []) {
   return rows;
 }
 
-function summarizeOutreachContent(log) {
+function summarizeOutreachContent(log, trackingFallback = {}) {
   const body = String(log?.bodyText || "").trim();
   const emails = (log?.recipients || []).map((r) => r.email || r);
   const {
@@ -527,6 +545,7 @@ function summarizeOutreachContent(log) {
     hasStandardRecipientEmails,
     wrapColdEmailForInfoContactInbox,
     wrapLinkedInForGenericInbox,
+    isInfoOrContactEmail,
   } = require("../utils/cold-email-generic-inbox");
   const { buildReanalyzePayloadFromLog } = require("../utils/reanalyze-context");
 
@@ -543,9 +562,26 @@ function summarizeOutreachContent(log) {
     Boolean(body) &&
     (hasStandardRecipientEmails(emails) || (!hasInfo && Boolean(body)));
 
-  const linkedinStandard = String(log?.linkedinMessageText || "").trim();
-  let linkedinInfo = String(log?.linkedinInfoContactMessageText || "").trim();
+  const linkedinStandard = String(
+    log?.linkedinMessageText || trackingFallback.linkedinMessageText || ""
+  ).trim();
+  let linkedinInfo = String(
+    log?.linkedinInfoContactMessageText ||
+      trackingFallback.linkedinInfoContactMessageText ||
+      ""
+  ).trim();
   if (!linkedinInfo && linkedinStandard && anyInfoOrContactEmail(emails)) {
+    linkedinInfo = wrapLinkedInForGenericInbox({
+      bodyText: linkedinStandard,
+    });
+  }
+  // Tracking satırı tek alıcı: log yokken / alıcı listesi boşken fallback
+  if (
+    !linkedinInfo &&
+    linkedinStandard &&
+    trackingFallback.recipient &&
+    isInfoOrContactEmail(trackingFallback.recipient)
+  ) {
     linkedinInfo = wrapLinkedInForGenericInbox({
       bodyText: linkedinStandard,
     });
@@ -554,7 +590,10 @@ function summarizeOutreachContent(log) {
   const hasInfoLi = Boolean(linkedinInfo);
   const hasStandardLi =
     Boolean(linkedinStandard) &&
-    (hasStandardRecipientEmails(emails) || (!hasInfoLi && Boolean(linkedinStandard)));
+    (hasStandardRecipientEmails(emails) ||
+      (!hasInfoLi && Boolean(linkedinStandard)) ||
+      // Mesaj var ama alıcı listesi boş / yalnızca tracking fallback
+      (emails.length === 0 && Boolean(linkedinStandard)));
 
   return {
     hasCvPdf: Boolean(log?.pdfAttachment?.contentBase64),
@@ -565,7 +604,7 @@ function summarizeOutreachContent(log) {
     cvFileName: String(
       log?.cvFileName || log?.pdfAttachment?.filename || ""
     ).trim(),
-    reanalyze: buildReanalyzePayloadFromLog(log),
+    reanalyze: log ? buildReanalyzePayloadFromLog(log) : null,
   };
 }
 
@@ -729,32 +768,43 @@ async function getMailTrackingLinkedInMessages(mailId, userId) {
   if (!tracking) return { found: false, error: "Mail tracking bulunamadı." };
 
   const log = await findOutreachLogForTracking(tracking);
-  if (!log) {
-    return {
-      found: true,
-      standardBody: "",
-      infoContactBody: "",
-      company: tracking.company || "",
-    };
-  }
 
   const {
     anyInfoOrContactEmail,
     hasStandardRecipientEmails,
     wrapLinkedInForGenericInbox,
+    isInfoOrContactEmail,
   } = require("../utils/cold-email-generic-inbox");
 
-  const emails = (log.recipients || []).map((r) => r.email);
-  const linkedinStandard = String(log.linkedinMessageText || "").trim();
-  let linkedinInfo = String(log.linkedinInfoContactMessageText || "").trim();
+  const emails = (log?.recipients || []).map((r) => r.email);
+  const linkedinStandard = String(
+    (log && log.linkedinMessageText) || tracking.linkedinMessageText || ""
+  ).trim();
+  let linkedinInfo = String(
+    (log && log.linkedinInfoContactMessageText) ||
+      tracking.linkedinInfoContactMessageText ||
+      ""
+  ).trim();
   if (!linkedinInfo && linkedinStandard && anyInfoOrContactEmail(emails)) {
     linkedinInfo = wrapLinkedInForGenericInbox({
       bodyText: linkedinStandard,
     });
   }
+  if (
+    !linkedinInfo &&
+    linkedinStandard &&
+    isInfoOrContactEmail(tracking.recipient)
+  ) {
+    linkedinInfo = wrapLinkedInForGenericInbox({
+      bodyText: linkedinStandard,
+    });
+  }
 
-  const hasInfoRecipients = anyInfoOrContactEmail(emails);
-  const hasStandardRecipients = hasStandardRecipientEmails(emails);
+  const hasInfoRecipients =
+    anyInfoOrContactEmail(emails) || isInfoOrContactEmail(tracking.recipient);
+  const hasStandardRecipients =
+    hasStandardRecipientEmails(emails) ||
+    (Boolean(tracking.recipient) && !isInfoOrContactEmail(tracking.recipient));
 
   // Cold mail ile aynı görünürlük: yalnızca info alıcıları → yalnızca info LinkedIn
   const showInfo = Boolean(linkedinInfo) && hasInfoRecipients;
@@ -767,8 +817,8 @@ async function getMailTrackingLinkedInMessages(mailId, userId) {
     standardBody: showStandard ? linkedinStandard : "",
     infoContactBody: showInfo ? linkedinInfo : "",
     company: resolveCompanyDisplayName({
-      name: tracking.company || log.companyName,
-      domain: log.domain,
+      name: tracking.company || log?.companyName,
+      domain: log?.domain,
     }),
   };
 }

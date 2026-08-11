@@ -60,6 +60,9 @@ const mailTrackingSchema = new mongoose.Schema(
     },
     // Metadata
     subject: String,
+    /** Gönderim anı LinkedIn snapshot (Mail Takip — OutreachLog bağımsız) */
+    linkedinMessageText: { type: String, default: "" },
+    linkedinInfoContactMessageText: { type: String, default: "" },
     sentAt: {
       type: Date,
       default: Date.now,
