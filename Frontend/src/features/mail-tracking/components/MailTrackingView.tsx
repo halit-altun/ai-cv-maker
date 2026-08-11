@@ -140,6 +140,7 @@ export function MailTrackingView() {
   const [stats, setStats] = useState<MailTrackingStats | null>(null);
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
 
+  const [recipientFilter, setRecipientFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'' | MailTrackingStatus>('');
   const [projectFilter, setProjectFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
@@ -150,7 +151,13 @@ export function MailTrackingView() {
     skip,
     limit,
     buildTablePaginationProps,
-  } = useServerListPagination([statusFilter, projectFilter, companyFilter, sentDateFilter]);
+  } = useServerListPagination([
+    recipientFilter,
+    statusFilter,
+    projectFilter,
+    companyFilter,
+    sentDateFilter,
+  ]);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -172,13 +179,15 @@ export function MailTrackingView() {
     setError(null);
     try {
       const listFilters = {
+        recipient: recipientFilter.trim() || undefined,
         status: statusFilter || undefined,
         projectId: projectFilter || undefined,
         company: companyFilter.trim() || undefined,
         date: sentDateFilter || undefined,
       };
-      /** Özet kartları: tarih/proje/şirket; statü kırılımları bozulmasın diye status yok */
+      /** Özet kartları: mail/tarih/proje/şirket; statü kırılımları bozulmasın diye status yok */
       const statsFilters = {
+        recipient: recipientFilter.trim() || undefined,
         projectId: projectFilter || undefined,
         company: companyFilter.trim() || undefined,
         date: sentDateFilter || undefined,
@@ -206,7 +215,7 @@ export function MailTrackingView() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, projectFilter, companyFilter, sentDateFilter, limit, skip]);
+  }, [recipientFilter, statusFilter, projectFilter, companyFilter, sentDateFilter, limit, skip]);
 
   useEffect(() => {
     void loadData();
@@ -472,7 +481,17 @@ export function MailTrackingView() {
         </Stack>
       )}
 
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} flexWrap="wrap" useFlexGap>
+        <TextField
+          size="small"
+          label="Mail ara"
+          value={recipientFilter}
+          onChange={(e) => setRecipientFilter(e.target.value)}
+          placeholder="hi@rubyroidlabs.com"
+          sx={{ minWidth: { xs: '100%', md: 280 }, flex: { md: '1 1 280px' } }}
+          helperText="Alıcı e-posta (kısmi eşleşme)"
+        />
+
         <FormControl size="small" sx={{ minWidth: 160 }}>
           <InputLabel>Statü</InputLabel>
           <Select

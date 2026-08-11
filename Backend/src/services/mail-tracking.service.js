@@ -153,14 +153,19 @@ function parseSentDayBounds(dateStr) {
   return { start, end };
 }
 
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Liste / istatistik için ortak filtre sorgusu
  */
 function buildMailTrackingQuery(
   userId,
-  { status, projectId, company, date, startDate, endDate } = {}
+  { status, projectId, company, recipient, date, startDate, endDate } = {}
 ) {
   const query = { userId };
+  const andParts = [];
 
   if (status) {
     query.status = status;
@@ -171,21 +176,30 @@ function buildMailTrackingQuery(
   }
 
   if (company) {
-    query.company = { $regex: String(company), $options: "i" };
+    query.company = { $regex: escapeRegex(company), $options: "i" };
+  }
+
+  const recipientQ = String(recipient || "").trim();
+  if (recipientQ) {
+    andParts.push({
+      recipient: { $regex: escapeRegex(recipientQ), $options: "i" },
+    });
   }
 
   // Tek gün (date) veya aralık — gönderim tarihi (sentAt); yoksa createdAt
   const day = parseSentDayBounds(date);
   if (day) {
-    query.$or = [
-      { sentAt: { $gte: day.start, $lte: day.end } },
-      {
-        $and: [
-          { $or: [{ sentAt: null }, { sentAt: { $exists: false } }] },
-          { createdAt: { $gte: day.start, $lte: day.end } },
-        ],
-      },
-    ];
+    andParts.push({
+      $or: [
+        { sentAt: { $gte: day.start, $lte: day.end } },
+        {
+          $and: [
+            { $or: [{ sentAt: null }, { sentAt: { $exists: false } }] },
+            { createdAt: { $gte: day.start, $lte: day.end } },
+          ],
+        },
+      ],
+    });
   } else if (startDate || endDate) {
     const range = {};
     if (startDate) {
@@ -196,15 +210,23 @@ function buildMailTrackingQuery(
       const e = parseSentDayBounds(String(endDate).slice(0, 10));
       range.$lte = e ? e.end : new Date(endDate);
     }
-    query.$or = [
-      { sentAt: range },
-      {
-        $and: [
-          { $or: [{ sentAt: null }, { sentAt: { $exists: false } }] },
-          { createdAt: range },
-        ],
-      },
-    ];
+    andParts.push({
+      $or: [
+        { sentAt: range },
+        {
+          $and: [
+            { $or: [{ sentAt: null }, { sentAt: { $exists: false } }] },
+            { createdAt: range },
+          ],
+        },
+      ],
+    });
+  }
+
+  if (andParts.length === 1) {
+    Object.assign(query, andParts[0]);
+  } else if (andParts.length > 1) {
+    query.$and = andParts;
   }
 
   return query;
@@ -223,12 +245,13 @@ async function countDistinctCompanies(query) {
  */
 async function getMailTrackingStatsSummary(
   userId,
-  { status, projectId, company, date, startDate, endDate } = {}
+  { status, projectId, company, recipient, date, startDate, endDate } = {}
 ) {
   const base = buildMailTrackingQuery(userId, {
     status,
     projectId,
     company,
+    recipient,
     date,
     startDate,
     endDate,
@@ -755,12 +778,23 @@ async function getMailTrackingLinkedInMessages(mailId, userId) {
  */
 async function getUserMailTrackings(
   userId,
-  { limit = 50, skip = 0, status, projectId, company, date, startDate, endDate } = {}
+  {
+    limit = 50,
+    skip = 0,
+    status,
+    projectId,
+    company,
+    recipient,
+    date,
+    startDate,
+    endDate,
+  } = {}
 ) {
   const query = buildMailTrackingQuery(userId, {
     status,
     projectId,
     company,
+    recipient,
     date,
     startDate,
     endDate,

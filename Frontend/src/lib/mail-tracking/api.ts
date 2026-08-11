@@ -92,6 +92,8 @@ export type MailTrackingListFilters = {
   status?: string;
   projectId?: string;
   company?: string;
+  /** Alıcı e-posta (kısmi eşleşme: hi@rubyroidlabs.com) */
+  recipient?: string;
   /** Tek gün (YYYY-MM-DD) — gönderim tarihi */
   date?: string;
   startDate?: string;
@@ -108,6 +110,7 @@ export async function listMailTrackingsRequest(params?: MailTrackingListFilters 
   if (params?.status) qs.set('status', params.status);
   if (params?.projectId) qs.set('projectId', params.projectId);
   if (params?.company) qs.set('company', params.company);
+  if (params?.recipient) qs.set('recipient', params.recipient);
   if (params?.date) qs.set('date', params.date);
   if (params?.startDate) qs.set('startDate', params.startDate);
   if (params?.endDate) qs.set('endDate', params.endDate);
@@ -175,6 +178,7 @@ export async function getMailTrackingStatsRequest(
   if (filters?.projectId) qs.set('projectId', filters.projectId);
   if (filters?.status) qs.set('status', filters.status);
   if (filters?.company) qs.set('company', filters.company);
+  if (filters?.recipient) qs.set('recipient', filters.recipient);
   if (filters?.date) qs.set('date', filters.date);
   if (filters?.startDate) qs.set('startDate', filters.startDate);
   if (filters?.endDate) qs.set('endDate', filters.endDate);

@@ -20,16 +20,17 @@ router.use(requireAuth, requireClientId);
 /**
  * Mail tracking istatistikleri
  * GET /api/mail-tracking/stats/summary
- * Query: projectId, status, company, date, startDate, endDate (liste ile aynı filtreler)
+ * Query: projectId, status, company, recipient, date, startDate, endDate (liste ile aynı filtreler)
  */
 router.get("/stats/summary", async (req, res, next) => {
   try {
-    const { projectId, status, company, date, startDate, endDate } = req.query;
+    const { projectId, status, company, recipient, date, startDate, endDate } = req.query;
 
     const stats = await getMailTrackingStatsSummary(req.user.id, {
       projectId: projectId || undefined,
       status: status || undefined,
       company: company || undefined,
+      recipient: recipient || undefined,
       date: date || undefined,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
@@ -50,8 +51,17 @@ router.get("/stats/summary", async (req, res, next) => {
  */
 router.get("/", async (req, res, next) => {
   try {
-    const { limit = 50, skip = 0, status, projectId, company, date, startDate, endDate } =
-      req.query;
+    const {
+      limit = 50,
+      skip = 0,
+      status,
+      projectId,
+      company,
+      recipient,
+      date,
+      startDate,
+      endDate,
+    } = req.query;
 
     const result = await getUserMailTrackings(req.user.id, {
       limit: Number(limit) || 50,
@@ -59,6 +69,7 @@ router.get("/", async (req, res, next) => {
       status: status || undefined,
       projectId: projectId || undefined,
       company: company || undefined,
+      recipient: recipient || undefined,
       date: date || undefined,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
