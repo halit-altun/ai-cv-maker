@@ -16,15 +16,6 @@ const mailOpenEventSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    /** ultra_fast | ua_proxy_or_scanner | prefetch_window | human_likely | ... */
-    classificationReason: {
-      type: String,
-      default: "",
-    },
-    countedAsHuman: {
-      type: Boolean,
-      default: false,
-    },
   },
   {
     timestamps: true,

@@ -38,15 +38,8 @@ const mailTrackingSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    /** Pixel prefetch / scanner (insan sayılmaz) */
-    prefetchCount: {
-      type: Number,
-      default: 0,
-    },
     firstOpenedAt: Date,
     lastOpenedAt: Date,
-    firstPrefetchAt: Date,
-    lastPrefetchAt: Date,
     isLikelyBot: {
       type: Boolean,
       default: false,

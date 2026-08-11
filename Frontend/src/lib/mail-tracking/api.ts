@@ -11,11 +11,8 @@ export type MailTrackingItem = {
   subject?: string;
   status: MailTrackingStatus;
   openedCount: number;
-  prefetchCount?: number;
   firstOpenedAt?: string | null;
   lastOpenedAt?: string | null;
-  firstPrefetchAt?: string | null;
-  lastPrefetchAt?: string | null;
   isLikelyBot?: boolean;
   deliveryOutcome?: 'unknown' | 'inbox' | 'spam';
   deliveryOutcomeAt?: string | null;
@@ -74,8 +71,6 @@ export type MailOpenEvent = {
   referer?: string;
   openedInSeconds?: number;
   isLikelyBot?: boolean;
-  classificationReason?: string;
-  countedAsHuman?: boolean;
   createdAt?: string;
 };
 
