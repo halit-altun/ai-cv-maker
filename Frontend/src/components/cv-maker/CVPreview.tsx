@@ -5,7 +5,6 @@ import {
   Box,
   Typography,
   Paper,
-  Divider,
   Chip,
   Stack,
   Button
@@ -56,8 +55,11 @@ import {
   CV_PHOTO_FRAME_COLOR,
   CV_PHOTO_FRAME_WIDTH_PT,
   CV_IDENTITY_BEFORE_CONTACT_PT,
-  CV_PAGE_PADDING_X_PT,
-  CV_PAGE_PADDING_Y_PT,
+  CV_PAGE_PADDING_X_PX,
+  CV_PAGE_PADDING_TOP_CSS,
+  CV_PAGE_PADDING_BOTTOM_PX,
+  CV_SECTION_GAP_PT,
+  CV_ITEM_GAP_PT,
 } from './cvPhoto';
 
 /** İletişim rozetleriyle aynı arka plan */
@@ -267,10 +269,10 @@ const formatLinkedInDisplayUrl = (url: string) => {
             width: '210mm',
             minHeight: '297mm',
             backgroundColor: '#ffffff',
-            paddingTop: `${CV_PAGE_PADDING_Y_PT}pt`,
-            paddingBottom: `${CV_PAGE_PADDING_Y_PT}pt`,
-            paddingLeft: `${CV_PAGE_PADDING_X_PT}pt`,
-            paddingRight: `${CV_PAGE_PADDING_X_PT}pt`,
+            paddingTop: CV_PAGE_PADDING_TOP_CSS,
+            paddingBottom: `${CV_PAGE_PADDING_BOTTOM_PX}px`,
+            paddingLeft: `${CV_PAGE_PADDING_X_PX}px`,
+            paddingRight: `${CV_PAGE_PADDING_X_PX}px`,
             marginBottom: '20px',
             position: 'relative',
             boxSizing: 'border-box',
@@ -286,10 +288,10 @@ const formatLinkedInDisplayUrl = (url: string) => {
             '@media print': {
               boxShadow: 'none',
               margin: 0,
-              paddingTop: `${CV_PAGE_PADDING_Y_PT}pt`,
-              paddingBottom: `${CV_PAGE_PADDING_Y_PT}pt`,
-              paddingLeft: `${CV_PAGE_PADDING_X_PT}pt`,
-              paddingRight: `${CV_PAGE_PADDING_X_PT}pt`,
+              paddingTop: CV_PAGE_PADDING_TOP_CSS,
+              paddingBottom: `${CV_PAGE_PADDING_BOTTOM_PX}px`,
+              paddingLeft: `${CV_PAGE_PADDING_X_PX}px`,
+              paddingRight: `${CV_PAGE_PADDING_X_PX}px`,
               marginBottom: 0,
             },
             '& .MuiTypography-h4': {
@@ -386,7 +388,7 @@ const formatLinkedInDisplayUrl = (url: string) => {
       <Box
         className="section-item"
         sx={{
-          mb: 2,
+          mb: `${CV_SECTION_GAP_PT}pt`,
           position: 'relative',
           textAlign: 'center',
         }}
@@ -603,28 +605,43 @@ const formatLinkedInDisplayUrl = (url: string) => {
         </Box>
       </Box>
 
-      <Divider sx={{ my: 1.25 }} />
-
       {/* Hakkımda */}
       {data.about && (
-        <>
-          <Box className="section-item" sx={{ mb: 2 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: '#1a1a1a' }}>
+          <Box
+            className="section-item"
+            sx={{ mb: `${CV_SECTION_GAP_PT}pt` }}
+          >
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+                mb: '6pt',
+                pb: '2pt',
+                borderBottom: '1px solid #333',
+                color: '#1a1a1a',
+              }}
+            >
               Hakkımda
             </Typography>
             <Typography variant="body2" sx={{ textAlign: 'left', lineHeight: 1.6, color: '#333' }}>
               {data.about}
             </Typography>
           </Box>
-          <Divider sx={{ my: 1.25 }} />
-        </>
       )}
 
       {/* İş Deneyimi */}
       {data.workExperience.length > 0 && (
-        <>
-          <Box className="section-item" sx={{ mb: 2 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
+          <Box sx={{ mb: `${CV_SECTION_GAP_PT}pt` }}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+                mb: '6pt',
+                pb: '2pt',
+                borderBottom: '1px solid #333',
+                color: '#1a1a1a',
+              }}
+            >
               İş Deneyimi
             </Typography>
             {data.workExperience.map((exp, index) => (
@@ -632,7 +649,7 @@ const formatLinkedInDisplayUrl = (url: string) => {
                 key={exp.id} 
                 className="experience-item"
                 sx={{ 
-                  mb: 2.5,
+                  mb: index === data.workExperience.length - 1 ? 0 : `${CV_ITEM_GAP_PT}pt`,
                 }}
               >
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
@@ -677,19 +694,29 @@ const formatLinkedInDisplayUrl = (url: string) => {
               </Box>
             ))}
           </Box>
-          <Divider sx={{ my: 1.25 }} />
-        </>
       )}
 
         {/* Eğitim */}
       {data.education.length > 0 && (
-        <>
-          <Box className="section-item" sx={{ mb: 2 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
+          <Box sx={{ mb: `${CV_SECTION_GAP_PT}pt` }}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+                mb: '6pt',
+                pb: '2pt',
+                borderBottom: '1px solid #333',
+                color: '#1a1a1a',
+              }}
+            >
               Eğitim
             </Typography>
-            {data.education.map((edu) => (
-              <Box key={edu.id} className="education-item" sx={{ mb: 2.5 }}>
+            {data.education.map((edu, index) => (
+              <Box
+                key={edu.id}
+                className="education-item"
+                sx={{ mb: index === data.education.length - 1 ? 0 : `${CV_ITEM_GAP_PT}pt` }}
+              >
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
                   <Box>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#1a1a1a' }}>
@@ -706,15 +733,21 @@ const formatLinkedInDisplayUrl = (url: string) => {
               </Box>
             ))}
           </Box>
-          <Divider sx={{ my: 1.25 }} />
-        </>
       )}
 
       {/* Beceriler */}
       {data.skills.length > 0 && (
-        <>
-          <Box className="section-item" sx={{ mb: 2 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
+          <Box className="section-item" sx={{ mb: `${CV_SECTION_GAP_PT}pt` }}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+                mb: '6pt',
+                pb: '2pt',
+                borderBottom: '1px solid #333',
+                color: '#1a1a1a',
+              }}
+            >
               Beceriler
             </Typography>
             {skillsStyle === 'badge' ? (
@@ -769,14 +802,21 @@ const formatLinkedInDisplayUrl = (url: string) => {
               </Stack>
             )}
           </Box>
-          <Divider sx={{ my: 1.25 }} />
-        </>
       )}
 
       {/* Diller */}
       {data.languages.length > 0 && (
-        <Box className="section-item" sx={{ mb: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1a1a1a' }}>
+        <Box className="section-item" sx={{ mb: 0 }}>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 700,
+              mb: '6pt',
+              pb: '2pt',
+              borderBottom: '1px solid #333',
+              color: '#1a1a1a',
+            }}
+          >
             Diller
           </Typography>
           {languagesStyle === 'badge' ? (
