@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "node scripts/start-production.js",
     "postinstall": "patch-package",
-    "test": "node scripts/verify-pdf-ligatures.js",
+    "test": "npm run test:pdf-ligatures && npm run test:cv-pagination",
     "test:pdf-ligatures": "node scripts/verify-pdf-ligatures.js",
-    "prebuild": "npm run test:pdf-ligatures"
+    "test:cv-pagination": "node scripts/verify-cv-section-pagination.js",
+    "prebuild": "npm run test"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

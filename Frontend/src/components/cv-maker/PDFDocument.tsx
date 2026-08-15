@@ -26,7 +26,11 @@ import {
 import {
   resolveCvPhotoSizePt,
   CV_PAGE_PADDING_X_PT,
-  CV_PAGE_PADDING_Y_PT,
+  CV_PAGE_PADDING_TOP_PT,
+  CV_PAGE_PADDING_BOTTOM_PT,
+  CV_SECTION_GAP_PT,
+  CV_ITEM_GAP_PT,
+  CV_BULLET_GAP_PT,
   CV_CONTINUATION_PAGE_TOP_PT,
   CV_PHOTO_FRAME_COLOR,
   CV_PHOTO_FRAME_WIDTH_PT,
@@ -35,6 +39,15 @@ import {
   CV_PHOTO_PAGE_LEFT_PT,
   CV_PHOTO_PAGE_TOP_PT,
 } from './cvPhoto';
+
+import { PdfFlowGap, withFlowGaps } from './pdf/PdfFlowGap';
+import {
+  CV_BADGE_ROW_GAP_PT,
+  canRenderAtomically,
+  chunkBadgeLabels,
+  estimateBadgeSectionHeightPt,
+  estimateTextSectionHeightPt,
+} from './pdf/pdfPagination';
 
 /** MUI @mui/icons-material ile aynı path'ler — PDF'te önizleme ikonlarıyla uyumlu */
 const PDF_ICON_PATHS = {
@@ -132,15 +145,19 @@ const createStyles = (
 ) =>
   StyleSheet.create({
     page: {
-      padding: 0,
+      paddingTop: 0,
+      paddingLeft: 0,
+      paddingRight: 0,
+      /** Her sayfada alt boşluk — wrap motoru bu alanı rezerv eder */
+      paddingBottom: CV_PAGE_PADDING_BOTTOM_PT,
       fontSize: bodyPt,
       fontFamily: 'Calibri',
       position: 'relative',
     },
-    /** Same insets as preview `.cv-page` (Y: 20mm, X: 54pt) */
+    /** Same insets as preview `.cv-page` (top/X); bottom Page üzerinde */
     pageContent: {
-      paddingTop: CV_PAGE_PADDING_Y_PT,
-      paddingBottom: CV_PAGE_PADDING_Y_PT,
+      paddingTop: CV_PAGE_PADDING_TOP_PT,
+      paddingBottom: 0,
       paddingLeft: CV_PAGE_PADDING_X_PT,
       paddingRight: CV_PAGE_PADDING_X_PT,
     },
@@ -149,8 +166,9 @@ const createStyles = (
       height: CV_CONTINUATION_PAGE_TOP_PT,
       width: '100%',
     },
+    /** Bloklar arası boşluk PdfFlowGap ile verilir; marginBottom kullanılmaz */
     header: {
-      marginBottom: 12,
+      marginBottom: 0,
       textAlign: 'center',
       position: 'relative',
     },
@@ -238,8 +256,13 @@ const createStyles = (
       color: PDF_ACCENT_BLUE,
       textDecoration: 'none',
     },
+    /**
+     * Bölüm kutusu — alt boşluk YOK.
+     * marginBottom, react-pdf `endOfPresence` hesabına girip sığan bölümü
+     * sonraki sayfaya attırır; boşluk PdfFlowGap ile bölümlerin arasına konur.
+     */
     section: {
-      marginBottom: 10,
+      marginBottom: 0,
     },
     sectionTitle: {
       fontSize: headingPt,
@@ -255,7 +278,7 @@ const createStyles = (
       textAlign: 'left',
     },
     experienceItem: {
-      marginBottom: 12,
+      marginBottom: 0,
       minHeight: 0,
     },
     experienceHeader: {
@@ -285,10 +308,12 @@ const createStyles = (
     bulletPoint: {
       fontSize: bodyPt,
       marginLeft: 15,
-      marginBottom: 3,
+    },
+    bulletPointWrap: {
+      marginBottom: 0,
     },
     educationItem: {
-      marginBottom: 12,
+      marginBottom: 0,
     },
     educationHeader: {
       flexDirection: 'row',
@@ -299,10 +324,11 @@ const createStyles = (
       fontSize: skillsPt,
       lineHeight: 1.5,
     },
-    skillsRow: {
+    /** flexWrap yok — satırlar chunkBadgeLabels ile önceden bölünür */
+    skillsBadgeRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 5,
+      flexWrap: 'nowrap',
+      marginBottom: 0,
     },
     skillBadge: {
       backgroundColor: PDF_CONTACT_FIELD_BG,
@@ -311,6 +337,16 @@ const createStyles = (
       paddingLeft: 7,
       paddingRight: 7,
       borderRadius: 4,
+      marginRight: 5,
+    },
+    skillBadgeLastInRow: {
+      backgroundColor: PDF_CONTACT_FIELD_BG,
+      paddingTop: 3,
+      paddingBottom: 3,
+      paddingLeft: 7,
+      paddingRight: 7,
+      borderRadius: 4,
+      marginRight: 0,
     },
     skillBadgeText: {
       fontSize: skillsPt,
@@ -429,11 +465,14 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({
   languagesStyle = 'plain',
 }) => {
   const { personalInfo, about, workExperience, education, skills, languages } = data;
+  const bodyPt = clampCvBodyFontSize(bodyFontSize);
+  const skillsPt = clampCvSkillsFontSize(skillsFontSize);
+  const headingPt = clampCvHeadingFontSize(headingFontSize);
   const styles = createStyles(
-    clampCvBodyFontSize(bodyFontSize),
-    clampCvHeadingFontSize(headingFontSize),
+    bodyPt,
+    headingPt,
     clampCvJobTitleFontSize(jobTitleFontSize),
-    clampCvSkillsFontSize(skillsFontSize),
+    skillsPt,
     clampCvNameFontSize(nameFontSize),
     clampCvProfileTitleFontSize(profileTitleFontSize)
   );
@@ -524,6 +563,175 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({
     1
   );
 
+  const skillLabels = skills.filter((skill) => skill.trim());
+  const skillBadgeRows = chunkBadgeLabels(skillLabels, skillsPt);
+  const languageLabels = languages
+    .filter((lang) => lang.language)
+    .map((lang) => `${lang.language} (${lang.level})`);
+  const languageBadgeRows = chunkBadgeLabels(languageLabels, bodyPt);
+
+  /** Badge satırları: her satır bölünmez; satır arası boşluk spacer ile */
+  const renderBadgeRows = (
+    rows: string[][],
+    keyPrefix: string,
+    textStyle: typeof styles.skillBadgeText
+  ) =>
+    withFlowGaps(
+      rows.map((row, rowIndex) => (
+        <View key={`${keyPrefix}-row-${rowIndex}`} style={styles.skillsBadgeRow} wrap={false}>
+          {row.map((label, index) => (
+            <View
+              key={`${label}-${index}`}
+              style={index === row.length - 1 ? styles.skillBadgeLastInRow : styles.skillBadge}
+            >
+              <Text style={textStyle}>{label}</Text>
+            </View>
+          ))}
+        </View>
+      )),
+      CV_BADGE_ROW_GAP_PT,
+      `${keyPrefix}-row-gap`
+    );
+
+  /**
+   * Bölüm bütün halinde mi taşınacak?
+   * Tek sayfaya sığan bölümlere wrap={false} verilir → sığmıyorsa tamamı
+   * sonraki sayfaya geçer, sığıyorsa kesinlikle bulunduğu sayfada kalır.
+   * Sayfadan uzun bölümler doğal akışta parçalanır (taşma / kırpılma olmaz).
+   */
+  const isAboutAtomic = canRenderAtomically(
+    estimateTextSectionHeightPt(about ?? '', headingPt, bodyPt, 1.5)
+  );
+  const isSkillsAtomic = canRenderAtomically(
+    skillsStyle === 'badge'
+      ? estimateBadgeSectionHeightPt(skillBadgeRows.length, headingPt, skillsPt)
+      : estimateTextSectionHeightPt(skillLabels.join(' - '), headingPt, skillsPt, 1.5)
+  );
+  const isLanguagesAtomic = canRenderAtomically(
+    languagesStyle === 'badge'
+      ? estimateBadgeSectionHeightPt(languageBadgeRows.length, headingPt, bodyPt)
+      : estimateTextSectionHeightPt(languageLabels.join(' - '), headingPt, bodyPt, 1.5)
+  );
+
+  /**
+   * Akış blokları — aralarındaki sabit boşluk withFlowGaps ile eklenir.
+   * Hiçbir blokta marginBottom veya minPresenceAhead kullanılmaz.
+   * Gerekçe: ./pdf/pdfPagination.ts
+   */
+  const flowBlocks: React.ReactNode[] = [
+    <View key="header" style={styles.header} wrap={false}>
+      {headerInner}
+    </View>,
+  ];
+
+  if (about) {
+    flowBlocks.push(
+      <View key="about" style={styles.section} wrap={!isAboutAtomic}>
+        <Text style={styles.sectionTitle}>{getSectionTitle('Hakkımda')}</Text>
+        <Text style={styles.text}>{about}</Text>
+      </View>
+    );
+  }
+
+  if (workExperience.length > 0) {
+    flowBlocks.push(
+      <View key="work-experience" style={styles.section}>
+        {withFlowGaps(
+          workExperience.map((exp, expIndex) => {
+            const bullets = exp.bulletPoints.filter((bp) => bp.trim());
+            return (
+              <View key={exp.id} style={styles.experienceItem}>
+                {/* Başlık + şirket satırı hiçbir zaman ayrılmaz */}
+                <View wrap={false}>
+                  {expIndex === 0 ? (
+                    <Text style={styles.sectionTitle}>{getSectionTitle('İş Deneyimi')}</Text>
+                  ) : null}
+                  <View style={styles.experienceHeader}>
+                    <Text style={styles.experienceTitle}>{exp.position}</Text>
+                    <Text style={styles.experienceDate}>
+                      {formatDate(exp.startDate, isEnglish)} - {formatDate(exp.endDate, isEnglish)}
+                    </Text>
+                  </View>
+                  <Text style={styles.experienceCompany}>
+                    {exp.company}
+                    {(exp.city || exp.country) &&
+                      ` | ${exp.city && exp.country ? `${exp.city}, ${exp.country}` : exp.city || exp.country}`}
+                  </Text>
+                </View>
+                {withFlowGaps(
+                  bullets.map((bullet, idx) => (
+                    <View key={idx} style={styles.bulletPointWrap}>
+                      <Text style={styles.bulletPoint} wrap={false}>
+                        • {bullet}
+                      </Text>
+                    </View>
+                  )),
+                  CV_BULLET_GAP_PT,
+                  `bullet-gap-${exp.id}`
+                )}
+              </View>
+            );
+          }),
+          CV_ITEM_GAP_PT,
+          'experience-gap'
+        )}
+      </View>
+    );
+  }
+
+  if (education.length > 0) {
+    flowBlocks.push(
+      <View key="education" style={styles.section}>
+        {withFlowGaps(
+          education.map((edu, eduIndex) => (
+            <View key={edu.id} style={styles.educationItem} wrap={false}>
+              {eduIndex === 0 ? (
+                <Text style={styles.sectionTitle}>{getSectionTitle('Eğitim')}</Text>
+              ) : null}
+              <View style={styles.educationHeader}>
+                <View>
+                  <Text style={styles.educationTitle}>{edu.university}</Text>
+                  <Text style={styles.text}>{edu.department}</Text>
+                </View>
+                <Text style={styles.experienceDate}>
+                  {formatDate(edu.startDate, isEnglish)} - {formatDate(edu.endDate, isEnglish)}
+                </Text>
+              </View>
+            </View>
+          )),
+          CV_ITEM_GAP_PT,
+          'education-gap'
+        )}
+      </View>
+    );
+  }
+
+  if (skillLabels.length > 0) {
+    flowBlocks.push(
+      <View key="skills" style={styles.section} wrap={!isSkillsAtomic}>
+        <Text style={styles.sectionTitle}>{getSectionTitle('Beceriler')}</Text>
+        {skillsStyle === 'badge' ? (
+          renderBadgeRows(skillBadgeRows, 'skill', styles.skillBadgeText)
+        ) : (
+          <Text style={styles.skillsContainer}>{skillLabels.join(' - ')}</Text>
+        )}
+      </View>
+    );
+  }
+
+  if (languageLabels.length > 0) {
+    flowBlocks.push(
+      <View key="languages" style={styles.section} wrap={!isLanguagesAtomic}>
+        <Text style={styles.sectionTitle}>{getSectionTitle('Diller')}</Text>
+        {languagesStyle === 'badge' ? (
+          renderBadgeRows(languageBadgeRows, 'lang', styles.languageBadgeText)
+        ) : (
+          <Text style={styles.languagesContainer}>{languageLabels.join(' - ')}</Text>
+        )}
+      </View>
+    );
+  }
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -569,133 +777,7 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({
           <Text style={styles.titleCentered}>{personalInfo.title}</Text>
         </View>
 
-        <View style={styles.pageContent}>
-          <View style={styles.header} wrap={false}>
-            {headerInner}
-          </View>
-
-        {/* About */}
-        {about && (
-          <View style={styles.section} wrap={false}>
-            <Text style={styles.sectionTitle}>{getSectionTitle('Hakkımda')}</Text>
-            <Text style={styles.text}>{about}</Text>
-          </View>
-        )}
-
-        {/* Work Experience */}
-        {workExperience.length > 0 && (
-          <View style={styles.section}>
-            <View wrap={false}>
-              <Text style={styles.sectionTitle}>{getSectionTitle('İş Deneyimi')}</Text>
-              <View style={styles.experienceItem} wrap={false}>
-                <View style={styles.experienceHeader}>
-                  <Text style={styles.experienceTitle}>{workExperience[0].position}</Text>
-                  <Text style={styles.experienceDate}>
-                    {formatDate(workExperience[0].startDate, isEnglish)} - {formatDate(workExperience[0].endDate, isEnglish)}
-                  </Text>
-                </View>
-                <Text style={styles.experienceCompany}>
-                  {workExperience[0].company}
-                  {(workExperience[0].city || workExperience[0].country) &&
-                    ` | ${workExperience[0].city && workExperience[0].country ? `${workExperience[0].city}, ${workExperience[0].country}` : workExperience[0].city || workExperience[0].country}`
-                  }
-                </Text>
-                {workExperience[0].bulletPoints.filter(bp => bp.trim()).map((bullet, idx) => (
-                  <Text key={idx} style={styles.bulletPoint}>• {bullet}</Text>
-                ))}
-              </View>
-            </View>
-            {workExperience.slice(1).map((exp) => (
-              <View
-                key={exp.id}
-                style={styles.experienceItem}
-                wrap={false}
-              >
-                <View style={styles.experienceHeader}>
-                  <Text style={styles.experienceTitle}>{exp.position}</Text>
-                  <Text style={styles.experienceDate}>
-                    {formatDate(exp.startDate, isEnglish)} - {formatDate(exp.endDate, isEnglish)}
-                  </Text>
-                </View>
-                <Text style={styles.experienceCompany}>
-                  {exp.company}
-                  {(exp.city || exp.country) &&
-                    ` | ${exp.city && exp.country ? `${exp.city}, ${exp.country}` : exp.city || exp.country}`
-                  }
-                </Text>
-                {exp.bulletPoints.filter(bp => bp.trim()).map((bullet, idx) => (
-                  <Text key={idx} style={styles.bulletPoint}>• {bullet}</Text>
-                ))}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Education */}
-        {education.length > 0 && (
-          <View style={styles.section} wrap={false}>
-            <Text style={styles.sectionTitle}>{getSectionTitle('Eğitim')}</Text>
-            {education.map((edu) => (
-              <View key={edu.id} style={styles.educationItem} wrap={false}>
-                <View style={styles.educationHeader}>
-                  <View>
-                    <Text style={styles.educationTitle}>{edu.university}</Text>
-                    <Text style={styles.text}>{edu.department}</Text>
-                  </View>
-                  <Text style={styles.experienceDate}>
-                    {formatDate(edu.startDate, isEnglish)} - {formatDate(edu.endDate, isEnglish)}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Skills */}
-        {skills.length > 0 && (
-          <View style={styles.section} wrap={false}>
-            <Text style={styles.sectionTitle}>{getSectionTitle('Beceriler')}</Text>
-            {skillsStyle === 'badge' ? (
-              <View style={styles.skillsRow}>
-                {skills.map((skill, index) => (
-                  <View key={`${skill}-${index}`} style={styles.skillBadge}>
-                    <Text style={styles.skillBadgeText}>{skill}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <Text style={styles.skillsContainer}>{skills.join(' - ')}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Languages */}
-        {languages.length > 0 && (
-          <View style={styles.section} wrap={false}>
-            <Text style={styles.sectionTitle}>{getSectionTitle('Diller')}</Text>
-            {languagesStyle === 'badge' ? (
-              <View style={styles.skillsRow}>
-                {languages
-                  .filter((lang) => lang.language)
-                  .map((lang, index) => (
-                    <View key={lang.id || index} style={styles.skillBadge}>
-                      <Text style={styles.languageBadgeText}>
-                        {lang.language} ({lang.level})
-                      </Text>
-                    </View>
-                  ))}
-              </View>
-            ) : (
-              <Text style={styles.languagesContainer}>
-                {languages
-                  .filter((lang) => lang.language)
-                  .map((lang) => `${lang.language} (${lang.level})`)
-                  .join(' - ')}
-              </Text>
-            )}
-          </View>
-        )}
-        </View>
+        <View style={styles.pageContent}>{withFlowGaps(flowBlocks, CV_SECTION_GAP_PT, 'section-gap')}</View>
       </Page>
     </Document>
   );
