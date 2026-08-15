@@ -14,8 +14,14 @@ export const CV_PHOTO_SIZE_DEFAULT_PT = CV_PHOTO_SIZE_PT;
 export const CV_PHOTO_SIZE_MIN_PT = CV_PHOTO_SIZE_PT;
 export const CV_PHOTO_SIZE_MAX_PT = CV_PHOTO_SIZE_PT;
 
-/** Match preview `.cv-page` padding: 20mm */
-export const CV_PAGE_PADDING_PT = Math.round((20 * 72) / 25.4); // ≈ 57
+/** Vertical page padding (top/bottom): 20mm — matches preview `.cv-page` */
+export const CV_PAGE_PADDING_Y_PT = Math.round((20 * 72) / 25.4); // ≈ 57
+
+/** Horizontal page padding (left/right) from text edge — 54pt */
+export const CV_PAGE_PADDING_X_PT = 54;
+
+/** @deprecated use CV_PAGE_PADDING_Y_PT — kept for vertical photo/page top math */
+export const CV_PAGE_PADDING_PT = CV_PAGE_PADDING_Y_PT;
 
 /**
  * 2. (ve sonraki) sayfada akan içeriğin üst boşluğu.
@@ -46,11 +52,11 @@ export const CV_PHOTO_GAP_PT = -(CV_PHOTO_SIZE_PT - CV_PHOTO_BOTTOM_ALIGN_PT);
  */
 export const CV_PHOTO_LEFT_PT = 0;
 
-/** PDF page-absolute left (matches preview: padding + content left). */
-export const CV_PHOTO_PAGE_LEFT_PT = CV_PAGE_PADDING_PT + CV_PHOTO_LEFT_PT;
+/** PDF page-absolute left (matches preview: horizontal padding + content left). */
+export const CV_PHOTO_PAGE_LEFT_PT = CV_PAGE_PADDING_X_PT + CV_PHOTO_LEFT_PT;
 
-/** PDF page-absolute top (matches preview: padding + negative header offset). */
-export const CV_PHOTO_PAGE_TOP_PT = CV_PAGE_PADDING_PT + CV_PHOTO_GAP_PT;
+/** PDF page-absolute top (matches preview: vertical padding + negative header offset). */
+export const CV_PHOTO_PAGE_TOP_PT = CV_PAGE_PADDING_Y_PT + CV_PHOTO_GAP_PT;
 
 /** Same blue as CV title / profile title */
 export const CV_PHOTO_FRAME_COLOR = '#2c5aa0';

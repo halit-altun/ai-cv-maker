@@ -76,6 +76,8 @@ import {
   CV_PHOTO_FRAME_COLOR,
   CV_PHOTO_FRAME_WIDTH_PT,
   CV_IDENTITY_BEFORE_CONTACT_PT,
+  CV_PAGE_PADDING_X_PT,
+  CV_PAGE_PADDING_Y_PT,
 } from '../cv-maker/cvPhoto';
 import { CompanyBasedCVData } from '@/lib/company-based-cv-editor/types';
 import { CompanyBasedCVService } from '@/lib/company-based-cv-editor/service';
@@ -649,7 +651,10 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
             width: '210mm',
             minHeight: '297mm',
             backgroundColor: '#ffffff',
-            padding: '20mm',
+            paddingTop: `${CV_PAGE_PADDING_Y_PT}pt`,
+            paddingBottom: `${CV_PAGE_PADDING_Y_PT}pt`,
+            paddingLeft: `${CV_PAGE_PADDING_X_PT}pt`,
+            paddingRight: `${CV_PAGE_PADDING_X_PT}pt`,
             marginBottom: '20px',
             position: 'relative',
             boxSizing: 'border-box',
@@ -665,7 +670,10 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
             '@media print': {
               boxShadow: 'none',
               margin: 0,
-              padding: '15mm',
+              paddingTop: `${CV_PAGE_PADDING_Y_PT}pt`,
+              paddingBottom: `${CV_PAGE_PADDING_Y_PT}pt`,
+              paddingLeft: `${CV_PAGE_PADDING_X_PT}pt`,
+              paddingRight: `${CV_PAGE_PADDING_X_PT}pt`,
               marginBottom: 0,
             },
             '& .MuiTypography-h4': {

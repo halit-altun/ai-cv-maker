@@ -56,6 +56,8 @@ import {
   CV_PHOTO_FRAME_COLOR,
   CV_PHOTO_FRAME_WIDTH_PT,
   CV_IDENTITY_BEFORE_CONTACT_PT,
+  CV_PAGE_PADDING_X_PT,
+  CV_PAGE_PADDING_Y_PT,
 } from './cvPhoto';
 
 /** İletişim rozetleriyle aynı arka plan */
@@ -265,7 +267,10 @@ const formatLinkedInDisplayUrl = (url: string) => {
             width: '210mm',
             minHeight: '297mm',
             backgroundColor: '#ffffff',
-            padding: '20mm',
+            paddingTop: `${CV_PAGE_PADDING_Y_PT}pt`,
+            paddingBottom: `${CV_PAGE_PADDING_Y_PT}pt`,
+            paddingLeft: `${CV_PAGE_PADDING_X_PT}pt`,
+            paddingRight: `${CV_PAGE_PADDING_X_PT}pt`,
             marginBottom: '20px',
             position: 'relative',
             boxSizing: 'border-box',
@@ -281,7 +286,10 @@ const formatLinkedInDisplayUrl = (url: string) => {
             '@media print': {
               boxShadow: 'none',
               margin: 0,
-              padding: '15mm',
+              paddingTop: `${CV_PAGE_PADDING_Y_PT}pt`,
+              paddingBottom: `${CV_PAGE_PADDING_Y_PT}pt`,
+              paddingLeft: `${CV_PAGE_PADDING_X_PT}pt`,
+              paddingRight: `${CV_PAGE_PADDING_X_PT}pt`,
               marginBottom: 0,
             },
             '& .MuiTypography-h4': {

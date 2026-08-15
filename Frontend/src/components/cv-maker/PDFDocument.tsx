@@ -25,7 +25,8 @@ import {
 } from './cvTypography';
 import {
   resolveCvPhotoSizePt,
-  CV_PAGE_PADDING_PT,
+  CV_PAGE_PADDING_X_PT,
+  CV_PAGE_PADDING_Y_PT,
   CV_CONTINUATION_PAGE_TOP_PT,
   CV_PHOTO_FRAME_COLOR,
   CV_PHOTO_FRAME_WIDTH_PT,
@@ -136,9 +137,12 @@ const createStyles = (
       fontFamily: 'Calibri',
       position: 'relative',
     },
-    /** Same 20mm inset as preview `.cv-page` */
+    /** Same insets as preview `.cv-page` (Y: 20mm, X: 54pt) */
     pageContent: {
-      padding: CV_PAGE_PADDING_PT,
+      paddingTop: CV_PAGE_PADDING_Y_PT,
+      paddingBottom: CV_PAGE_PADDING_Y_PT,
+      paddingLeft: CV_PAGE_PADDING_X_PT,
+      paddingRight: CV_PAGE_PADDING_X_PT,
     },
     /** 2+ sayfa üst boşluğu (wrap sonrası paddingTop uygulanmadığı için) */
     continuationPageTopSpacer: {
@@ -174,8 +178,8 @@ const createStyles = (
      */
     nameTitleOnPage: {
       position: 'absolute',
-      left: CV_PAGE_PADDING_PT,
-      right: CV_PAGE_PADDING_PT,
+      left: CV_PAGE_PADDING_X_PT,
+      right: CV_PAGE_PADDING_X_PT,
       top: CV_PHOTO_PAGE_TOP_PT,
       height: CV_PHOTO_SIZE_PT,
       justifyContent: 'center',
