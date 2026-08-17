@@ -109,7 +109,7 @@ export interface CompanyOptimizationBundleRequest {
     workExperience: boolean;
     skills: boolean;
   };
-  /** Hakkımda 450–600 / madde 130–150 karaktere çek vs yalnızca KW */
+  /** Hakkımda 300–600 / madde 130–150 karaktere çek vs yalnızca KW */
   cvSectionLengthMode?: 'fit_range' | 'keywords_only';
   manualMustMentionTopics?: string[];
   manualMustNotMentionTopics?: string[];

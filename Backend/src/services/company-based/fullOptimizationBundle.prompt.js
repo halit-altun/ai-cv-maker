@@ -140,7 +140,7 @@ Return ONLY this JSON shape:
     "originalAbout": "",
     "updatedAbout": ${
       lengthMode === "fit_range" && kwAbout
-        ? '"450–600 characters; near-bound fit; preserve original meaning"'
+        ? '"300–600 characters; near-bound fit; preserve original meaning"'
         : '""'
     },
     "originalExperience": "plain text of experiences with • bullets",

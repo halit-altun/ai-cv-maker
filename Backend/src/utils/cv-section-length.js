@@ -5,7 +5,7 @@
 
 const CV_SECTION_LENGTH_MODES = new Set(["fit_range", "keywords_only"]);
 
-const ABOUT_CHAR_MIN = 450;
+const ABOUT_CHAR_MIN = 300;
 const ABOUT_CHAR_MAX = 600;
 const BULLET_CHAR_MIN = 130;
 const BULLET_CHAR_MAX = 150;
@@ -29,7 +29,7 @@ function buildCvSectionLengthPromptAddon({ mode, kwAbout, kwExp }) {
   const aboutBlock = kwAbout
     ? `HAKKIMDA (about=YES) — CHARACTERS including spaces/punctuation (JS string.length):
    Hard band: ${ABOUT_CHAR_MIN}–${ABOUT_CHAR_MAX} characters. Range WINS over KW weaving.
-   - If original about is SHORTER than ${ABOUT_CHAR_MIN} (e.g. 350): expand to AT LEAST ${ABOUT_CHAR_MIN} and a little above (aim ${ABOUT_CHAR_MIN}–${ABOUT_CHAR_MIN + 50}). Do NOT stretch toward ${ABOUT_CHAR_MAX}. Do not invent jobs, employers, metrics, skills, or tools. Expand only by completing existing ideas with natural phrasing already implied by the CV (same stack, same role, same outcomes).
+   - If original about is SHORTER than ${ABOUT_CHAR_MIN} (e.g. 200): expand to AT LEAST ${ABOUT_CHAR_MIN} and a little above (aim ${ABOUT_CHAR_MIN}–${ABOUT_CHAR_MIN + 50}). Do NOT stretch toward ${ABOUT_CHAR_MAX}. Do not invent jobs, employers, metrics, skills, or tools. Expand only by completing existing ideas with natural phrasing already implied by the CV (same stack, same role, same outcomes).
    - If original about is LONGER than ${ABOUT_CHAR_MAX}: compress to ${ABOUT_CHAR_MAX} or slightly below (aim ${ABOUT_CHAR_MAX - 40}–${ABOUT_CHAR_MAX}). Do NOT collapse toward ${ABOUT_CHAR_MIN}. Keep all core facts/tech/metrics; cut only redundancy/filler.
    - If original is already ${ABOUT_CHAR_MIN}–${ABOUT_CHAR_MAX}: stay inside the band. Weave KWs only if they still fit; if not, skip KW rather than leaving the band.
    - KW may or may not be added — the finished about MUST be ${ABOUT_CHAR_MIN}–${ABOUT_CHAR_MAX} when about=YES.`
