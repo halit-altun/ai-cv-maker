@@ -48,6 +48,7 @@ import {
 } from '@mui/icons-material';
 import { pdf } from '@react-pdf/renderer';
 import PDFDocument from '../cv-maker/PDFDocument';
+import { prepareCvDataForPdf } from '../cv-maker/sanitizeCvDataForPdf';
 import {
   CV_FONT_FAMILY,
   DEFAULT_CV_BODY_FONT_SIZE,
@@ -273,6 +274,10 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [isTranslating, setIsTranslating] = React.useState(false);
   const [isEnglish, setIsEnglish] = React.useState(cvLanguage === 'english');
+
+  React.useEffect(() => {
+    setIsEnglish(cvLanguage === 'english');
+  }, [cvLanguage]);
   const resolvedBodyFontSize = clampCvBodyFontSize(bodyFontSize);
   const resolvedHeadingFontSize = clampCvHeadingFontSize(headingFontSize);
   const resolvedJobTitleFontSize = clampCvJobTitleFontSize(jobTitleFontSize);
@@ -372,11 +377,11 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
     
     try {
       console.log('PDF oluşturuluyor...');
+      const safeData = await prepareCvDataForPdf(data);
       
-      // PDF document oluştur
       const blob = await pdf(
         <PDFDocument
-          data={data}
+          data={safeData}
           isEnglish={isEnglish}
           bodyFontSize={resolvedBodyFontSize}
           headingFontSize={resolvedHeadingFontSize}
@@ -413,7 +418,39 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
       console.log('PDF başarıyla indirildi!');
     } catch (error) {
       console.error('PDF oluşturma hatası:', error);
-      alert('PDF oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.');
+      try {
+        const fallbackData = await prepareCvDataForPdf({
+          ...data,
+          personalInfo: { ...data.personalInfo, includePhoto: false, photoUrl: '' },
+        });
+        const blob = await pdf(
+          <PDFDocument
+            data={fallbackData}
+            isEnglish={isEnglish}
+            bodyFontSize={resolvedBodyFontSize}
+            headingFontSize={resolvedHeadingFontSize}
+            jobTitleFontSize={resolvedJobTitleFontSize}
+            skillsFontSize={resolvedSkillsFontSize}
+            nameFontSize={resolvedNameFontSize}
+            profileTitleFontSize={resolvedProfileTitleFontSize}
+            skillsStyle="badge"
+            languagesStyle="badge"
+          />
+        ).toBlob();
+        const companyName = data.companyInfo?.name ? data.companyInfo.name.replace(/[^a-zA-Z0-9]/g, '_') : 'Company';
+        const fileName = `${data.personalInfo.firstName || 'CV'}_${data.personalInfo.lastName || 'Resume'}_${companyName}.pdf`;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 100);
+      } catch (retryError) {
+        console.error('PDF yeniden deneme hatası:', retryError);
+        alert('PDF oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.');
+      }
     } finally {
       setIsGenerating(false);
     }

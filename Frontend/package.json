@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "node scripts/start-production.js",
     "postinstall": "patch-package",
-    "test": "npm run test:pdf-ligatures && npm run test:cv-pagination",
+    "test": "npm run test:pdf-ligatures && npm run test:cv-pagination && npm run test:company-cv-pdf",
     "test:pdf-ligatures": "node scripts/verify-pdf-ligatures.js",
     "test:cv-pagination": "node scripts/verify-cv-section-pagination.js",
+    "test:company-cv-pdf": "npx --yes tsx scripts/verify-company-cv-pdf.ts",
     "prebuild": "npm run test"
   },
   "dependencies": {

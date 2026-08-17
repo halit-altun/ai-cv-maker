@@ -76,6 +76,7 @@ ${(p.pageText || "").slice(0, 10000) || "(empty)"}
 
   const prompt = `
 You are a CV optimizer. Do EVERYTHING in ONE JSON response. Output language for CV/adapted text: ${lang}.
+LANGUAGE LOCK (CRITICAL): parsedCV and analysis adapted fields (about, experience, skills, languages, titles) MUST be entirely in ${lang}. The company website / job-ad language MUST NOT change the CV language. If ${lang} is Turkish, never switch headings or body to English (no "About Me", no English about/experience). If ${lang} is English, never switch CV body to Turkish.
 
 CV TEXT:
 ${request.cvText}

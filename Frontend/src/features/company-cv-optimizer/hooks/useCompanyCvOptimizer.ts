@@ -262,7 +262,12 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   const [skillsFontSize, setSkillsFontSize] = useState<CvSkillsFontSize>(
     DEFAULT_CV_SKILLS_FONT_SIZE
   );
-  const [cvLanguage, setCvLanguage] = useState<'turkish' | 'english'>('turkish');
+  const [cvLanguage, setCvLanguageState] = useState<'turkish' | 'english'>('turkish');
+  const cvLanguageTouchedRef = useRef(false);
+  const setCvLanguage = (lang: 'turkish' | 'english') => {
+    cvLanguageTouchedRef.current = true;
+    setCvLanguageState(lang);
+  };
   const [includeCvPhoto, setIncludeCvPhoto] = useState(false);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
   const [cvRestoredFromCache, setCvRestoredFromCache] = useState(false);
@@ -389,7 +394,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         const cached = await loadCachedCompanyCvPdf();
         if (cancelled || !cached) return;
         setCvFile(cached.file);
-        setCvLanguage(cached.cvLanguage);
+        if (!cvLanguageTouchedRef.current) {
+          setCvLanguageState(cached.cvLanguage);
+        }
         setCvRestoredFromCache(true);
       } catch (err) {
         console.warn('Kayıtlı CV yüklenemedi:', err);
@@ -538,10 +545,15 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         if (cancelled) return;
         if (cached?.file) {
           setCvFile((prev) => prev || cached.file);
-          setCvLanguage(cached.cvLanguage);
+          if (!cvLanguageTouchedRef.current) {
+            setCvLanguageState(cached.cvLanguage);
+          }
           setCvRestoredFromCache(true);
-        } else if (prefs.cvLanguage === 'english' || prefs.cvLanguage === 'turkish') {
-          setCvLanguage(prefs.cvLanguage);
+        } else if (
+          !cvLanguageTouchedRef.current &&
+          (prefs.cvLanguage === 'english' || prefs.cvLanguage === 'turkish')
+        ) {
+          setCvLanguageState(prefs.cvLanguage);
         }
 
         writeClientUiPreferencesLocalCache(prefs);
@@ -550,8 +562,11 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         const local = readClientUiPreferencesLocalCache();
         if (local && !cancelled) {
           applyPrefs(local);
-          if (local.cvLanguage === 'english' || local.cvLanguage === 'turkish') {
-            setCvLanguage(local.cvLanguage);
+          if (
+            !cvLanguageTouchedRef.current &&
+            (local.cvLanguage === 'english' || local.cvLanguage === 'turkish')
+          ) {
+            setCvLanguageState(local.cvLanguage);
           }
         } else if (!cancelled) {
           // Eski localStorage anahtarı
@@ -1619,9 +1634,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           photoSizePt: CV_PHOTO_SIZE_PT,
         },
         about: (() => {
-          const originalAbout = parsedCVData.about || '';
+          const originalAbout = String(parsedCVData.about || '');
           if (!aiSettings.about) return originalAbout;
-          const updated = analysis.updatedAbout || '';
+          const updated = String(analysis.updatedAbout || '');
           if (!updated.trim()) return originalAbout;
           const o = countWords(originalAbout);
           const u = countWords(updated);

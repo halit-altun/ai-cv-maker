@@ -76,11 +76,11 @@ function normalizeReanalyzeContext(input = {}, fallbacks = {}) {
     pageType: cleanString(input.pageType || fallbacks.pageType || "homepage") || "homepage",
     pageTypeOther: cleanString(input.pageTypeOther || fallbacks.pageTypeOther),
     cvLanguage:
-      input.cvLanguage === "english" || fallbacks.cvLanguage === "english"
-        ? "english"
-        : input.cvLanguage || fallbacks.cvLanguage
-          ? "turkish"
-          : "",
+      input.cvLanguage === "english" || input.cvLanguage === "turkish"
+        ? input.cvLanguage
+        : fallbacks.cvLanguage === "english" || fallbacks.cvLanguage === "turkish"
+          ? fallbacks.cvLanguage
+          : "turkish",
     outreachEmailLanguageMode: ["auto", "turkish", "english"].includes(
       String(input.outreachEmailLanguageMode || fallbacks.outreachEmailLanguageMode || "")
     )

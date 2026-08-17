@@ -48,6 +48,7 @@ import {
   estimateBadgeSectionHeightPt,
   estimateTextSectionHeightPt,
 } from './pdf/pdfPagination';
+import { sanitizeCvDataForPdf } from './sanitizeCvDataForPdf';
 
 /** MUI @mui/icons-material ile aynı path'ler — PDF'te önizleme ikonlarıyla uyumlu */
 const PDF_ICON_PATHS = {
@@ -77,48 +78,60 @@ const PdfContactIcon = ({ pathD }: { pathD: string }) => (
   </Svg>
 );
 
+/** Tarayıcıda origin URL, Node (pipeline/test) içinde public/fonts dosya yolu. */
+function pdfFontSrc(filename: string): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/fonts/${filename}`;
+  }
+  const cwd = typeof process !== 'undefined' ? process.cwd() : '';
+  const sep = cwd.includes('\\') ? '\\' : '/';
+  const nested = `${cwd}${sep}Frontend${sep}public${sep}fonts${sep}${filename}`;
+  const local = `${cwd}${sep}public${sep}fonts${sep}${filename}`;
+  return cwd.replace(/[/\\]+$/, '').endsWith('Frontend') ? local : nested;
+}
+
 // Calibri ile metrik uyumlu, açık lisanslı Carlito dosyalarını Calibri ailesi
 // olarak kaydet. Böylece PDF çıktısı platformdan bağımsız ve ATS uyumlu kalır.
 Font.register({
   family: 'Calibri',
   fonts: [
     {
-      src: '/fonts/Carlito-Regular.ttf',
+      src: pdfFontSrc('Carlito-Regular.ttf'),
       fontWeight: 300,
       fontStyle: 'normal',
     },
     {
-      src: '/fonts/Carlito-Italic.ttf',
+      src: pdfFontSrc('Carlito-Italic.ttf'),
       fontWeight: 300,
       fontStyle: 'italic',
     },
     {
-      src: '/fonts/Carlito-Regular.ttf',
+      src: pdfFontSrc('Carlito-Regular.ttf'),
       fontWeight: 400,
       fontStyle: 'normal',
     },
     {
-      src: '/fonts/Carlito-Italic.ttf',
+      src: pdfFontSrc('Carlito-Italic.ttf'),
       fontWeight: 400,
       fontStyle: 'italic',
     },
     {
-      src: '/fonts/Carlito-Regular.ttf',
+      src: pdfFontSrc('Carlito-Regular.ttf'),
       fontWeight: 500,
       fontStyle: 'normal',
     },
     {
-      src: '/fonts/Carlito-Italic.ttf',
+      src: pdfFontSrc('Carlito-Italic.ttf'),
       fontWeight: 500,
       fontStyle: 'italic',
     },
     {
-      src: '/fonts/Carlito-Bold.ttf',
+      src: pdfFontSrc('Carlito-Bold.ttf'),
       fontWeight: 700,
       fontStyle: 'normal',
     },
     {
-      src: '/fonts/Carlito-BoldItalic.ttf',
+      src: pdfFontSrc('Carlito-BoldItalic.ttf'),
       fontWeight: 700,
       fontStyle: 'italic',
     },
@@ -464,7 +477,8 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({
   skillsStyle = 'plain',
   languagesStyle = 'plain',
 }) => {
-  const { personalInfo, about, workExperience, education, skills, languages } = data;
+  const { personalInfo, about, workExperience, education, skills, languages } =
+    sanitizeCvDataForPdf(data);
   const bodyPt = clampCvBodyFontSize(bodyFontSize);
   const skillsPt = clampCvSkillsFontSize(skillsFontSize);
   const headingPt = clampCvHeadingFontSize(headingFontSize);
@@ -478,7 +492,11 @@ const PDFDocument: React.FC<PDFDocumentProps> = ({
   );
 
   const locationLine = [personalInfo.city, personalInfo.country].filter(Boolean).join(', ');
-  const showPhoto = Boolean(personalInfo.includePhoto && personalInfo.photoUrl);
+  const showPhoto = Boolean(
+    personalInfo.includePhoto &&
+      personalInfo.photoUrl &&
+      personalInfo.photoUrl.startsWith('data:image')
+  );
   const photoSizePt = resolveCvPhotoSizePt(personalInfo);
 
   // Başlık çevirileri

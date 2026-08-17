@@ -21,6 +21,7 @@ import {
 
 import { pdf } from '@react-pdf/renderer';
 import PDFDocument from './PDFDocument';
+import { prepareCvDataForPdf } from './sanitizeCvDataForPdf';
 import { WorkExperienceItem } from './WorkExperience';
 import { EducationItem } from './Education';
 import { LanguageItem } from './Languages';
@@ -184,11 +185,12 @@ const formatLinkedInDisplayUrl = (url: string) => {
     
     try {
       console.log('PDF oluşturuluyor...');
+      const safeData = await prepareCvDataForPdf(data);
       
       // PDF document oluştur
       const blob = await pdf(
         <PDFDocument
-          data={data}
+          data={safeData}
           isEnglish={isEnglish}
           bodyFontSize={resolvedBodyFontSize}
           headingFontSize={resolvedHeadingFontSize}

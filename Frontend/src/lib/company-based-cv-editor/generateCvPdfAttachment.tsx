@@ -1,5 +1,6 @@
 import { pdf } from '@react-pdf/renderer';
 import PDFDocument from '@/components/cv-maker/PDFDocument';
+import { prepareCvDataForPdf } from '@/components/cv-maker/sanitizeCvDataForPdf';
 import type {
   CvBodyFontSize,
   CvHeadingFontSize,
@@ -59,9 +60,10 @@ export async function generateOptimizedCvPdfAttachment(
   data: CompanyBasedCVData,
   options?: OptimizedCvPdfFontOptions & { isEnglish?: boolean }
 ): Promise<{ filename: string; contentBase64: string; contentType: string }> {
+  const safeData = await prepareCvDataForPdf(data);
   const blob = await pdf(
     <PDFDocument
-      data={data}
+      data={safeData}
       isEnglish={Boolean(options?.isEnglish)}
       bodyFontSize={options?.bodyFontSize}
       headingFontSize={options?.headingFontSize}
