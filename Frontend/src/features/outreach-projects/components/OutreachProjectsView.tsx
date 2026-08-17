@@ -85,15 +85,6 @@ function statusLabel(status: string): string {
   }
 }
 
-function isMailLogStatus(status: string): boolean {
-  return (
-    status === 'success' ||
-    status === 'partial' ||
-    status === 'failed' ||
-    status === 'verify_failed'
-  );
-}
-
 function rangeLabel(
   preset: string,
   from?: string | null,
@@ -578,33 +569,22 @@ export function OutreachProjectsView() {
                         Son: {formatDateTime(company.lastActivityAt)}
                       </Typography>
                       <Box sx={{ flexGrow: 1 }} />
-                      {company.canDelete !== false && (
-                        <Tooltip title="Firmayı projeden sil">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            aria-label="Firmayı sil"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCompanyDeleteTarget({
-                                domain: company.domain,
-                                companyName: company.companyName || company.domain,
-                              });
-                            }}
-                          >
-                            <DeleteOutlineIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      {company.canDelete === false && (
-                        <Tooltip title="Sadece analiz — silinemez">
-                          <span>
-                            <IconButton size="small" disabled aria-label="Silinemez">
-                              <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                      )}
+                      <Tooltip title="Firmayı projeden sil">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          aria-label="Firmayı sil"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCompanyDeleteTarget({
+                              domain: company.domain,
+                              companyName: company.companyName || company.domain,
+                            });
+                          }}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
@@ -665,34 +645,24 @@ export function OutreachProjectsView() {
                               {log.errorMessage || log.subject || log.targetPosition || '—'}
                             </TableCell>
                             <TableCell align="right">
-                              {isMailLogStatus(log.status) ? (
-                                <Tooltip title="Bu kaydı sil">
-                                  <IconButton
-                                    size="small"
-                                    color="error"
-                                    aria-label="Kaydı sil"
-                                    onClick={() =>
-                                      setLogDeleteTarget({
-                                        logId: log.id,
-                                        companyName: company.companyName || company.domain,
-                                        domain: company.domain,
-                                        status: log.status,
-                                        sentAt: log.sentAt,
-                                      })
-                                    }
-                                  >
-                                    <DeleteOutlineIcon fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              ) : (
-                                <Tooltip title="Analiz kaydı silinemez">
-                                  <span>
-                                    <IconButton size="small" disabled aria-label="Silinemez">
-                                      <DeleteOutlineIcon fontSize="small" />
-                                    </IconButton>
-                                  </span>
-                                </Tooltip>
-                              )}
+                              <Tooltip title="Bu kaydı sil">
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  aria-label="Kaydı sil"
+                                  onClick={() =>
+                                    setLogDeleteTarget({
+                                      logId: log.id,
+                                      companyName: company.companyName || company.domain,
+                                      domain: company.domain,
+                                      status: log.status,
+                                      sentAt: log.sentAt,
+                                    })
+                                  }
+                                >
+                                  <DeleteOutlineIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -768,7 +738,7 @@ export function OutreachProjectsView() {
         <DialogContent>
           <Typography variant="body2">
             {companyDeleteTarget
-              ? `"${companyDeleteTarget.companyName}" (@${companyDeleteTarget.domain}) kaydını bu projeden silmek istediğinize emin misiniz? Outreach logları kalıcı olarak silinir.`
+              ? `"${companyDeleteTarget.companyName}" (@${companyDeleteTarget.domain}) kaydını bu projeden silmek istediğinize emin misiniz? Mail ve analiz kayıtları kalıcı olarak silinir.`
               : 'Firmayı projeden silmek istediğinize emin misiniz?'}
           </Typography>
         </DialogContent>
