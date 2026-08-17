@@ -6,16 +6,22 @@ import { SectionHeading } from './common/SectionHeading';
 import { EditorField } from './common/EditorField';
 import { aiCvBuilderCopy } from '../../constants/copy';
 import type { PersonalInfoState } from '../../utils/cvFormUtils';
-import { CV_PHOTO_SIZE_PT } from '@/components/cv-maker/cvPhoto';
+import { resolveCvProfilePhotoUrl } from '../../utils/cvFormUtils';
 
 interface PersonalInfoSectionProps {
   data: PersonalInfoState;
   onChange: (field: string, value: string | boolean | number) => void;
+  onPhotoToggle?: (on: boolean) => void;
   profilePhotoUrl?: string;
 }
 
-export function PersonalInfoSection({ data, onChange, profilePhotoUrl }: PersonalInfoSectionProps) {
-  const hasProfilePhoto = Boolean(profilePhotoUrl || data.photoUrl);
+export function PersonalInfoSection({
+  data,
+  onChange,
+  onPhotoToggle,
+  profilePhotoUrl,
+}: PersonalInfoSectionProps) {
+  const hasProfilePhoto = Boolean(resolveCvProfilePhotoUrl(profilePhotoUrl, data.photoUrl));
   const photoOn = Boolean(data.includePhoto) && hasProfilePhoto;
 
   return (
@@ -43,10 +49,14 @@ export function PersonalInfoSection({ data, onChange, profilePhotoUrl }: Persona
               disabled={!hasProfilePhoto}
               onChange={(e) => {
                 const on = e.target.checked;
+                if (onPhotoToggle) {
+                  onPhotoToggle(on);
+                  return;
+                }
                 onChange('includePhoto', on);
-                if (on && profilePhotoUrl) {
-                  onChange('photoUrl', profilePhotoUrl);
-                  onChange('photoSizePt', CV_PHOTO_SIZE_PT);
+                const url = resolveCvProfilePhotoUrl(profilePhotoUrl, data.photoUrl);
+                if (on && url) {
+                  onChange('photoUrl', url);
                 }
                 if (!on) onChange('photoUrl', '');
               }}

@@ -16,6 +16,7 @@ import {
   normalizeEducation,
   normalizeLanguages,
   normalizeWorkExperience,
+  resolveCvProfilePhotoUrl,
   type PersonalInfoState,
 } from '../utils/cvFormUtils';
 import { aiCvBuilderCopy } from '../constants/copy';
@@ -41,6 +42,7 @@ import {
   clampCvPhotoSizePt,
 } from '@/components/cv-maker/cvPhoto';
 import { authFetch } from '@/lib/auth/authFetch';
+import { getStoredUser } from '@/lib/auth/tokenStorage';
 import type { AuthUser } from '@/lib/auth/types';
 
 function deriveSaveTitle(data: {
@@ -126,16 +128,17 @@ export function useAiCvBuilderState(cvId?: string) {
   const [saveError, setSaveError] = useState('');
   const [savedCvId, setSavedCvId] = useState<string | undefined>(cvId);
   const [personalInfo, setPersonalInfo] = useState<PersonalInfoState>(emptyPersonalInfo);
-  const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState(() =>
+    String(getStoredUser<AuthUser>()?.profileImageUrl || '').trim()
+  );
   const [about, setAbout] = useState('');
   const [workExperience, setWorkExperience] = useState<WorkExperienceItem[]>([]);
   const [education, setEducation] = useState<EducationItem[]>([]);
   const [skills, setSkills] = useState<string[]>([]);
   const [languages, setLanguages] = useState<LanguageItem[]>([]);
 
-  // Yeni CV: Profilim alanlarını varsayılan doldur (dolu alanlara dokunma)
+  // Profilim fotoğrafı: hem yeni hem düzenlemede (kapatıp tekrar açmak için)
   useEffect(() => {
-    if (cvId) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -145,9 +148,13 @@ export function useAiCvBuilderState(cvId?: string) {
           user?: AuthUser;
         };
         if (cancelled || !res.ok || !data.user) return;
-        const defaults = personalInfoFromProfile(data.user);
-        setProfilePhotoUrl(data.user.profileImageUrl || '');
-        setPersonalInfo((prev) => mergeEmptyPersonalInfo(prev, defaults));
+        const url = String(data.user.profileImageUrl || '').trim();
+        setProfilePhotoUrl(url);
+        if (!cvId) {
+          setPersonalInfo((prev) =>
+            mergeEmptyPersonalInfo(prev, personalInfoFromProfile(data.user!))
+          );
+        }
       } catch {
         // profil yoksa sessiz
       }
@@ -216,6 +223,22 @@ export function useAiCvBuilderState(cvId?: string) {
       }));
     },
     []
+  );
+
+  const handlePhotoToggle = useCallback(
+    (on: boolean) => {
+      setPersonalInfo((prev) => {
+        const url = resolveCvProfilePhotoUrl(profilePhotoUrl, prev.photoUrl);
+        if (on && !url) return prev;
+        return {
+          ...prev,
+          includePhoto: on,
+          photoUrl: on ? url : '',
+          photoSizePt: on ? CV_PHOTO_SIZE_PT : prev.photoSizePt,
+        };
+      });
+    },
+    [profilePhotoUrl]
   );
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -364,6 +387,7 @@ export function useAiCvBuilderState(cvId?: string) {
     personalInfo,
     profilePhotoUrl,
     handlePersonalInfoChange,
+    handlePhotoToggle,
     about,
     setAbout,
     workExperience,

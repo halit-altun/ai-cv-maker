@@ -27,6 +27,14 @@ export const emptyPersonalInfo = {
 
 export type PersonalInfoState = typeof emptyPersonalInfo;
 
+/** Profilim URL’si yoksa kayıtlı CV fotoğrafına düş. */
+export function resolveCvProfilePhotoUrl(
+  profilePhotoUrl?: string | null,
+  cvPhotoUrl?: string | null
+): string {
+  return String(profilePhotoUrl || '').trim() || String(cvPhotoUrl || '').trim();
+}
+
 export function normalizeWorkExperience(items: unknown[]): WorkExperienceItem[] {
   if (!Array.isArray(items)) return [];
   return items.map((raw, index) => {

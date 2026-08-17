@@ -104,6 +104,7 @@ export function ResumeFormPanel({ state }: ResumeFormPanelProps) {
         <PersonalInfoSection
           data={state.personalInfo}
           onChange={state.handlePersonalInfoChange}
+          onPhotoToggle={state.handlePhotoToggle}
           profilePhotoUrl={state.profilePhotoUrl}
         />
         <AboutSection value={state.about} onChange={state.setAbout} />
