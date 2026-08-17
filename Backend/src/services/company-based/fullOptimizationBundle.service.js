@@ -204,6 +204,7 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
           skills: request.keywordTargetSections?.skills !== false,
         },
         targetPosition,
+        cvSectionLengthMode: request.cvSectionLengthMode,
       });
 
       return {

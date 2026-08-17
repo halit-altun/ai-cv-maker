@@ -107,6 +107,11 @@ function normalizeReanalyzeContext(input = {}, fallbacks = {}) {
       input.includeEnteredMainDomainInSend !== undefined
         ? Boolean(input.includeEnteredMainDomainInSend)
         : Boolean(fallbacks.includeEnteredMainDomainInSend),
+    cvSectionLengthMode:
+      (input.cvSectionLengthMode || fallbacks.cvSectionLengthMode) ===
+      "keywords_only"
+        ? "keywords_only"
+        : "fit_range",
     shouldGenerateCoverLetter:
       input.shouldGenerateCoverLetter !== undefined
         ? Boolean(input.shouldGenerateCoverLetter)

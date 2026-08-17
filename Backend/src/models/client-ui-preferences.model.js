@@ -68,6 +68,12 @@ const clientUiPreferencesSchema = new mongoose.Schema(
     },
     includeCvPhoto: { type: Boolean, default: false },
     shouldSendCompanyEmail: { type: Boolean, default: false },
+    /** Hakkımda/deneyim: aralığa çek vs yalnızca KW */
+    cvSectionLengthMode: {
+      type: String,
+      enum: ["fit_range", "keywords_only"],
+      default: "fit_range",
+    },
     outreachCvAttachmentSource: {
       type: String,
       enum: ["optimized", "original"],

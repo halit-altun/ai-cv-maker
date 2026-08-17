@@ -53,6 +53,7 @@ async function optimizeBundleHandler(req, res, next) {
           workExperience: true,
           skills: true,
         },
+        cvSectionLengthMode: body.cvSectionLengthMode,
         manualMustMentionTopics: body.manualMustMentionTopics,
         manualMustNotMentionTopics: body.manualMustNotMentionTopics,
         generateCoverLetter: Boolean(body.generateCoverLetter),

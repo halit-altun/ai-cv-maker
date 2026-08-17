@@ -1,4 +1,5 @@
 import type { CompanyBasedCVData, CompanyInfo, CVAnalysisResponse, CompanyLink } from '@/lib/company-based-cv-editor/types';
+import type { CvSectionLengthMode } from '@/lib/company-based-cv-editor/cvSectionLength';
 import type { EmailPrefixCategoryId } from '../constants/outreachConstants';
 import type {
   CvBodyFontSize,
@@ -92,6 +93,8 @@ export interface CompanyCvOptimizerState {
   /** Girilen ana domain adresini (email yoksa info@) listeye ekle ve doğrulamadan gönder */
   includeEnteredMainDomainInSend: boolean;
   setIncludeEnteredMainDomainInSend: (v: boolean) => void;
+  cvSectionLengthMode: CvSectionLengthMode;
+  setCvSectionLengthMode: React.Dispatch<React.SetStateAction<CvSectionLengthMode>>;
   /** Outreach projesi (null = projesiz) */
   selectedOutreachProjectId: string | null;
   setSelectedOutreachProjectId: (v: string | null) => void;

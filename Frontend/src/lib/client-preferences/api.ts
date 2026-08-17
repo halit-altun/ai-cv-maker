@@ -28,6 +28,8 @@ export type ClientUiPreferences = {
   cvAdaptationSource: 'company' | 'text';
   includeCvPhoto: boolean;
   shouldSendCompanyEmail: boolean;
+  /** Hakkımda / deneyim: aralığa çek vs yalnızca KW */
+  cvSectionLengthMode: 'fit_range' | 'keywords_only';
   outreachCvAttachmentSource: OutreachCvAttachmentSource;
   manualMustMentionTopicsText: string;
   manualMustNotMentionTopicsText: string;

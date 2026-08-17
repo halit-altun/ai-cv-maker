@@ -21,6 +21,11 @@ import {
   ANALYSIS_PREFS_STORAGE_KEY,
 } from '../constants/optimizerConstants';
 import type { AIAdaptationSettings, CompanyCvOptimizerState, OutreachCvAttachmentSource, OutreachEmailLanguageMode } from '../types';
+import {
+  DEFAULT_CV_SECTION_LENGTH_MODE,
+  parseCvSectionLengthMode,
+  type CvSectionLengthMode,
+} from '@/lib/company-based-cv-editor/cvSectionLength';
 import type { EmailPrefixCategoryId, CompanyPageType } from '../constants/outreachConstants';
 import {
   DEFAULT_CV_BODY_FONT_SIZE,
@@ -246,6 +251,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   const [deliverabilityScore, setDeliverabilityScore] = useState<any | null>(null);
   const [deliverabilityLoading, setDeliverabilityLoading] = useState(false);
   const [aiSettings, setAiSettings] = useState<AIAdaptationSettings>(defaultAISettings);
+  const [cvSectionLengthMode, setCvSectionLengthMode] = useState<CvSectionLengthMode>(
+    DEFAULT_CV_SECTION_LENGTH_MODE
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [editableCVData, setEditableCVData] = useState<CompanyBasedCVData | null>(null);
   const [nameFontSize, setNameFontSize] = useState<CvNameFontSize>(DEFAULT_CV_NAME_FONT_SIZE);
@@ -465,6 +473,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           workExperience: Boolean(prefs.aiSettings.workExperience),
           skills: Boolean(prefs.aiSettings.skills),
         });
+      }
+      if (prefs.cvSectionLengthMode !== undefined) {
+        setCvSectionLengthMode(parseCvSectionLengthMode(prefs.cvSectionLengthMode));
       }
       if (prefs.selectedEmailPrefixCategories) {
         const cats = prefs.selectedEmailPrefixCategories.filter(
@@ -703,6 +714,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           skills: Boolean(ctx.aiSettings.skills),
         });
       }
+      if (ctx.cvSectionLengthMode !== undefined) {
+        setCvSectionLengthMode(parseCvSectionLengthMode(ctx.cvSectionLengthMode));
+      }
 
       if (ctx.projectId) {
         const projectId = String(ctx.projectId);
@@ -804,6 +818,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       cvLanguage,
       outreachEmailLanguageMode,
       aiSettings,
+      cvSectionLengthMode,
       selectedEmailPrefixCategories,
       customEmailLocalPartsText,
       includePrimaryEmailInSend,
@@ -854,6 +869,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     cvLanguage,
     outreachEmailLanguageMode,
     aiSettings,
+    cvSectionLengthMode,
     selectedEmailPrefixCategories,
     customEmailLocalPartsText,
     includePrimaryEmailInSend,
@@ -1104,8 +1120,12 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
         const originalWords = countWords(original);
         const adaptedWords = countWords(adapted);
-        // AI maddeyi kısaltmışsa (detay kaybı) orijinali koru
-        if (originalWords > 0 && adaptedWords < originalWords * 0.9) {
+        // AI maddeyi kısaltmışsa (detay kaybı) orijinali koru — fit_range'de aralığa çekmek için izin ver
+        if (
+          cvSectionLengthMode !== 'fit_range' &&
+          originalWords > 0 &&
+          adaptedWords < originalWords * 0.9
+        ) {
           console.warn(
             `Bullet ${index + 1}.${i + 1} kısaltıldı (${adaptedWords}/${originalWords}) — orijinal korundu`
           );
@@ -1492,6 +1512,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           workExperience: aiSettings.workExperience,
           skills: aiSettings.skills,
         },
+        cvSectionLengthMode,
         manualMustMentionTopics,
         manualMustNotMentionTopics,
         generateCoverLetter: shouldGenerateCoverLetter,
@@ -1640,7 +1661,11 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           if (!updated.trim()) return originalAbout;
           const o = countWords(originalAbout);
           const u = countWords(updated);
-          if (o > 0 && u < o * 0.9) {
+          if (
+            cvSectionLengthMode !== 'fit_range' &&
+            o > 0 &&
+            u < o * 0.9
+          ) {
             console.warn(`Hakkımda kısaltıldı (${u}/${o}) — orijinal korundu`);
             return originalAbout;
           }
@@ -1776,6 +1801,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
             outreachCvAttachmentSource,
             includeCvPhoto,
             aiSettings,
+            cvSectionLengthMode,
           },
         }).catch(() => undefined);
       }
@@ -2209,6 +2235,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           outreachCvAttachmentSource,
           includeCvPhoto,
           aiSettings,
+          cvSectionLengthMode,
           linkedinMessageSnapshot: (() => {
             const fromOverride = String(opts?.linkedinMessageOverride || '').trim();
             const fromRef = String(linkedinMessageRef.current || '').trim();
@@ -2425,6 +2452,8 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     setError,
     aiSettings,
     setAiSettings,
+    cvSectionLengthMode,
+    setCvSectionLengthMode,
     isEditing,
     editableCVData,
     nameFontSize,

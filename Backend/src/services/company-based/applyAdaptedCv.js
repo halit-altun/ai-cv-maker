@@ -1,6 +1,11 @@
 const { countWords } = require("./wordLengthBudget");
+const { parseCvSectionLengthMode } = require("../../utils/cv-section-length");
 
-function parseWorkExperienceFromText(text, originalWorkExperience = []) {
+function parseWorkExperienceFromText(
+  text,
+  originalWorkExperience = [],
+  options = {}
+) {
   if (!text) {
     return originalWorkExperience.map((exp, index) => ({
       id: exp.id || String(index + 1),
@@ -73,7 +78,11 @@ function parseWorkExperienceFromText(text, originalWorkExperience = []) {
       if (!original) return adapted;
       const originalWords = countWords(original);
       const adaptedWords = countWords(adapted);
-      if (originalWords > 0 && adaptedWords < originalWords * 0.9) {
+      if (
+        !options.skipShortenGuard &&
+        originalWords > 0 &&
+        adaptedWords < originalWords * 0.9
+      ) {
         return original;
       }
       return adapted;
@@ -159,10 +168,13 @@ function applyAdaptedCvFromBundle({
   companyInfo,
   aiSettings = {},
   targetPosition = "",
+  cvSectionLengthMode,
 }) {
   const aboutEnabled = aiSettings.about !== false;
   const expEnabled = aiSettings.workExperience !== false;
   const skillsEnabled = aiSettings.skills !== false;
+  const skipShortenGuard =
+    parseCvSectionLengthMode(cvSectionLengthMode) === "fit_range";
 
   const originalAbout = parsedCV.about || "";
   let about = originalAbout;
@@ -171,7 +183,8 @@ function applyAdaptedCvFromBundle({
     if (updated.trim()) {
       const o = countWords(originalAbout);
       const u = countWords(updated);
-      about = o > 0 && u < o * 0.9 ? originalAbout : updated;
+      about =
+        !skipShortenGuard && o > 0 && u < o * 0.9 ? originalAbout : updated;
     }
   }
 
@@ -194,7 +207,8 @@ function applyAdaptedCvFromBundle({
     workExperience: expEnabled
       ? parseWorkExperienceFromText(
           analysis.updatedExperience,
-          parsedCV.workExperience || []
+          parsedCV.workExperience || [],
+          { skipShortenGuard }
         )
       : parsedCV.workExperience || [],
     education: parsedCV.education || [],

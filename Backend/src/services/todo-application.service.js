@@ -33,6 +33,7 @@ const {
 const {
   isPersistOutreachHistoryEnabled,
 } = require("../utils/persist-outreach-history");
+const { parseCvSectionLengthMode } = require("../utils/cv-section-length");
 
 let processingLock = false;
 
@@ -82,6 +83,10 @@ function buildTodoReanalyzeContext(job, item, settings = {}) {
     outreachCvAttachmentSource: settings.outreachCvAttachmentSource || "optimized",
     includeCvPhoto: Boolean(settings.includeCvPhoto),
     aiSettings: settings.aiSettings || null,
+    cvSectionLengthMode: parseCvSectionLengthMode(
+      settings.cvSectionLengthMode,
+      "keywords_only"
+    ),
     companyName: item.companyName || "",
     targetPosition: settings.targetPosition || "",
     projectId: job.projectId || null,
@@ -636,6 +641,7 @@ function buildSettingsSnapshot(body = {}, user = {}) {
       workExperience: body.aiSettings?.workExperience !== false,
       skills: body.aiSettings?.skills !== false,
     },
+    cvSectionLengthMode: parseCvSectionLengthMode(body.cvSectionLengthMode),
     cvAdaptationSource:
       body.cvAdaptationSource === "text" ? "text" : "company",
     shouldGenerateCoverLetter: Boolean(body.shouldGenerateCoverLetter),
@@ -1189,6 +1195,10 @@ async function processSingleJobItem(job, item) {
           workExperience: settings.aiSettings?.workExperience !== false,
           skills: settings.aiSettings?.skills !== false,
         },
+        cvSectionLengthMode: parseCvSectionLengthMode(
+          settings.cvSectionLengthMode,
+          "keywords_only"
+        ),
         generateCoverLetter: false,
         generateLinkedInMessage: Boolean(settings.shouldGenerateLinkedInMessage),
         generateColdEmail: true,

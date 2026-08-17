@@ -502,6 +502,7 @@ Kurallar:
         jobDescriptionText: request.jobDescriptionText,
         targetPosition: request.targetPosition,
         keywordTargetSections: request.keywordTargetSections,
+        cvSectionLengthMode: request.cvSectionLengthMode,
         manualMustMentionTopics: request.manualMustMentionTopics,
         manualMustNotMentionTopics: request.manualMustNotMentionTopics,
         generateCoverLetter: Boolean(request.generateCoverLetter),

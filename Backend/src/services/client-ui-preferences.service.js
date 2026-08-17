@@ -28,6 +28,7 @@ function mapDoc(doc) {
       includePrimaryEmailInSend: true,
       skipPrimaryEmailVerification: false,
       includeEnteredMainDomainInSend: false,
+      cvSectionLengthMode: "fit_range",
       forceResend: false,
       bulkSendHistoryFilter: "all",
       shouldGenerateCoverLetter: true,
@@ -67,6 +68,8 @@ function mapDoc(doc) {
     includePrimaryEmailInSend: doc.includePrimaryEmailInSend !== false,
     skipPrimaryEmailVerification: Boolean(doc.skipPrimaryEmailVerification),
     includeEnteredMainDomainInSend: Boolean(doc.includeEnteredMainDomainInSend),
+    cvSectionLengthMode:
+      doc.cvSectionLengthMode === "keywords_only" ? "keywords_only" : "fit_range",
     forceResend: Boolean(doc.forceResend),
     bulkSendHistoryFilter: FILTER.has(doc.bulkSendHistoryFilter)
       ? doc.bulkSendHistoryFilter
@@ -151,6 +154,12 @@ async function updateClientUiPreferences(clientId, userId, patch = {}) {
     updates.includeEnteredMainDomainInSend = Boolean(
       patch.includeEnteredMainDomainInSend
     );
+  }
+  if (patch.cvSectionLengthMode !== undefined) {
+    updates.cvSectionLengthMode =
+      String(patch.cvSectionLengthMode) === "keywords_only"
+        ? "keywords_only"
+        : "fit_range";
   }
   if (patch.forceResend !== undefined) {
     updates.forceResend = Boolean(patch.forceResend);

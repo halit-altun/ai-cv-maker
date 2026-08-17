@@ -139,6 +139,7 @@ export type TodoJobStartPayload = {
   targetPosition?: string;
   cvLanguage?: 'turkish' | 'english';
   aiSettings?: { about?: boolean; workExperience?: boolean; skills?: boolean };
+  cvSectionLengthMode?: 'fit_range' | 'keywords_only';
   cvAdaptationSource?: 'company' | 'text';
   shouldGenerateCoverLetter?: boolean;
   shouldGenerateLinkedInMessage?: boolean;

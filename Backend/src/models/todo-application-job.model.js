@@ -162,6 +162,11 @@ const todoApplicationJobSchema = new mongoose.Schema(
         workExperience: { type: Boolean, default: true },
         skills: { type: Boolean, default: true },
       },
+      cvSectionLengthMode: {
+        type: String,
+        enum: ["fit_range", "keywords_only"],
+        default: "fit_range",
+      },
       cvAdaptationSource: {
         type: String,
         enum: ["company", "text"],

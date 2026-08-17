@@ -34,6 +34,7 @@ import Link from 'next/link';
 import type { CompanyCvOptimizerState } from '../../types';
 import type { OutreachEmailLanguageMode } from '../../types';
 import { GlassCard } from '../shell/GlassCard';
+import { CvSectionLengthModeFields } from '../CvSectionLengthModeFields';
 import { dashboardTokens } from '@/features/dashboard/styles/dashboardTokens';
 import {
   COMPANY_PAGE_TYPE_OPTIONS,
@@ -147,6 +148,8 @@ type JobAnalysisStepProps = Pick<
   | 'setOutreachPhone'
   | 'aiSettings'
   | 'setAiSettings'
+  | 'cvSectionLengthMode'
+  | 'setCvSectionLengthMode'
   | 'loading'
   | 'handleCompanyLinksSubmit'
 >;
@@ -1228,6 +1231,13 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
                 width: '100%',
                 alignItems: 'flex-start',
               }}
+            />
+
+            <CvSectionLengthModeFields
+              value={props.cvSectionLengthMode}
+              onChange={props.setCvSectionLengthMode}
+              aboutEnabled={props.aiSettings.about}
+              workExperienceEnabled={props.aiSettings.workExperience}
             />
 
             <TextField

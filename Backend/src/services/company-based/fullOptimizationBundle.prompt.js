@@ -3,6 +3,10 @@
  * Prompt kurallarına dokunmayın; yalnızca taşıyın.
  */
 function buildFullOptimizationBundlePrompt(request) {
+  const {
+    parseCvSectionLengthMode,
+    buildCvSectionLengthPromptAddon,
+  } = require("../../utils/cv-section-length");
   const isEnglish = request.cvLanguage === "english";
   const lang = isEnglish ? "English" : "Turkish";
   const adaptSource = request.adaptationSource ?? "company";
@@ -10,6 +14,7 @@ function buildFullOptimizationBundlePrompt(request) {
   const wantLinkedIn = Boolean(request.generateLinkedInMessage);
   const wantCold = Boolean(request.generateColdEmail);
   const coldLang = request.coldEmailLanguage === "english" ? "English" : "Turkish";
+  const lengthMode = parseCvSectionLengthMode(request.cvSectionLengthMode);
   /** LinkedIn: cold mail dili varsa onu kullan (toplu outreach tutarlılığı) */
   const linkedInLang = wantCold ? coldLang : lang;
   const companyKeywords = Array.isArray(request.companyInfo?.extractedKeywords)
@@ -85,6 +90,11 @@ ${targetBlock}
 
 TARGET POSITION (if any): ${targetPosition || "none"}
 KEYWORD SECTIONS: about=${kwAbout ? "YES" : "NO"}, workExperience=${kwExp ? "YES" : "NO"}, skills=${kwSkills ? "YES" : "NO"}
+SECTION LENGTH MODE: ${lengthMode}${
+    lengthMode === "fit_range"
+      ? " (fit character bands even if KW cannot be woven)"
+      : " (no character-band targeting; KW weave only if natural)"
+  }
 Company KW hint: ${companyKeywords.length ? companyKeywords.join(", ") : "extract from pages/profile"}
 Must mention: ${mustMention.length ? mustMention.join(", ") : "none"}
 Must NOT mention: ${mustNot.length ? mustNot.join(", ") : "none"}
@@ -128,9 +138,17 @@ Return ONLY this JSON shape:
   },
   "analysis": {
     "originalAbout": "",
-    "updatedAbout": "",
+    "updatedAbout": ${
+      lengthMode === "fit_range" && kwAbout
+        ? '"450–600 characters; near-bound fit; preserve original meaning"'
+        : '""'
+    },
     "originalExperience": "plain text of experiences with • bullets",
-    "updatedExperience": "same jobs + SAME bullet count; unchanged bullets EXACT copy; KW bullets keep all original detail (may be slightly longer)",
+    "updatedExperience": ${
+      lengthMode === "fit_range" && kwExp
+        ? '"same jobs + SAME bullet count; EACH bullet 130–150 chars (near-bound); KW only if still in band"'
+        : '"same jobs + SAME bullet count; unchanged bullets EXACT copy; KW bullets keep all original detail (may be slightly longer)"'
+    },
     "originalSkills": "",
     "updatedSkills": "comma-separated short skill names",
     "originalLanguages": "",
@@ -162,13 +180,19 @@ CRITICAL RULES:
 1) Parse ALL CV facts accurately; do not invent experience/skills/metrics.
 2) PRESERVE DETAIL (CRITICAL — DO NOT SHORTEN):
    - Adaptation means ADDING target KWs into existing wording when needed — NOT rewriting from scratch.
-   - updatedAbout must keep (or slightly expand) the original about meaning/detail. Never drop facts, tech names, metrics, or scope.
+   - updatedAbout must keep (or slightly expand) the original about meaning/detail. Never drop facts, tech names, metrics, or scope. If SECTION LENGTH MODE=fit_range, follow 2b character bands (near-bound expand/compress) instead of "never shorten".
    - For EACH work-experience bullet:
-     * If that bullet does NOT need a KW → copy the original bullet text EXACTLY (character-faithful).
-     * If that bullet needs a KW → weave the KW into the SAME bullet; keep all original details; sentence may get slightly longer (+10–15 words ideal, +25 hard max).
-   - FORBIDDEN: summarizing, compressing, shortening, or replacing detailed bullets with shorter generic versions.
+     * If SECTION LENGTH MODE=fit_range and the bullet is outside 130–150 chars → rewrite that bullet to the near bound (even if no KW). Exact-copy does NOT apply to out-of-band bullets.
+     * If that bullet does NOT need a KW and is already in-band (or mode=keywords_only) → copy the original bullet text EXACTLY (character-faithful).
+     * If that bullet needs a KW → weave the KW into the SAME bullet; keep all original details; in keywords_only the sentence may get slightly longer (+10–15 words ideal, +25 hard max). In fit_range, KW weave must still leave the bullet in 130–150 chars.
+   - FORBIDDEN: summarizing, compressing, shortening, or replacing detailed bullets with shorter generic versions — EXCEPT when SECTION LENGTH MODE=fit_range and the original is outside the character band (see 2b). Then compress/expand only to the NEAR bound, never the far bound.
    - FORBIDDEN: removing platforms/tech/metrics that existed in the original (e.g. Hepsiburada, SQL Server, TypeScript, % numbers, frontend %).
    - Same bullet COUNT as original; never add/remove bullets.
+${buildCvSectionLengthPromptAddon({
+  mode: lengthMode,
+  kwAbout,
+  kwExp,
+})}
 3) MAIN TARGET KWs — CANDIDATE POOL → FILTER → WEAVE (≤5):
    Step A: Extract up to 10 important candidate KWs from the target (job/pages). Prefer hard skills/tools/domain terms.
    Step B: Scan the FULL CV text. If a candidate KW already appears anywhere in the CV → DO NOT weave it; mark integratedIn="already_present" with note "CV'de zaten geçiyor".
@@ -239,6 +263,7 @@ ${genericInboxAddon}9) Recipient name: ${recipientName || "none"}; company for o
       kwAbout,
       kwExp,
       kwSkills,
+      lengthMode,
       targetPosition,
       recipientName,
       recipientCompany,

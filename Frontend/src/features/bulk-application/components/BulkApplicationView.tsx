@@ -24,6 +24,7 @@ import {
 import DynamicFeedIcon from '@mui/icons-material/DynamicFeed';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { GlassCard } from '@/features/company-cv-optimizer/components/shell/GlassCard';
+import { CvSectionLengthModeFields } from '@/features/company-cv-optimizer/components/CvSectionLengthModeFields';
 import { dashboardTokens } from '@/features/dashboard/styles/dashboardTokens';
 import { appRoutes, getTodoProjectPath } from '@/features/dashboard/constants/routes';
 import {
@@ -64,6 +65,11 @@ import { authFetch } from '@/lib/auth/authFetch';
 import { TodoJobStatusPanel } from '@/features/todo-applications';
 import Link from 'next/link';
 import { bulkApplicationCopy } from '../constants/copy';
+import {
+  DEFAULT_CV_SECTION_LENGTH_MODE,
+  parseCvSectionLengthMode,
+  type CvSectionLengthMode,
+} from '@/lib/company-based-cv-editor/cvSectionLength';
 
 type SendHistoryFilter = TodoSendHistoryFilter;
 
@@ -127,6 +133,9 @@ export function BulkApplicationView() {
   const [aiAbout, setAiAbout] = useState(true);
   const [aiExperience, setAiExperience] = useState(true);
   const [aiSkills, setAiSkills] = useState(true);
+  const [cvSectionLengthMode, setCvSectionLengthMode] = useState<CvSectionLengthMode>(
+    DEFAULT_CV_SECTION_LENGTH_MODE
+  );
   const [selectedCategories, setSelectedCategories] = useState<EmailPrefixCategoryId[]>([
     'turkey-hiring',
   ]);
@@ -283,6 +292,9 @@ export function BulkApplicationView() {
         setAiExperience(Boolean(prefs.aiSettings.workExperience));
         setAiSkills(Boolean(prefs.aiSettings.skills));
       }
+      if (prefs.cvSectionLengthMode !== undefined) {
+        setCvSectionLengthMode(parseCvSectionLengthMode(prefs.cvSectionLengthMode));
+      }
       if (prefs.selectedEmailPrefixCategories) {
         const cats = prefs.selectedEmailPrefixCategories.filter(
           (id): id is EmailPrefixCategoryId =>
@@ -380,6 +392,7 @@ export function BulkApplicationView() {
         workExperience: aiExperience,
         skills: aiSkills,
       },
+      cvSectionLengthMode,
       selectedEmailPrefixCategories: selectedCategories,
       customEmailLocalPartsText: customLocals,
       includePrimaryEmailInSend: includePrimary,
@@ -419,6 +432,7 @@ export function BulkApplicationView() {
     aiAbout,
     aiExperience,
     aiSkills,
+    cvSectionLengthMode,
     selectedCategories,
     customLocals,
     includePrimary,
@@ -542,6 +556,7 @@ export function BulkApplicationView() {
           workExperience: aiExperience,
           skills: aiSkills,
         },
+        cvSectionLengthMode,
         selectedEmailPrefixCategories: selectedCategories,
         customEmailLocalPartsText: customLocals,
         includePrimaryEmailInSend: includePrimary,
@@ -848,8 +863,17 @@ export function BulkApplicationView() {
               <Checkbox checked={aiSkills} onChange={(e) => setAiSkills(e.target.checked)} />
             }
             label="Beceriler"
-            sx={{ mb: 2 }}
+            sx={{ mb: 1 }}
           />
+          <Box sx={{ mb: 2 }}>
+            <CvSectionLengthModeFields
+              value={cvSectionLengthMode}
+              onChange={setCvSectionLengthMode}
+              aboutEnabled={aiAbout}
+              workExperienceEnabled={aiExperience}
+              compact
+            />
+          </Box>
 
           <Typography fontWeight={600} fontSize={14} sx={{ mb: 1 }}>
             Hedef e-posta kategorileri
