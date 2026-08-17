@@ -66,6 +66,7 @@ export type MailTrackingReanalyzeContext = {
     workExperience?: boolean;
     skills?: boolean;
   } | null;
+  cvSectionLengthMode?: 'fit_range' | 'keywords_only';
 };
 
 export type MailOpenEvent = {
