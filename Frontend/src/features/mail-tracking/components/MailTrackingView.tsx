@@ -98,7 +98,32 @@ function formatDateTime(value?: string | null): string {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
   });
+}
+
+function OpenCountWithTimes({
+  count,
+  firstAt,
+  lastAt,
+}: {
+  count: number;
+  firstAt?: string | null;
+  lastAt?: string | null;
+}) {
+  return (
+    <Box>
+      <Typography variant="body2" fontWeight={600}>
+        {count}
+      </Typography>
+      <Typography variant="caption" color="text.secondary" display="block">
+        İlk: {formatDateTime(firstAt)}
+      </Typography>
+      <Typography variant="caption" color="text.secondary" display="block">
+        Son: {formatDateTime(lastAt)}
+      </Typography>
+    </Box>
+  );
 }
 
 function formatCompanyName(value?: string | null): string {
@@ -629,21 +654,25 @@ export function MailTrackingView() {
                     </ButtonGroup>
                   </TableCell>
                   <TableCell>
-                    {row.status === 'OPENED' ? `✅ ${row.openedCount} kez` : '—'}
+                    {row.status === 'OPENED' ? (
+                      <OpenCountWithTimes
+                        count={Number(row.openedCount || 0)}
+                        firstAt={row.firstOpenedAt}
+                        lastAt={row.lastOpenedAt}
+                      />
+                    ) : (
+                      <OpenCountWithTimes count={0} firstAt={null} lastAt={null} />
+                    )}
                   </TableCell>
                   <TableCell>
                     <Tooltip title="Gönderimden sonraki ilk 5 saniyedeki okumalar sayılmaz. 5 saniyeden sonra her okuma +1 olur.">
-                      <Box>
-                        <Typography variant="body2" fontWeight={600}>
-                          {Number(row.bilateralOpenCount || 0)}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          İlk: {formatDateTime(row.firstBilateralOpenedAt)}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          Son: {formatDateTime(row.lastBilateralOpenedAt)}
-                        </Typography>
-                      </Box>
+                      <span>
+                        <OpenCountWithTimes
+                          count={Number(row.bilateralOpenCount || 0)}
+                          firstAt={row.firstBilateralOpenedAt}
+                          lastAt={row.lastBilateralOpenedAt}
+                        />
+                      </span>
                     </Tooltip>
                   </TableCell>
                   <TableCell>{formatDateTime(row.sentAt || row.createdAt)}</TableCell>
