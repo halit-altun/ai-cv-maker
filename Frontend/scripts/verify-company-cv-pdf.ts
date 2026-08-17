@@ -118,9 +118,11 @@ async function testPdfRender() {
     languages: [{ id: '1', language: 'Türkçe', level: 'Ana dil' }],
   });
 
-  const blob = await pdf(
-    React.createElement(PDFDocument, { data, isEnglish: false })
-  ).toBlob();
+  const document = React.createElement(PDFDocument, {
+    data,
+    isEnglish: false,
+  }) as Parameters<typeof pdf>[0];
+  const blob = await pdf(document).toBlob();
   assert.ok(blob && blob.size > 1000, `PDF çok küçük: ${blob && blob.size}`);
   console.log(`✓ pdf: Türkçe CV PDF üretildi (${blob.size} bytes)`);
 }
