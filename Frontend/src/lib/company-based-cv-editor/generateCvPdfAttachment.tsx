@@ -1,13 +1,14 @@
 import { pdf } from '@react-pdf/renderer';
 import PDFDocument from '@/components/cv-maker/PDFDocument';
 import { prepareCvDataForPdf } from '@/components/cv-maker/sanitizeCvDataForPdf';
-import type {
-  CvBodyFontSize,
-  CvHeadingFontSize,
-  CvJobTitleFontSize,
-  CvNameFontSize,
-  CvProfileTitleFontSize,
-  CvSkillsFontSize,
+import {
+  DEFAULT_CV_BODY_FONT_SIZE,
+  type CvBodyFontSize,
+  type CvHeadingFontSize,
+  type CvJobTitleFontSize,
+  type CvNameFontSize,
+  type CvProfileTitleFontSize,
+  type CvSkillsFontSize,
 } from '@/components/cv-maker/cvTypography';
 import type { CompanyBasedCVData } from './types';
 import {
@@ -65,7 +66,7 @@ export async function generateOptimizedCvPdfAttachment(
     <PDFDocument
       data={safeData}
       isEnglish={Boolean(options?.isEnglish)}
-      bodyFontSize={options?.bodyFontSize}
+      bodyFontSize={options?.bodyFontSize ?? DEFAULT_CV_BODY_FONT_SIZE}
       headingFontSize={options?.headingFontSize}
       jobTitleFontSize={options?.jobTitleFontSize}
       skillsFontSize={options?.skillsFontSize}

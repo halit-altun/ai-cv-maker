@@ -5,7 +5,7 @@ export const CV_FONT_FAMILY =
 /** İletişim bilgileri ve gövde metni — kullanıcı yalnızca bu aralıktan seçer */
 export const CV_BODY_FONT_SIZES = [10, 11] as const;
 export type CvBodyFontSize = (typeof CV_BODY_FONT_SIZES)[number];
-export const DEFAULT_CV_BODY_FONT_SIZE: CvBodyFontSize = 11;
+export const DEFAULT_CV_BODY_FONT_SIZE: CvBodyFontSize = 10;
 
 /** CV başlığındaki ad soyad — sabit (düzenlenemez) */
 export const CV_NAME_FONT_SIZES = [22] as const;
