@@ -46,6 +46,14 @@ const mailTrackingSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    firstBilateralOpenedAt: {
+      type: Date,
+      default: null,
+    },
+    lastBilateralOpenedAt: {
+      type: Date,
+      default: null,
+    },
     firstOpenedAt: Date,
     lastOpenedAt: Date,
     isLikelyBot: {

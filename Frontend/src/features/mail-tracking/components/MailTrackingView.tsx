@@ -633,7 +633,17 @@ export function MailTrackingView() {
                   </TableCell>
                   <TableCell>
                     <Tooltip title="Gönderimden sonraki ilk 5 saniyedeki okumalar sayılmaz. 5 saniyeden sonra her okuma +1 olur.">
-                      <span>{Number(row.bilateralOpenCount || 0)}</span>
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>
+                          {Number(row.bilateralOpenCount || 0)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          İlk: {formatDateTime(row.firstBilateralOpenedAt)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Son: {formatDateTime(row.lastBilateralOpenedAt)}
+                        </Typography>
+                      </Box>
                     </Tooltip>
                   </TableCell>
                   <TableCell>{formatDateTime(row.sentAt || row.createdAt)}</TableCell>
@@ -820,6 +830,14 @@ export function MailTrackingView() {
                   variant="outlined"
                 />
               </Stack>
+              <Typography variant="body2">
+                <strong>Çift taraflı ilk okuma:</strong>{' '}
+                {formatDateTime(selected.firstBilateralOpenedAt)}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Çift taraflı son okuma:</strong>{' '}
+                {formatDateTime(selected.lastBilateralOpenedAt)}
+              </Typography>
               <Typography variant="body2">
                 <strong>Şirket:</strong> {formatCompanyName(selected.company)}
               </Typography>

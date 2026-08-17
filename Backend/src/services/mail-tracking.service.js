@@ -127,6 +127,10 @@ async function recordMailOpen(mailId, { ip, userAgent, referer } = {}) {
 
   if (isBilateralOpen(openedInSeconds)) {
     tracking.bilateralOpenCount = Number(tracking.bilateralOpenCount || 0) + 1;
+    if (!tracking.firstBilateralOpenedAt) {
+      tracking.firstBilateralOpenedAt = now;
+    }
+    tracking.lastBilateralOpenedAt = now;
   }
 
   await tracking.save();
@@ -566,11 +570,25 @@ async function enrichMailTrackingRows(trackings = []) {
       const mid = String(ev.mailId || "");
       const secs = resolveOpenedInSeconds(ev, sentAtByMailId.get(mid));
       if (!isBilateralOpen(secs)) continue;
-      bilateralByMailId.set(mid, (bilateralByMailId.get(mid) || 0) + 1);
+      const at = ev.createdAt ? new Date(ev.createdAt) : null;
+      const prev = bilateralByMailId.get(mid) || {
+        count: 0,
+        firstAt: null,
+        lastAt: null,
+      };
+      prev.count += 1;
+      if (at && !Number.isNaN(at.getTime())) {
+        if (!prev.firstAt || at < prev.firstAt) prev.firstAt = at;
+        if (!prev.lastAt || at > prev.lastAt) prev.lastAt = at;
+      }
+      bilateralByMailId.set(mid, prev);
     }
   }
   for (const row of rows) {
-    row.bilateralOpenCount = bilateralByMailId.get(String(row.mailId)) || 0;
+    const stats = bilateralByMailId.get(String(row.mailId));
+    row.bilateralOpenCount = stats?.count || 0;
+    row.firstBilateralOpenedAt = stats?.firstAt || null;
+    row.lastBilateralOpenedAt = stats?.lastAt || null;
   }
 
   return rows;
