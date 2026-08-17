@@ -6,6 +6,7 @@ import { ZoomIn, ZoomOut, Download, Share, Save } from '@mui/icons-material';
 import { pdf } from '@react-pdf/renderer';
 import CVPreview from '@/components/cv-maker/CVPreview';
 import PDFDocument from '@/components/cv-maker/PDFDocument';
+import { prepareCvDataForPdf } from '@/components/cv-maker/sanitizeCvDataForPdf';
 import { dashboardTokens } from '@/features/dashboard/styles/dashboardTokens';
 import { aiCvBuilderCopy } from '../../constants/copy';
 import type { AiCvBuilderState } from '../../hooks/useAiCvBuilderState';
@@ -23,9 +24,10 @@ export function PreviewPanel({ state }: PreviewPanelProps) {
     if (isExporting) return;
     setIsExporting(true);
     try {
+      const safeData = await prepareCvDataForPdf(state.cvData);
       const blob = await pdf(
         <PDFDocument
-          data={state.cvData}
+          data={safeData}
           isEnglish={state.isEnglish}
           bodyFontSize={state.bodyFontSize}
           headingFontSize={state.headingFontSize}

@@ -54,6 +54,14 @@ function asText(value: unknown): string {
 }
 
 async function blobToDataUrl(blob: Blob): Promise<string> {
+  if (typeof FileReader !== 'undefined') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Fotoğraf okunamadı.'));
+      reader.readAsDataURL(blob);
+    });
+  }
   const buffer = Buffer.from(await blob.arrayBuffer());
   const mime = blob.type || 'image/jpeg';
   return `data:${mime};base64,${buffer.toString('base64')}`;
@@ -120,9 +128,9 @@ export function sanitizeCvDataForPdf(data: PdfCvData | null | undefined): PdfCvD
   };
 }
 
-async function fetchImageAsDataUrl(url: string): Promise<string | null> {
+async function tryDirectImageFetch(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, { mode: 'cors' });
+    const res = await fetch(url);
     if (!res.ok) return null;
     const blob = await res.blob();
     if (!blob || blob.size < 32) return null;
@@ -131,6 +139,26 @@ async function fetchImageAsDataUrl(url: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function tryProxyImageFetch(url: string): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  try {
+    const res = await fetch('/api/fetch-image-data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { dataUrl?: string };
+    const dataUrl = String(data.dataUrl || '');
+    return dataUrl.startsWith('data:image') ? dataUrl : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchImageAsDataUrl(url: string): Promise<string | null> {
+  return (await tryDirectImageFetch(url)) || tryProxyImageFetch(url);
 }
 
 /**
