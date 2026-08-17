@@ -8,6 +8,7 @@ const {
   normalizeParsedCVData,
   normalizeCVAnalysisResponse,
   normalizeOutreachLetterFormatting,
+  stripTrailingOutreachSignOff,
   buildOutreachSignatureBlock,
 } = require("./normalizeCv");
 const {
@@ -83,7 +84,7 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
           );
         }
         const signature = buildOutreachSignatureBlock(parsedCV.personalInfo);
-        coverLetter = `${coverLetter}\n\n${signature}`.trim();
+        coverLetter = `${stripTrailingOutreachSignOff(coverLetter)}\n\n${signature}`.trim();
       }
 
       if (linkedinMessage) {
@@ -100,7 +101,7 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
           );
         }
         const signature = buildOutreachSignatureBlock(parsedCV.personalInfo);
-        linkedinMessage = `${linkedinMessage}\n\n${signature}`.trim();
+        linkedinMessage = `${stripTrailingOutreachSignOff(linkedinMessage)}\n\n${signature}`.trim();
       }
 
       let coldEmail = null;

@@ -29,6 +29,7 @@ import {
   wrapColdEmailForInfoContactInbox,
 } from '@/lib/outreach/coldEmailGenericInbox';
 import { resolveCompanyDisplayName } from '@/lib/company/normalizeCompanyDisplayName';
+import { stripTrailingOutreachSignOff } from './outreachSignature';
 
 /** Company-based optimizer Gemini modeli (3.5 yerine 2.5 Flash). */
 const COMPANY_BASED_GEMINI_MODEL = 'gemini-2.5-flash';
@@ -1301,7 +1302,7 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
 
     const signatureBlock = CompanyBasedCVService.buildOutreachSignatureBlock(personalInfo);
 
-    return `${letter}\n\n${signatureBlock}`.trim();
+    return `${stripTrailingOutreachSignOff(letter)}\n\n${signatureBlock}`.trim();
   }
 
   /**
@@ -1726,7 +1727,7 @@ Return ONLY valid JSON:
 
     const signatureBlock = CompanyBasedCVService.buildOutreachSignatureBlock(personalInfo);
 
-    return `${message}\n\n${signatureBlock}`.trim();
+    return `${stripTrailingOutreachSignOff(message)}\n\n${signatureBlock}`.trim();
   }
 
   private static isRetriableGeminiHttpStatus(status: number): boolean {

@@ -222,6 +222,7 @@ ${buildCvSectionLengthPromptAddon({
    LENGTH: 60-90 words body (hard). Aim ~400-600 characters; mobile-readable without scroll.
    FORMAT: Short paragraphs with blank lines between them; corporate-letter tone avoided; not an email essay.
    GREETING: First line exactly "Merhaba," (TR) or "Hi," (EN). LinkedIn is 1:1 to one person — never use "[Company] team/Ekibi", "Hiring Team", or put a company/person name in the greeting.
+   NO SIGN-OFF (CRITICAL): Do NOT end with Best / Best regards / Kind regards / Thanks / Saygılarımla / name / phone / email / links. The app ALWAYS appends "Best regards," + contact. A trailing sign-off causes duplication. End on the CTA sentence only.
    A→Z FLOW (required):
      (A) Opening & context: 1 grounded sentence showing interest in THIS company's work (tech focus / sector / growth / recent focus) — ONLY from target pages/profile. No fake flattery.
      (B) Value proposition: 1-2 sentences summarizing the candidate (role + stack from CV) and how they can help THIS company's focus. Prefer real CV∩company overlap; never claim company-domain tech absent from CV.
