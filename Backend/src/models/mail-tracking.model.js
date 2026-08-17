@@ -38,6 +38,14 @@ const mailTrackingSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    /**
+     * Gönderimden en az 5 sn sonraki açılış sayısı.
+     * İlk 5 sn içindeki pixel tetikleri (proxy/önizleme) dahil edilmez.
+     */
+    bilateralOpenCount: {
+      type: Number,
+      default: 0,
+    },
     firstOpenedAt: Date,
     lastOpenedAt: Date,
     isLikelyBot: {

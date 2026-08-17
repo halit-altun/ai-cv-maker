@@ -8,6 +8,20 @@ const {
   replaceCompanySegmentInPdfFilename,
 } = require("../utils/company-display-name");
 
+/** Gönderimle aynı anda düşen okundu kaydını gerçek okumadan ayırmak için */
+const BILATERAL_OPEN_AFTER_SECONDS = 5;
+
+function resolveOpenedInSeconds(event, sentAt) {
+  const stored = Number(event?.openedInSeconds);
+  if (Number.isFinite(stored)) return stored;
+  if (!sentAt || !event?.createdAt) return null;
+  return Math.floor((new Date(event.createdAt) - new Date(sentAt)) / 1000);
+}
+
+function isBilateralOpen(openedInSeconds) {
+  return Number(openedInSeconds) >= BILATERAL_OPEN_AFTER_SECONDS;
+}
+
 function domainFromRecipientEmail(recipient) {
   const email = String(recipient || "").trim().toLowerCase();
   const at = email.lastIndexOf("@");
@@ -109,6 +123,10 @@ async function recordMailOpen(mailId, { ip, userAgent, referer } = {}) {
   // İlk açılış bot ise işaretle
   if (tracking.openedCount === 1 && isLikelyBot) {
     tracking.isLikelyBot = true;
+  }
+
+  if (isBilateralOpen(openedInSeconds)) {
+    tracking.bilateralOpenCount = Number(tracking.bilateralOpenCount || 0) + 1;
   }
 
   await tracking.save();
@@ -533,6 +551,26 @@ async function enrichMailTrackingRows(trackings = []) {
     row.canReanalyze = Boolean(
       summary.reanalyze?.domain || summary.reanalyze?.companyUrl || row.company
     );
+  }
+
+  const allMailIds = rows.map((t) => String(t.mailId || "")).filter(Boolean);
+  const bilateralByMailId = new Map();
+  if (allMailIds.length) {
+    const openEvents = await MailOpenEvent.find({ mailId: { $in: allMailIds } })
+      .select("mailId openedInSeconds createdAt")
+      .lean();
+    const sentAtByMailId = new Map(
+      rows.map((t) => [String(t.mailId), t.sentAt || t.createdAt])
+    );
+    for (const ev of openEvents) {
+      const mid = String(ev.mailId || "");
+      const secs = resolveOpenedInSeconds(ev, sentAtByMailId.get(mid));
+      if (!isBilateralOpen(secs)) continue;
+      bilateralByMailId.set(mid, (bilateralByMailId.get(mid) || 0) + 1);
+    }
+  }
+  for (const row of rows) {
+    row.bilateralOpenCount = bilateralByMailId.get(String(row.mailId)) || 0;
   }
 
   return rows;

@@ -575,6 +575,11 @@ export function MailTrackingView() {
                 <TableCell>Statü</TableCell>
                 <TableCell>Sonuç (sen işaretle)</TableCell>
                 <TableCell>Okundu</TableCell>
+                <TableCell>
+                  <Tooltip title="Gönderimden sonraki ilk 5 saniyedeki okumalar sayılmaz. 5 saniyeden sonra her okuma +1 olur.">
+                    <span>Çift taraflı okuma</span>
+                  </Tooltip>
+                </TableCell>
                 <TableCell>Gönderim</TableCell>
                 <TableCell>İlk açılış</TableCell>
                 <TableCell align="right">Yeniden analiz</TableCell>
@@ -625,6 +630,11 @@ export function MailTrackingView() {
                   </TableCell>
                   <TableCell>
                     {row.status === 'OPENED' ? `✅ ${row.openedCount} kez` : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip title="Gönderimden sonraki ilk 5 saniyedeki okumalar sayılmaz. 5 saniyeden sonra her okuma +1 olur.">
+                      <span>{Number(row.bilateralOpenCount || 0)}</span>
+                    </Tooltip>
                   </TableCell>
                   <TableCell>{formatDateTime(row.sentAt || row.createdAt)}</TableCell>
                   <TableCell>{formatDateTime(row.firstOpenedAt)}</TableCell>
@@ -804,6 +814,11 @@ export function MailTrackingView() {
                 {selected.status === 'OPENED' && (
                   <Chip size="small" label={`Opened: ✅ (${selected.openedCount} kez)`} color="success" />
                 )}
+                <Chip
+                  size="small"
+                  label={`Çift taraflı okuma: ${Number(selected.bilateralOpenCount || 0)}`}
+                  variant="outlined"
+                />
               </Stack>
               <Typography variant="body2">
                 <strong>Şirket:</strong> {formatCompanyName(selected.company)}

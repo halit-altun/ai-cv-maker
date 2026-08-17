@@ -11,6 +11,8 @@ export type MailTrackingItem = {
   subject?: string;
   status: MailTrackingStatus;
   openedCount: number;
+  /** Gönderimden 5 sn sonraki okuma sayısı (ilk 5 sn pixel tetikleri hariç) */
+  bilateralOpenCount?: number;
   firstOpenedAt?: string | null;
   lastOpenedAt?: string | null;
   isLikelyBot?: boolean;
