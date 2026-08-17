@@ -1,24 +1,11 @@
 'use client';
 
 import './globals.css';
-import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
+import '@fontsource-variable/inter/wght.css';
+import '@fontsource-variable/plus-jakarta-sans/wght.css';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AppChrome } from '@/components/layout/AppChrome';
-
-const inter = Inter({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  variable: '--font-inter',
-  display: 'swap',
-});
-
-const plusJakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  weight: ['600', '700'],
-  variable: '--font-plus-jakarta',
-  display: 'swap',
-});
 
 const theme = createTheme({
   palette: {
@@ -87,8 +74,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="tr" className={`${inter.variable} ${plusJakarta.variable}`}>
-      <body className={inter.className}>
+    <html lang="tr">
+      <body>
         <ThemeProvider theme={theme}>
           <CssBaseline />
           <AppChrome>{children}</AppChrome>

@@ -1,11 +1,14 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --font-inter: 'Inter Variable', Inter, 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  --font-plus-jakarta: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', Inter, 'Roboto', sans-serif;
 }
 
 body {
   background-color: #ffffff;
   overflow-x: hidden;
+  font-family: var(--font-inter);
 }
 
 * {
