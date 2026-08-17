@@ -42,6 +42,7 @@ const clientUiPreferencesSchema = new mongoose.Schema(
     customEmailLocalPartsText: { type: String, default: "" },
     includePrimaryEmailInSend: { type: Boolean, default: true },
     skipPrimaryEmailVerification: { type: Boolean, default: false },
+    includeEnteredMainDomainInSend: { type: Boolean, default: false },
     forceResend: { type: Boolean, default: false },
     bulkSendHistoryFilter: {
       type: String,

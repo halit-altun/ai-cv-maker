@@ -79,6 +79,40 @@ function extractLocalPartFromInput(raw) {
   return local || null;
 }
 
+function resolveEnteredMainDomainEmail(rawDomainInput, domain) {
+  const d = normalizeEmailDomainInput(domain || rawDomainInput);
+  if (!d) return null;
+  const local = extractLocalPartFromInput(rawDomainInput) || "info";
+  return `${local}@${d}`;
+}
+
+function withEnteredMainDomain(emails, rawDomainInput, domain, includeEnteredMainDomain) {
+  if (!includeEnteredMainDomain) return emails;
+  const main = resolveEnteredMainDomainEmail(rawDomainInput, domain);
+  if (!main) return emails;
+  return [main, ...emails.filter((e) => e !== main)];
+}
+
+function resolveTrustedSendEmail({
+  rawDomainInput,
+  domain,
+  includeEnteredMainDomainInSend,
+  includePrimaryEmailInSend,
+  skipPrimaryEmailVerification,
+} = {}) {
+  if (includeEnteredMainDomainInSend) {
+    return resolveEnteredMainDomainEmail(rawDomainInput, domain) || undefined;
+  }
+  if (
+    includePrimaryEmailInSend !== false &&
+    skipPrimaryEmailVerification &&
+    String(rawDomainInput || "").includes("@")
+  ) {
+    return resolveEnteredMainDomainEmail(rawDomainInput, domain) || undefined;
+  }
+  return undefined;
+}
+
 function buildMinimalThreeRecipients(rawDomainInput, includePrimaryEmail = true) {
   const domain = normalizeEmailDomainInput(rawDomainInput);
   if (!domain) return [];
@@ -103,25 +137,43 @@ function buildRecipientEmails({
   customLocalParts = [],
   rawDomainInput = "",
   includePrimaryEmail = true,
+  includeEnteredMainDomain = false,
 }) {
   const resolvedDomain = normalizeEmailDomainInput(domain || rawDomainInput);
   if (!resolvedDomain) return [];
 
   const includePrimary = includePrimaryEmail !== false;
+  const includeEnteredMain = Boolean(includeEnteredMainDomain);
+  const rawInput = rawDomainInput || domain || "";
   const primaryLocal = extractLocalPartFromInput(rawDomainInput || "");
   const ids = Array.isArray(selectedCategoryIds) ? selectedCategoryIds : [];
 
   if (ids.includes("minimal-three")) {
-    return buildMinimalThreeRecipients(rawDomainInput || domain, includePrimary);
+    return withEnteredMainDomain(
+      buildMinimalThreeRecipients(rawInput, includePrimary),
+      rawInput,
+      resolvedDomain,
+      includeEnteredMain
+    );
   }
 
   if (ids.includes("main-domain-only")) {
     const local = primaryLocal || "info";
-    return [`${local}@${resolvedDomain}`];
+    return withEnteredMainDomain(
+      [`${local}@${resolvedDomain}`],
+      rawInput,
+      resolvedDomain,
+      includeEnteredMain
+    );
   }
 
   if (ids.includes("turkey-hiring")) {
-    return ["ik", "kariyer"].map((prefix) => `${prefix}@${resolvedDomain}`);
+    return withEnteredMainDomain(
+      ["ik", "kariyer"].map((prefix) => `${prefix}@${resolvedDomain}`),
+      rawInput,
+      resolvedDomain,
+      includeEnteredMain
+    );
   }
 
   const set = new Set();
@@ -169,11 +221,14 @@ function buildRecipientEmails({
   }
 
   const emails = Array.from(set);
-  if (includePrimary && primaryLocal) {
-    const primary = `${primaryLocal}@${resolvedDomain}`;
-    return [primary, ...emails.filter((e) => e !== primary)];
-  }
-  return emails;
+  const ordered =
+    includePrimary && primaryLocal
+      ? [
+          `${primaryLocal}@${resolvedDomain}`,
+          ...emails.filter((e) => e !== `${primaryLocal}@${resolvedDomain}`),
+        ]
+      : emails;
+  return withEnteredMainDomain(ordered, rawInput, resolvedDomain, includeEnteredMain);
 }
 
 module.exports = {
@@ -181,6 +236,8 @@ module.exports = {
   EXCLUSIVE_CATEGORY_IDS,
   normalizeEmailDomainInput,
   extractLocalPartFromInput,
+  resolveEnteredMainDomainEmail,
+  resolveTrustedSendEmail,
   buildMinimalThreeRecipients,
   buildRecipientEmails,
 };

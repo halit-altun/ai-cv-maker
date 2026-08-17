@@ -103,6 +103,10 @@ function normalizeReanalyzeContext(input = {}, fallbacks = {}) {
       input.skipPrimaryEmailVerification !== undefined
         ? Boolean(input.skipPrimaryEmailVerification)
         : Boolean(fallbacks.skipPrimaryEmailVerification),
+    includeEnteredMainDomainInSend:
+      input.includeEnteredMainDomainInSend !== undefined
+        ? Boolean(input.includeEnteredMainDomainInSend)
+        : Boolean(fallbacks.includeEnteredMainDomainInSend),
     shouldGenerateCoverLetter:
       input.shouldGenerateCoverLetter !== undefined
         ? Boolean(input.shouldGenerateCoverLetter)

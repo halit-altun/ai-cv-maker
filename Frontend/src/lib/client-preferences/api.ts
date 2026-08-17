@@ -18,6 +18,7 @@ export type ClientUiPreferences = {
   customEmailLocalPartsText: string;
   includePrimaryEmailInSend: boolean;
   skipPrimaryEmailVerification: boolean;
+  includeEnteredMainDomainInSend: boolean;
   forceResend: boolean;
   bulkSendHistoryFilter: 'all' | 'sent' | 'unsent';
   shouldGenerateCoverLetter: boolean;

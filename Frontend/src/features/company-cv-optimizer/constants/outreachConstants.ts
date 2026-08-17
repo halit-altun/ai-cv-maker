@@ -198,6 +198,32 @@ export function extractLocalPartFromInput(raw: string): string | null {
 }
 
 /**
+ * Girilen ana domain adresi: email varsa o local, yoksa info@domain.
+ * Örn. hr@etiya.com → hr@etiya.com | etiya.com → info@etiya.com
+ */
+export function resolveEnteredMainDomainEmail(
+  rawDomainInput?: string,
+  domain?: string
+): string | null {
+  const d = normalizeEmailDomainInput(domain || rawDomainInput || '');
+  if (!d) return null;
+  const local = extractLocalPartFromInput(rawDomainInput || '') || 'info';
+  return `${local}@${d}`;
+}
+
+function withEnteredMainDomain(
+  emails: string[],
+  rawDomainInput: string,
+  domain: string,
+  includeEnteredMainDomain?: boolean
+): string[] {
+  if (!includeEnteredMainDomain) return emails;
+  const main = resolveEnteredMainDomainEmail(rawDomainInput, domain);
+  if (!main) return emails;
+  return [main, ...emails.filter((e) => e !== main)];
+}
+
+/**
  * Girilen ana local (ör. careers@) seçenek prefix’lerinde varsa o prefix atlanır;
  * listede yoksa (ör. info@ kategori 1’de yok) ana adres + tüm prefix’ler gider.
  * includePrimaryEmail=false ise yalnızca careers + hr + recruitment
@@ -232,29 +258,45 @@ export function buildRecipientEmails(params: {
   rawDomainInput?: string;
   /** Ana adresi (firma sayfasından girilen) alıcı listesine ekle — varsayılan true */
   includePrimaryEmail?: boolean;
+  /** Girilen ana domain adresini (email yoksa info@) her kategoriye ekle */
+  includeEnteredMainDomain?: boolean;
 }): string[] {
   const domain = normalizeEmailDomainInput(params.domain || params.rawDomainInput || '');
   if (!domain) return [];
   const includePrimary = params.includePrimaryEmail !== false;
+  const includeEnteredMain = Boolean(params.includeEnteredMainDomain);
+  const rawInput = params.rawDomainInput || params.domain || '';
   const primaryLocal = extractLocalPartFromInput(params.rawDomainInput || '');
 
   // Minimal 3 seçiliyse yalnızca bu 3 adres (diğer kategoriler yok sayılır)
   if (params.selectedCategoryIds.includes('minimal-three')) {
-    return buildMinimalThreeRecipients(
-      params.rawDomainInput || params.domain,
-      includePrimary
+    return withEnteredMainDomain(
+      buildMinimalThreeRecipients(rawInput, includePrimary),
+      rawInput,
+      domain,
+      includeEnteredMain
     );
   }
 
   // Main domain only seçiliyse sadece girilen ana adres
   if (params.selectedCategoryIds.includes('main-domain-only')) {
     const local = primaryLocal || 'info';
-    return [`${local}@${domain}`];
+    return withEnteredMainDomain(
+      [`${local}@${domain}`],
+      rawInput,
+      domain,
+      includeEnteredMain
+    );
   }
 
-  // Türkiye işe alım — yalnızca ik@ ve kariyer@
+  // Türkiye işe alım — yalnızca ik@ ve kariyer@ (+ opsiyonel ana domain)
   if (params.selectedCategoryIds.includes('turkey-hiring')) {
-    return ['ik', 'kariyer'].map((prefix) => `${prefix}@${domain}`);
+    return withEnteredMainDomain(
+      ['ik', 'kariyer'].map((prefix) => `${prefix}@${domain}`),
+      rawInput,
+      domain,
+      includeEnteredMain
+    );
   }
 
   const set = new Set<string>();
@@ -308,11 +350,37 @@ export function buildRecipientEmails(params: {
   }
 
   const emails = Array.from(set);
-  if (includePrimary && primaryLocal) {
-    const primary = `${primaryLocal}@${domain}`;
-    return [primary, ...emails.filter((e) => e !== primary)];
+  const ordered =
+    includePrimary && primaryLocal
+      ? [
+          `${primaryLocal}@${domain}`,
+          ...emails.filter((e) => e !== `${primaryLocal}@${domain}`),
+        ]
+      : emails;
+  return withEnteredMainDomain(ordered, rawInput, domain, includeEnteredMain);
+}
+
+/** Doğrulamasız (direkt) gönderilecek adres: ana domain seçeneği veya trusted ana adres. */
+export function resolveTrustedSendEmail(params: {
+  rawDomainInput?: string;
+  domain?: string;
+  includeEnteredMainDomain?: boolean;
+  includePrimaryEmail?: boolean;
+  skipPrimaryEmailVerification?: boolean;
+}): string | undefined {
+  const raw = String(params.rawDomainInput || '').trim();
+  const domain = params.domain || raw;
+  if (params.includeEnteredMainDomain) {
+    return resolveEnteredMainDomainEmail(raw, domain) || undefined;
   }
-  return emails;
+  if (
+    params.includePrimaryEmail !== false &&
+    params.skipPrimaryEmailVerification &&
+    raw.includes('@')
+  ) {
+    return resolveEnteredMainDomainEmail(raw, domain) || undefined;
+  }
+  return undefined;
 }
 
 /**

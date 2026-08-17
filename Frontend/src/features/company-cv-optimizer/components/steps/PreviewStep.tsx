@@ -57,6 +57,7 @@ import {
   buildRecipientEmails,
   extractDomainFromUrl,
   normalizeEmailDomainInput,
+  resolveEnteredMainDomainEmail,
   resolveOutreachEmailLanguage,
 } from '../../constants/outreachConstants';
 import {
@@ -119,6 +120,8 @@ type PreviewStepProps = Pick<
   | 'setIncludePrimaryEmailInSend'
   | 'skipPrimaryEmailVerification'
   | 'setSkipPrimaryEmailVerification'
+  | 'includeEnteredMainDomainInSend'
+  | 'setIncludeEnteredMainDomainInSend'
   | 'selectedEmailPrefixCategories'
   | 'customEmailLocalPartsText'
   | 'selectedOutreachRecipients'
@@ -187,6 +190,7 @@ export function PreviewStep(props: PreviewStepProps) {
           props.companyLinks[0]?.url ||
           resolvedDomain,
         includePrimaryEmail: props.includePrimaryEmailInSend,
+        includeEnteredMainDomain: props.includeEnteredMainDomainInSend,
       }),
     [
       resolvedDomain,
@@ -194,6 +198,7 @@ export function PreviewStep(props: PreviewStepProps) {
       props.customEmailLocalPartsText,
       props.emailDomainOverride,
       props.includePrimaryEmailInSend,
+      props.includeEnteredMainDomainInSend,
       props.companyInfo?.website,
       props.companyLinks,
     ]
@@ -1172,6 +1177,34 @@ export function PreviewStep(props: PreviewStepProps) {
                   />
                 }
                 label="Ana adresi doğrulamadan geçir (trusted)"
+                sx={{ mb: 0 }}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={props.includeEnteredMainDomainInSend}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      props.setIncludeEnteredMainDomainInSend(next);
+                      const raw = props.emailDomainOverride.trim();
+                      const main = resolveEnteredMainDomainEmail(raw, resolvedDomain);
+                      if (!main) {
+                        setOutreachApproved(false);
+                        return;
+                      }
+                      props.setSelectedOutreachRecipients((prev) => {
+                        if (next) {
+                          return prev.includes(main) ? prev : [main, ...prev];
+                        }
+                        return prev.filter((x) => x !== main);
+                      });
+                      setOutreachApproved(false);
+                    }}
+                    disabled={!resolvedDomain}
+                  />
+                }
+                label="Girilen Ana Domain'i de Gönder"
                 sx={{ mb: 0.5 }}
               />
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
@@ -1275,11 +1308,13 @@ export function PreviewStep(props: PreviewStepProps) {
               </RadioGroup>
 
               <Alert severity="info" sx={{ mt: 1.5, py: 0.5 }}>
-                {!props.includePrimaryEmailInSend
-                  ? 'Ana adres gönderime kapalı — yalnızca baz domain / seçili prefix’ler. '
-                  : props.skipPrimaryEmailVerification
-                    ? 'Ana adres listede ve doğrulanmadan (trusted) gider. '
-                    : 'Ana adres listede; diğerleri gibi doğrulamadan geçer. '}
+                {props.includeEnteredMainDomainInSend
+                  ? 'Girilen ana domain adresi listede ve doğrulanmadan (direkt) gider. '
+                  : !props.includePrimaryEmailInSend
+                    ? 'Ana adres gönderime kapalı — yalnızca baz domain / seçili prefix’ler. '
+                    : props.skipPrimaryEmailVerification
+                      ? 'Ana adres listede ve doğrulanmadan (trusted) gider. '
+                      : 'Ana adres listede; diğerleri gibi doğrulamadan geçer. '}
                 Diğer adaylar MX + Reacher/EmailVerify ile doğrulanır; geçerli olanlar da
                 gönderilir (tek sefer limiti dahilinde).
               </Alert>
@@ -1534,11 +1569,13 @@ export function PreviewStep(props: PreviewStepProps) {
               </Typography>
               <Typography variant="body2" sx={{ mb: 0.5 }}>
                 <strong>Alıcı adayları:</strong> {props.selectedOutreachRecipients.length}
-                {props.includePrimaryEmailInSend
-                  ? props.skipPrimaryEmailVerification
-                    ? ' (ana adres trusted/doğrulamasız; diğerleri doğrulanır)'
-                    : ' (ana adres listede ve doğrulanır)'
-                  : ' (ana adres kapalı; diğerleri doğrulanır)'}
+                {props.includeEnteredMainDomainInSend
+                  ? ' (ana domain trusted/direkt; diğerleri doğrulanır)'
+                  : props.includePrimaryEmailInSend
+                    ? props.skipPrimaryEmailVerification
+                      ? ' (ana adres trusted/doğrulamasız; diğerleri doğrulanır)'
+                      : ' (ana adres listede ve doğrulanır)'
+                    : ' (ana adres kapalı; diğerleri doğrulanır)'}
               </Typography>
               <Typography variant="body2" sx={{ mb: 0.5 }}>
                 <strong>CV PDF eki:</strong>{' '}
@@ -1560,11 +1597,13 @@ export function PreviewStep(props: PreviewStepProps) {
                 ))}
               </Box>
               <Alert severity="warning" sx={{ my: 1, py: 0.5 }}>
-                {!props.includePrimaryEmailInSend
-                  ? 'Ana adres gönderime kapalı; '
-                  : props.skipPrimaryEmailVerification
-                    ? 'Ana adres doğrulanmadan (trusted) gider; '
-                    : 'Ana adres diğerleri gibi doğrulanır; '}
+                {props.includeEnteredMainDomainInSend
+                  ? 'Girilen ana domain doğrulanmadan (direkt) gider; '
+                  : !props.includePrimaryEmailInSend
+                    ? 'Ana adres gönderime kapalı; '
+                    : props.skipPrimaryEmailVerification
+                      ? 'Ana adres doğrulanmadan (trusted) gider; '
+                      : 'Ana adres diğerleri gibi doğrulanır; '}
                 diğer adaylar doğrulanır ve geçerli olanlara mail atılır (tek sefer limiti
                 dahilinde).
               </Alert>

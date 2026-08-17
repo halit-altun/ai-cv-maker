@@ -132,6 +132,7 @@ export function BulkApplicationView() {
   ]);
   const [customLocals, setCustomLocals] = useState('');
   const [includePrimary, setIncludePrimary] = useState(true);
+  const [includeEnteredMainDomain, setIncludeEnteredMainDomain] = useState(false);
   const [forceResend, setForceResend] = useState(false);
   const [generateLinkedIn, setGenerateLinkedIn] = useState(false);
   const [includeCvPhoto, setIncludeCvPhoto] = useState(false);
@@ -295,6 +296,9 @@ export function BulkApplicationView() {
       if (prefs.includePrimaryEmailInSend !== undefined) {
         setIncludePrimary(prefs.includePrimaryEmailInSend !== false);
       }
+      if (prefs.includeEnteredMainDomainInSend !== undefined) {
+        setIncludeEnteredMainDomain(Boolean(prefs.includeEnteredMainDomainInSend));
+      }
       if (prefs.forceResend !== undefined) {
         setForceResend(Boolean(prefs.forceResend));
       }
@@ -379,6 +383,7 @@ export function BulkApplicationView() {
       selectedEmailPrefixCategories: selectedCategories,
       customEmailLocalPartsText: customLocals,
       includePrimaryEmailInSend: includePrimary,
+      includeEnteredMainDomainInSend: includeEnteredMainDomain,
       forceResend,
       shouldGenerateLinkedInMessage: generateLinkedIn,
       includeCvPhoto,
@@ -417,6 +422,7 @@ export function BulkApplicationView() {
     selectedCategories,
     customLocals,
     includePrimary,
+    includeEnteredMainDomain,
     forceResend,
     generateLinkedIn,
     includeCvPhoto,
@@ -539,6 +545,7 @@ export function BulkApplicationView() {
         selectedEmailPrefixCategories: selectedCategories,
         customEmailLocalPartsText: customLocals,
         includePrimaryEmailInSend: includePrimary,
+        includeEnteredMainDomainInSend: includeEnteredMainDomain,
         forceResend,
         shouldGenerateLinkedInMessage: generateLinkedIn,
         includeCvPhoto: includeCvPhoto && Boolean(profilePhotoUrl),
@@ -902,6 +909,15 @@ export function BulkApplicationView() {
               />
             }
             label="Girilen ana adresi alıcı listesine ekle"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={includeEnteredMainDomain}
+                onChange={(e) => setIncludeEnteredMainDomain(e.target.checked)}
+              />
+            }
+            label="Girilen Ana Domain'i de Gönder"
           />
           <FormControlLabel
             control={

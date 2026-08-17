@@ -17,6 +17,7 @@ const { fetchPageText } = require("./todo-page-fetch.service");
 const {
   buildRecipientEmails,
   normalizeEmailDomainInput,
+  resolveTrustedSendEmail,
 } = require("./todo-email-prefixes");
 const {
   sendCompanyOutreachEmails,
@@ -71,6 +72,7 @@ function buildTodoReanalyzeContext(job, item, settings = {}) {
     customEmailLocalParts: settings.customEmailLocalParts || [],
     includePrimaryEmailInSend: settings.includePrimaryEmailInSend !== false,
     skipPrimaryEmailVerification: Boolean(settings.skipPrimaryEmailVerification),
+    includeEnteredMainDomainInSend: Boolean(settings.includeEnteredMainDomainInSend),
     shouldSendCompanyEmail: settings.sendMail !== false,
     shouldGenerateCoverLetter: Boolean(settings.shouldGenerateCoverLetter),
     shouldGenerateLinkedInMessage: Boolean(settings.shouldGenerateLinkedInMessage),
@@ -620,6 +622,7 @@ function buildSettingsSnapshot(body = {}, user = {}) {
           .filter(Boolean),
     includePrimaryEmailInSend: body.includePrimaryEmailInSend !== false,
     skipPrimaryEmailVerification: Boolean(body.skipPrimaryEmailVerification),
+    includeEnteredMainDomainInSend: Boolean(body.includeEnteredMainDomainInSend),
     forceResend: Boolean(body.forceResend),
     outreachEmailLanguageMode: ["auto", "turkish", "english"].includes(
       body.outreachEmailLanguageMode
@@ -972,12 +975,13 @@ async function resumeSendOnlyForItem(job, item, settings, user) {
     };
   }
 
-  const trustedEmail =
-    settings.includePrimaryEmailInSend !== false &&
-    settings.skipPrimaryEmailVerification &&
-    String(item.emailDomainInput || "").includes("@")
-      ? String(item.emailDomainInput).trim().toLowerCase()
-      : undefined;
+  const trustedEmail = resolveTrustedSendEmail({
+    rawDomainInput: item.emailDomainInput,
+    domain,
+    includeEnteredMainDomainInSend: Boolean(settings.includeEnteredMainDomainInSend),
+    includePrimaryEmailInSend: settings.includePrimaryEmailInSend !== false,
+    skipPrimaryEmailVerification: Boolean(settings.skipPrimaryEmailVerification),
+  });
 
   item.mailDispatchStartedAt = new Date();
   await job.save();
@@ -1241,6 +1245,7 @@ async function processSingleJobItem(job, item) {
     customLocalParts: settings.customEmailLocalParts || [],
     rawDomainInput: item.emailDomainInput,
     includePrimaryEmail: settings.includePrimaryEmailInSend !== false,
+    includeEnteredMainDomain: Boolean(settings.includeEnteredMainDomainInSend),
   });
 
   item.candidateRecipients = candidates;
@@ -1339,12 +1344,13 @@ async function processSingleJobItem(job, item) {
     };
   }
 
-  const trustedEmail =
-    settings.includePrimaryEmailInSend !== false &&
-    settings.skipPrimaryEmailVerification &&
-    String(item.emailDomainInput || "").includes("@")
-      ? String(item.emailDomainInput).trim().toLowerCase()
-      : undefined;
+  const trustedEmail = resolveTrustedSendEmail({
+    rawDomainInput: item.emailDomainInput,
+    domain,
+    includeEnteredMainDomainInSend: Boolean(settings.includeEnteredMainDomainInSend),
+    includePrimaryEmailInSend: settings.includePrimaryEmailInSend !== false,
+    skipPrimaryEmailVerification: Boolean(settings.skipPrimaryEmailVerification),
+  });
 
   item.mailDispatchStartedAt = new Date();
   await job.save();

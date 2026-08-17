@@ -133,6 +133,7 @@ export type TodoJobStartPayload = {
   customEmailLocalPartsText?: string;
   includePrimaryEmailInSend?: boolean;
   skipPrimaryEmailVerification?: boolean;
+  includeEnteredMainDomainInSend?: boolean;
   forceResend?: boolean;
   outreachEmailLanguageMode?: 'auto' | 'turkish' | 'english';
   targetPosition?: string;

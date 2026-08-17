@@ -27,6 +27,7 @@ function mapDoc(doc) {
       customEmailLocalPartsText: "",
       includePrimaryEmailInSend: true,
       skipPrimaryEmailVerification: false,
+      includeEnteredMainDomainInSend: false,
       forceResend: false,
       bulkSendHistoryFilter: "all",
       shouldGenerateCoverLetter: true,
@@ -65,6 +66,7 @@ function mapDoc(doc) {
     customEmailLocalPartsText: String(doc.customEmailLocalPartsText || ""),
     includePrimaryEmailInSend: doc.includePrimaryEmailInSend !== false,
     skipPrimaryEmailVerification: Boolean(doc.skipPrimaryEmailVerification),
+    includeEnteredMainDomainInSend: Boolean(doc.includeEnteredMainDomainInSend),
     forceResend: Boolean(doc.forceResend),
     bulkSendHistoryFilter: FILTER.has(doc.bulkSendHistoryFilter)
       ? doc.bulkSendHistoryFilter
@@ -143,6 +145,11 @@ async function updateClientUiPreferences(clientId, userId, patch = {}) {
   if (patch.skipPrimaryEmailVerification !== undefined) {
     updates.skipPrimaryEmailVerification = Boolean(
       patch.skipPrimaryEmailVerification
+    );
+  }
+  if (patch.includeEnteredMainDomainInSend !== undefined) {
+    updates.includeEnteredMainDomainInSend = Boolean(
+      patch.includeEnteredMainDomainInSend
     );
   }
   if (patch.forceResend !== undefined) {

@@ -43,8 +43,10 @@ import {
   extractDomainFromUrl,
   isExclusiveEmailCategory,
   normalizeEmailDomainInput,
+  resolveEnteredMainDomainEmail,
   resolveOutreachEmailLanguage,
   resolvePageTypeLabel,
+  resolveTrustedSendEmail,
 } from '../constants/outreachConstants';
 import {
   onlyInfoOrContactEmails,
@@ -111,6 +113,7 @@ function resolveOutreachCandidateEmails(params: {
   selectedCategoryIds: EmailPrefixCategoryId[];
   customLocalPartsText: string;
   includePrimaryEmail: boolean;
+  includeEnteredMainDomain?: boolean;
 }): string[] {
   const domain = normalizeEmailDomainInput(
     params.emailDomainOverride ||
@@ -135,6 +138,7 @@ function resolveOutreachCandidateEmails(params: {
       .filter(Boolean),
     rawDomainInput,
     includePrimaryEmail: params.includePrimaryEmail,
+    includeEnteredMainDomain: params.includeEnteredMainDomain,
   });
   return params.selectedCategoryIds.some(isExclusiveEmailCategory)
     ? candidates
@@ -203,6 +207,8 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   const [emailDomainOverride, setEmailDomainOverride] = useState('');
   const [includePrimaryEmailInSend, setIncludePrimaryEmailInSend] = useState(true);
   const [skipPrimaryEmailVerification, setSkipPrimaryEmailVerification] = useState(false);
+  const [includeEnteredMainDomainInSend, setIncludeEnteredMainDomainInSend] =
+    useState(false);
   const [selectedOutreachProjectId, setSelectedOutreachProjectId] = useState<string | null>(null);
   const [outreachProjects, setOutreachProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [outreachProjectsLoading, setOutreachProjectsLoading] = useState(false);
@@ -469,6 +475,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       if (prefs.skipPrimaryEmailVerification !== undefined) {
         setSkipPrimaryEmailVerification(Boolean(prefs.skipPrimaryEmailVerification));
       }
+      if (prefs.includeEnteredMainDomainInSend !== undefined) {
+        setIncludeEnteredMainDomainInSend(Boolean(prefs.includeEnteredMainDomainInSend));
+      }
       if (prefs.forceResend !== undefined) {
         setForceOutreachResend(Boolean(prefs.forceResend));
       }
@@ -642,6 +651,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       if (ctx.skipPrimaryEmailVerification !== undefined) {
         setSkipPrimaryEmailVerification(Boolean(ctx.skipPrimaryEmailVerification));
       }
+      if (ctx.includeEnteredMainDomainInSend !== undefined) {
+        setIncludeEnteredMainDomainInSend(Boolean(ctx.includeEnteredMainDomainInSend));
+      }
       if (ctx.shouldSendCompanyEmail !== undefined) {
         setShouldSendCompanyEmail(Boolean(ctx.shouldSendCompanyEmail));
       }
@@ -781,6 +793,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       customEmailLocalPartsText,
       includePrimaryEmailInSend,
       skipPrimaryEmailVerification,
+      includeEnteredMainDomainInSend,
       forceResend: forceOutreachResend,
       shouldGenerateCoverLetter,
       coverLetterSource,
@@ -830,6 +843,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     customEmailLocalPartsText,
     includePrimaryEmailInSend,
     skipPrimaryEmailVerification,
+    includeEnteredMainDomainInSend,
     forceOutreachResend,
     shouldGenerateCoverLetter,
     coverLetterSource,
@@ -1560,6 +1574,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           selectedCategoryIds: selectedEmailPrefixCategories,
           customLocalPartsText: customEmailLocalPartsText,
           includePrimaryEmail: includePrimaryEmailInSend,
+          includeEnteredMainDomain: includeEnteredMainDomainInSend,
         });
         setOutreachEmailSubject(bundle.coldEmail.subject);
         setOutreachEmailBody(standardBody);
@@ -1666,6 +1681,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
             companyLinks[0]?.url ||
             domain,
           includePrimaryEmail: includePrimaryEmailInSend,
+          includeEnteredMainDomain: includeEnteredMainDomainInSend,
         });
         recipientsForAutoSend =
           selectedEmailPrefixCategories.some(isExclusiveEmailCategory)
@@ -1735,6 +1751,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
               .filter(Boolean),
             includePrimaryEmailInSend,
             skipPrimaryEmailVerification,
+            includeEnteredMainDomainInSend,
             shouldSendCompanyEmail,
             shouldGenerateCoverLetter,
             shouldGenerateLinkedInMessage,
@@ -2110,16 +2127,13 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           companyInfo?.website ||
           companyLinks[0]?.url ||
           inferredDomain,
-        trustedEmail: (() => {
-          // trusted = hem gönder hem doğrulamayı atla
-          if (!includePrimaryEmailInSend || !skipPrimaryEmailVerification) return undefined;
-          const raw = emailDomainOverride.trim();
-          if (!raw.includes('@')) return undefined;
-          const domain = normalizeEmailDomainInput(raw);
-          const local = raw.split('@')[0]?.trim().toLowerCase();
-          if (!local || !domain) return undefined;
-          return `${local}@${domain}`;
-        })(),
+        trustedEmail: resolveTrustedSendEmail({
+          rawDomainInput: emailDomainOverride.trim(),
+          domain: inferredDomain,
+          includeEnteredMainDomain: includeEnteredMainDomainInSend,
+          includePrimaryEmail: includePrimaryEmailInSend,
+          skipPrimaryEmailVerification,
+        }),
         cvFileName: pdfAttachment?.filename || cvFile?.name || undefined,
         cvTitle:
           [
@@ -2170,6 +2184,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
             .filter(Boolean),
           includePrimaryEmailInSend,
           skipPrimaryEmailVerification,
+          includeEnteredMainDomainInSend,
           shouldSendCompanyEmail,
           shouldGenerateCoverLetter,
           shouldGenerateLinkedInMessage,
@@ -2281,6 +2296,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
               selectedCategoryIds: selectedEmailPrefixCategories,
               customLocalPartsText: customEmailLocalPartsText,
               includePrimaryEmail: includePrimaryEmailInSend,
+              includeEnteredMainDomain: includeEnteredMainDomainInSend,
             });
       setOutreachEmailSubject(cold.subject);
       setOutreachEmailBody(standardBody);
@@ -2357,6 +2373,8 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     setIncludePrimaryEmailInSend,
     skipPrimaryEmailVerification,
     setSkipPrimaryEmailVerification,
+    includeEnteredMainDomainInSend,
+    setIncludeEnteredMainDomainInSend,
     selectedOutreachProjectId,
     setSelectedOutreachProjectId: handleSelectOutreachProject,
     outreachProjects,

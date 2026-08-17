@@ -45,6 +45,7 @@ import {
   extractLocalPartFromInput,
   isExclusiveEmailCategory,
   normalizeEmailDomainInput,
+  resolveEnteredMainDomainEmail,
   type CompanyPageType,
   type EmailPrefixCategoryId,
 } from '../../constants/outreachConstants';
@@ -128,6 +129,8 @@ type JobAnalysisStepProps = Pick<
   | 'setIncludePrimaryEmailInSend'
   | 'skipPrimaryEmailVerification'
   | 'setSkipPrimaryEmailVerification'
+  | 'includeEnteredMainDomainInSend'
+  | 'setIncludeEnteredMainDomainInSend'
   | 'selectedOutreachProjectId'
   | 'setSelectedOutreachProjectId'
   | 'outreachProjects'
@@ -244,6 +247,7 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
         props.companyLinks[0]?.url ||
         previewDomain,
       includePrimaryEmail: props.includePrimaryEmailInSend,
+      includeEnteredMainDomain: props.includeEnteredMainDomainInSend,
     });
   }, [
     props.shouldSendCompanyEmail,
@@ -252,6 +256,7 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
     props.customEmailLocalPartsText,
     props.emailDomainOverride,
     props.includePrimaryEmailInSend,
+    props.includeEnteredMainDomainInSend,
     props.companyLinks,
   ]);
 
@@ -721,12 +726,14 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
                 helperText={
                   previewDomain
                     ? `Çözümlenen domain: @${previewDomain} — prefix'ler buna eklenir${
-                        props.includePrimaryEmailInSend &&
-                        props.emailDomainOverride.includes('@')
-                          ? props.skipPrimaryEmailVerification
-                            ? '; ana adres doğrulamasız (trusted) gider'
-                            : '; ana adres listede, doğrulamadan geçer'
-                          : ''
+                        props.includeEnteredMainDomainInSend
+                          ? '; girilen ana domain doğrulamasız (direkt) gider'
+                          : props.includePrimaryEmailInSend &&
+                              props.emailDomainOverride.includes('@')
+                            ? props.skipPrimaryEmailVerification
+                              ? '; ana adres doğrulamasız (trusted) gider'
+                              : '; ana adres listede, doğrulamadan geçer'
+                            : ''
                       }`
                     : `Örnek: ${EMAIL_DOMAIN_INPUT_EXAMPLES.join(' · ')}`
                 }
@@ -762,10 +769,24 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
                 label="Ana adresi doğrulamadan geçir (trusted)"
                 sx={{ mt: 0, alignItems: 'flex-start' }}
               />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={props.includeEnteredMainDomainInSend}
+                    onChange={(e) =>
+                      props.setIncludeEnteredMainDomainInSend(e.target.checked)
+                    }
+                    disabled={!previewDomain}
+                  />
+                }
+                label="Girilen Ana Domain'i de Gönder"
+                sx={{ mt: 0, alignItems: 'flex-start' }}
+              />
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                 İlk seçenek: girilen ana adresi alıcı listesine ekler. İkinci seçenek (ayrı): o
-                adresi MX/Reacher/EmailVerify’a sokmadan gönderir. Kapalıysa ana adres diğerleri
-                gibi doğrulanır.
+                adresi MX/Reacher/EmailVerify’a sokmadan gönderir. Üçüncü: girilen ana domain
+                adresini (email varsa o, yoksa info@domain) kategoriye bakmaksızın ekler ve
+                doğrulamadan direkt gönderir.
               </Typography>
 
               {domainCheckLoading && (
@@ -1010,13 +1031,21 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
                             })()
                           : cat.id === 'turkey-hiring'
                             ? (() => {
+                                const rawInput =
+                                  props.emailDomainOverride.trim() ||
+                                  previewDomain ||
+                                  'domain.com';
                                 const domain =
-                                  normalizeEmailDomainInput(
-                                    props.emailDomainOverride.trim() ||
-                                      previewDomain ||
-                                      'domain.com'
-                                  ) || 'domain.com';
-                                return [`ik@${domain}`, `kariyer@${domain}`];
+                                  normalizeEmailDomainInput(rawInput) || 'domain.com';
+                                const list = [`ik@${domain}`, `kariyer@${domain}`];
+                                if (!props.includeEnteredMainDomainInSend) return list;
+                                const main = resolveEnteredMainDomainEmail(
+                                  rawInput,
+                                  domain
+                                );
+                                return main
+                                  ? [main, ...list.filter((e) => e !== main)]
+                                  : list;
                               })()
                           : cat.prefixes.map((prefix) => `${prefix}@${domainSuffix}`)
                       ).map((emailOrPrefix) => (

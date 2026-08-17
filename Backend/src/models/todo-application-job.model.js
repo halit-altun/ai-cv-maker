@@ -144,6 +144,7 @@ const todoApplicationJobSchema = new mongoose.Schema(
       customEmailLocalParts: { type: [String], default: [] },
       includePrimaryEmailInSend: { type: Boolean, default: true },
       skipPrimaryEmailVerification: { type: Boolean, default: false },
+      includeEnteredMainDomainInSend: { type: Boolean, default: false },
       forceResend: { type: Boolean, default: false },
       outreachEmailLanguageMode: {
         type: String,

@@ -89,6 +89,9 @@ export interface CompanyCvOptimizerState {
   /** Ana adres gönderilirken doğrulamayı atla (trusted) — varsayılan false; bağımsız seçenek */
   skipPrimaryEmailVerification: boolean;
   setSkipPrimaryEmailVerification: (v: boolean) => void;
+  /** Girilen ana domain adresini (email yoksa info@) listeye ekle ve doğrulamadan gönder */
+  includeEnteredMainDomainInSend: boolean;
+  setIncludeEnteredMainDomainInSend: (v: boolean) => void;
   /** Outreach projesi (null = projesiz) */
   selectedOutreachProjectId: string | null;
   setSelectedOutreachProjectId: (v: string | null) => void;

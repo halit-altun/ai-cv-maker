@@ -48,6 +48,7 @@ export type MailTrackingReanalyzeContext = {
   customEmailLocalParts?: string[];
   includePrimaryEmailInSend?: boolean;
   skipPrimaryEmailVerification?: boolean;
+  includeEnteredMainDomainInSend?: boolean;
   shouldSendCompanyEmail?: boolean;
   shouldGenerateCoverLetter?: boolean;
   shouldGenerateLinkedInMessage?: boolean;
