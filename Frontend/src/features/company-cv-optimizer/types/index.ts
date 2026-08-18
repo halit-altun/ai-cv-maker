@@ -111,7 +111,7 @@ export interface CompanyCvOptimizerState {
   setOutreachEmailSubject: (v: string) => void;
   outreachEmailBody: string;
   setOutreachEmailBody: (v: string) => void;
-  /** info@ / contact@ / hello@ / sales@ / bilgi@ / destek@ / iletisim@ için yönlendirmeli cold mail önizlemesi */
+  /** info@ / contact@ / hello@ / sales@ / support@ / bilgi@ / destek@ / iletisim@ için yönlendirmeli cold mail önizlemesi */
   outreachInfoContactEmailBody: string;
   setOutreachInfoContactEmailBody: (v: string) => void;
   /** Cold mail imza için opsiyonel linkler */

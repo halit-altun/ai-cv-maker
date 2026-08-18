@@ -63,7 +63,7 @@ const outreachLogSchema = new mongoose.Schema(
     subject: { type: String, default: "" },
     /** Mail şablonu gövdesi (kapak mektubu / LinkedIn / standart cold mail) */
     bodyText: { type: String, default: "" },
-    /** info@ / contact@ / hello@ / sales@ / bilgi@ / destek@ / iletisim@ için yönlendirmeli cold mail gövdesi (varsa) */
+    /** info@ / contact@ / hello@ / sales@ / support@ / bilgi@ / destek@ / iletisim@ için yönlendirmeli cold mail gövdesi (varsa) */
     infoContactBodyText: { type: String, default: "" },
     /** LinkedIn açıksa standart LinkedIn mesajı */
     linkedinMessageText: { type: String, default: "" },

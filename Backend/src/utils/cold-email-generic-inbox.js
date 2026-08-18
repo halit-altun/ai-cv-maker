@@ -3,12 +3,13 @@
  * Diğer alıcılara giden gövdeye dokunulmaz; yalnızca bu local-part’larda uygulanır.
  */
 
-/** Tam eşleşme veya local-part öneki (info.team, destek-hr, iletisim.hr vb.). */
+/** Tam eşleşme veya local-part öneki (info.team, support-hr, iletisim.hr vb.). */
 const GENERIC_INBOX_LOCALS = [
   "info",
   "contact",
   "hello",
   "sales",
+  "support",
   "bilgi",
   "destek",
   "iletisim",
@@ -85,7 +86,7 @@ function detectColdEmailLanguage(bodyText) {
 }
 
 /**
- * Mevcut cold mail gövdesini koruyarak genel kutu (info/contact/hello/sales/bilgi/destek/iletisim) için giriş + teşekkür ekler.
+ * Mevcut cold mail gövdesini koruyarak genel kutu (info/contact/hello/sales/support/bilgi/destek/iletisim) için giriş + teşekkür ekler.
  * Zaten sarmalanmışsa tekrar eklemez.
  * @param {{ bodyText: string, companyName?: string, language?: 'english'|'turkish' }} params
  * @returns {string}
@@ -133,7 +134,7 @@ function wrapColdEmailForInfoContactInbox(params) {
 }
 
 /**
- * LinkedIn DM — genel kutu (info/contact/hello/sales/bilgi/destek/iletisim) bağlamı için sarmalama.
+ * LinkedIn DM — genel kutu (info/contact/hello/sales/support/bilgi/destek/iletisim) bağlamı için sarmalama.
  * Selamlamayı Hi,/Merhaba, olarak tutar; yönlendirme + teşekkür ekler.
  */
 function wrapLinkedInForGenericInbox(params) {

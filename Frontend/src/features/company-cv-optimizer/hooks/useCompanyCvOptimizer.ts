@@ -960,7 +960,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldSendCompanyEmail, outreachEmailSubject, outreachEmailBody]);
 
-  // Seçili alıcılarda genel kutu (info/contact/hello/sales/bilgi/destek/iletisim) varsa özel gövdeyi standarttan türet (boşsa).
+  // Seçili alıcılarda genel kutu (info/contact/hello/sales/support/bilgi/destek/iletisim) varsa özel gövdeyi standarttan türet (boşsa).
   useEffect(() => {
     if (!anyInfoOrContactEmail(selectedOutreachRecipients)) return;
     if (!outreachEmailBody.trim()) return;

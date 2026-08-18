@@ -1268,7 +1268,7 @@ async function processSingleJobItem(job, item) {
     : candidates.slice(0, 3);
   item.selectedRecipients = selected;
 
-  // Tüm seçili alıcılar genel kutu (info/contact/hello/sales/bilgi/destek/iletisim) ise önizleme gövdesini de sarmala (gönderimde idempotent).
+  // Tüm seçili alıcılar genel kutu (info/contact/hello/sales/support/bilgi/destek/iletisim) ise önizleme gövdesini de sarmala (gönderimde idempotent).
   if (
     item.coldEmailBody &&
     selected.length > 0 &&

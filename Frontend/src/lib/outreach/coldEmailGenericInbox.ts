@@ -7,6 +7,7 @@ export const GENERIC_INBOX_LOCALS = [
   'contact',
   'hello',
   'sales',
+  'support',
   'bilgi',
   'destek',
   'iletisim',
@@ -45,7 +46,7 @@ export function anyInfoOrContactEmail(emails: string[]): boolean {
   return (emails || []).some(isInfoOrContactEmail);
 }
 
-/** Listedeki tüm adresler genel kutu (info/contact/hello/sales/bilgi/destek/iletisim). */
+/** Listedeki tüm adresler genel kutu (info/contact/hello/sales/support/bilgi/destek/iletisim). */
 export function onlyInfoOrContactEmails(emails: string[]): boolean {
   const list = (emails || []).map((e) => String(e || '').trim()).filter(Boolean);
   return list.length > 0 && list.every(isInfoOrContactEmail);
