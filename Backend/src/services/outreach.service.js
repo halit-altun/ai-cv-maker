@@ -494,7 +494,7 @@ async function sendCompanyOutreachEmailsImpl({
 
   for (let i = 0; i < list.length; i += 1) {
     const to = list[i];
-    // info@ / contact@ / hello@ / sales@: mevcut cold mail aynı kalır; yalnızca yönlendirme girişi + teşekkür eklenir.
+    // info@ / contact@ / hello@ / sales@ / bilgi@ / destek@ / iletisim@: mevcut cold mail aynı kalır; yalnızca yönlendirme girişi + teşekkür eklenir.
     // Diğer alıcılar: baseText birebir (tek kelime değişmez).
     const text = isInfoOrContactEmail(to)
       ? wrapColdEmailForInfoContactInbox({

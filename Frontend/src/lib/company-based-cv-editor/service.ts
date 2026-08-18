@@ -1327,7 +1327,7 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
     portfolioUrl?: string;
     websiteUrl?: string;
     phoneOverride?: string;
-    /** info@ / contact@ için yönlendirme girişi+teşekkür (yalnızca bu durumda true) */
+    /** info@ / contact@ / hello@ / sales@ / bilgi@ / destek@ / iletisim@ için yönlendirme girişi+teşekkür (yalnızca bu durumda true) */
     genericInboxRouting?: boolean;
   }): Promise<{ subject: string; body: string }> {
     const {

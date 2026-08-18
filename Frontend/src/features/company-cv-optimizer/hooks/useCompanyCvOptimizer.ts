@@ -960,7 +960,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldSendCompanyEmail, outreachEmailSubject, outreachEmailBody]);
 
-  // Seçili alıcılarda info/contact varsa özel gövdeyi standarttan türet (boşsa).
+  // Seçili alıcılarda genel kutu (info/contact/hello/sales/bilgi/destek/iletisim) varsa özel gövdeyi standarttan türet (boşsa).
   useEffect(() => {
     if (!anyInfoOrContactEmail(selectedOutreachRecipients)) return;
     if (!outreachEmailBody.trim()) return;
@@ -1490,7 +1490,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         ? coverLetterSource
         : linkedinMessageSource;
 
-      // Cold mail her zaman STANDART üretilir; info/contact sürümü istemci sarmalaması ile türetilir.
+      // Cold mail her zaman STANDART üretilir; genel kutu sürümü istemci sarmalaması ile türetilir.
       const bundle = await CompanyBasedCVService.runFullOptimizationBundle({
         cvText,
         cvLanguage,
@@ -2036,7 +2036,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       fallback: cvLanguage,
     });
 
-    // Tek alıcı info/contact ise yalnızca özel gövde; karışık/standartta standart gövde (backend info’yu sarar).
+    // Tek alıcı genel kutu ise yalnızca özel gövde; karışık/standartta standart gövde (backend sarmalar).
     let bodyText = (opts?.bodyOverride ?? '').trim();
     if (!bodyText) {
       if (onlyInfoOrContactEmails(recipients)) {

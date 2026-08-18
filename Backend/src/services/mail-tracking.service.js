@@ -773,7 +773,7 @@ async function getMailTrackingCvPdf(mailId, userId) {
 }
 
 /**
- * Standart + info/contact cold mail gövdeleri (hangisi varsa)
+ * Standart + genel kutu (info/contact/hello/sales/bilgi/destek/iletisim) cold mail gövdeleri (hangisi varsa)
  */
 async function getMailTrackingColdMails(mailId, userId) {
   const tracking = await MailTracking.findOne({ mailId, userId }).lean();

@@ -119,7 +119,7 @@ export interface CompanyOptimizationBundleRequest {
   coverLetterSource?: CVAdaptationSource;
   linkedinMessageSource?: CVAdaptationSource;
   coldEmailLanguage?: 'turkish' | 'english';
-  /** info@ / contact@ genel kutu: cold mail’e yönlendirme girişi+teşekkür (diğer maillerde false) */
+  /** info@ / contact@ / hello@ / sales@ / bilgi@ / destek@ / iletisim@ genel kutu: cold mail’e yönlendirme girişi+teşekkür (diğer maillerde false) */
   coldEmailGenericInboxRouting?: boolean;
   recipientName?: string;
   recipientCompanyName?: string;

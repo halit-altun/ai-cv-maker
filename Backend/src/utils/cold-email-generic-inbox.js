@@ -1,7 +1,19 @@
 /**
- * info@ / contact@ / hello@ / sales@ genel gelen kutuları için cold mail sarmalama.
+ * Genel gelen kutuları için cold mail sarmalama.
  * Diğer alıcılara giden gövdeye dokunulmaz; yalnızca bu local-part’larda uygulanır.
  */
+
+/** Tam eşleşme veya local-part öneki (info.team, destek-hr, iletisim.hr vb.). */
+const GENERIC_INBOX_LOCALS = [
+  "info",
+  "contact",
+  "hello",
+  "sales",
+  "bilgi",
+  "destek",
+  "iletisim",
+];
+const GENERIC_INBOX_LABEL = GENERIC_INBOX_LOCALS.map((local) => `${local}@`).join(" / ");
 
 const THANKS_EN =
   "Thank you for taking the time to route my email to the responsible team.";
@@ -14,7 +26,7 @@ const ROUTE_TR =
   "Bu e-postayı İK veya işe alım ekibinize iletmenizi rica ederim.";
 
 /**
- * Local-part tam info/contact/hello/sales veya info./contact-/hello-/sales- gibi önekler.
+ * Local-part tam eşleşme veya aynı önekler (info., destek-, iletisim. vb.).
  * @param {string} email
  * @returns {boolean}
  */
@@ -25,15 +37,8 @@ function isInfoOrContactEmail(email) {
     .split("@")[0]
     .replace(/^@/, "");
   if (!local) return false;
-  return (
-    local === "info" ||
-    local === "contact" ||
-    local === "hello" ||
-    local === "sales" ||
-    /^info[._+-]/.test(local) ||
-    /^contact[._+-]/.test(local) ||
-    /^hello[._+-]/.test(local) ||
-    /^sales[._+-]/.test(local)
+  return GENERIC_INBOX_LOCALS.some(
+    (prefix) => local === prefix || new RegExp(`^${prefix}[._+-]`).test(local)
   );
 }
 
@@ -80,7 +85,7 @@ function detectColdEmailLanguage(bodyText) {
 }
 
 /**
- * Mevcut cold mail gövdesini koruyarak info/contact için giriş + teşekkür ekler.
+ * Mevcut cold mail gövdesini koruyarak genel kutu (info/contact/hello/sales/bilgi/destek/iletisim) için giriş + teşekkür ekler.
  * Zaten sarmalanmışsa tekrar eklemez.
  * @param {{ bodyText: string, companyName?: string, language?: 'english'|'turkish' }} params
  * @returns {string}
@@ -128,7 +133,7 @@ function wrapColdEmailForInfoContactInbox(params) {
 }
 
 /**
- * LinkedIn DM — genel kutu (info/contact/hello/sales) bağlamı için sarmalama.
+ * LinkedIn DM — genel kutu (info/contact/hello/sales/bilgi/destek/iletisim) bağlamı için sarmalama.
  * Selamlamayı Hi,/Merhaba, olarak tutar; yönlendirme + teşekkür ekler.
  */
 function wrapLinkedInForGenericInbox(params) {
@@ -184,7 +189,7 @@ function buildGenericInboxRoutingPromptAddon({
   const thanks = isEnglish ? THANKS_EN : THANKS_TR;
 
   return `
-GENERIC INBOX ROUTING (info@ / contact@ / hello@ / sales@ ONLY — apply this EXTRA structure; keep all other cold-email rules above unchanged for the middle body):
+GENERIC INBOX ROUTING (${GENERIC_INBOX_LABEL} ONLY — apply this EXTRA structure; keep all other cold-email rules above unchanged for the middle body):
 1) First line MUST be exactly: ${dear}
 2) Second beat (1 short sentence): ask them to forward/route this email to HR or recruiting (${isEnglish ? `"${ROUTE_EN}"` : `"${ROUTE_TR}"`} or equivalent short wording).
 3) Then write the SAME cold-email body logic as usual (researched opening like "I reviewed …" / Turkish equivalent, middle achievements, CTA) — do not invent extra claims.
@@ -206,4 +211,5 @@ module.exports = {
   wrapColdEmailForInfoContactInbox,
   wrapLinkedInForGenericInbox,
   buildGenericInboxRoutingPromptAddon,
+  GENERIC_INBOX_LOCALS,
 };

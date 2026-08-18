@@ -57,6 +57,10 @@ import {
   ListTablePagination,
   useServerListPagination,
 } from '@/shared/list-pagination';
+import {
+  GENERIC_INBOX_LABEL,
+  GENERIC_INBOX_LOCALS_SLASH,
+} from '@/lib/outreach/coldEmailGenericInbox';
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -362,7 +366,7 @@ export function MailTrackingView() {
       if (!body) {
         setError(
           kind === 'infoContact'
-            ? 'info/contact/hello/sales cold mail bulunamadı.'
+            ? `${GENERIC_INBOX_LOCALS_SLASH} cold mail bulunamadı.`
             : 'Standart cold mail bulunamadı.'
         );
         return;
@@ -375,7 +379,7 @@ export function MailTrackingView() {
       }
       setColdModalTitle(
         kind === 'infoContact'
-          ? 'info@ / contact@ / hello@ / sales@ cold mail'
+          ? `${GENERIC_INBOX_LABEL} cold mail`
           : 'Standart cold mail'
       );
       setColdModalBody(body);
@@ -414,7 +418,7 @@ export function MailTrackingView() {
       }
       setColdModalTitle(
         kind === 'infoContact'
-          ? 'LinkedIn — genel kutu (info/contact/hello/sales)'
+          ? `LinkedIn — genel kutu (${GENERIC_INBOX_LOCALS_SLASH})`
           : 'LinkedIn — standart'
       );
       setColdModalBody(body);
@@ -742,7 +746,7 @@ export function MailTrackingView() {
                         </Tooltip>
                       )}
                       {row.hasInfoContactColdMail && (
-                        <Tooltip title="info/contact/hello/sales cold mail — kopyala ve göster">
+                        <Tooltip title={`${GENERIC_INBOX_LABEL} cold mail — kopyala ve göster`}>
                           <span>
                             <Button
                               size="small"
