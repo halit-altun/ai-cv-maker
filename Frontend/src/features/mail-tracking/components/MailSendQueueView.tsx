@@ -85,6 +85,12 @@ function queueStatusColor(
   }
 }
 
+function queueItemTime(row: SendQueueItem): number {
+  const raw = row.sentAt || row.scheduledAt || row.createdAt;
+  const t = raw ? new Date(raw).getTime() : 0;
+  return Number.isNaN(t) ? 0 : t;
+}
+
 function formatInterval(minSec?: number, maxSec?: number): string {
   const min = Number(minSec || 0);
   const max = Number(maxSec || 0);
@@ -199,7 +205,12 @@ export function MailSendQueueView({
       list.push(item);
       map.set(key, list);
     }
-    return Array.from(map.entries());
+    return Array.from(map.entries())
+      .map(([company, rows]) => {
+        const sortedRows = [...rows].sort((a, b) => queueItemTime(b) - queueItemTime(a));
+        return [company, sortedRows] as [string, SendQueueItem[]];
+      })
+      .sort((a, b) => queueItemTime(b[1][0]) - queueItemTime(a[1][0]));
   }, [items]);
 
   return (

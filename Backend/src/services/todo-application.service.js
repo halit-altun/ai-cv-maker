@@ -1893,12 +1893,14 @@ async function listPendingCompanySendItems(userId, { projectId, company, recipie
     status: { $in: ["pending", "running", "paused"] },
   })
     .select("projectId status items pauseAfterCurrent")
-    .sort({ createdAt: 1 })
+    .sort({ updatedAt: -1, createdAt: -1 })
     .lean();
 
   const pending = [];
   for (const job of jobs) {
-    for (const it of job.items || []) {
+    const jobItems = Array.isArray(job.items) ? job.items : [];
+    for (let i = jobItems.length - 1; i >= 0; i -= 1) {
+      const it = jobItems[i];
       if (!["pending", "fetching", "analyzing", "sending"].includes(it.status)) {
         continue;
       }

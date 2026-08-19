@@ -243,7 +243,13 @@ export function MailTrackingView() {
         getMailTrackingStatsRequest(statsFilters),
         listOutreachProjectsRequest().catch(() => ({ projects: [] as Array<{ id: string; name: string }> })),
       ]);
-      setTrackings(list.trackings);
+      setTrackings(
+        [...(list.trackings || [])].sort((a, b) => {
+          const ta = new Date(a.sentAt || a.createdAt || 0).getTime();
+          const tb = new Date(b.sentAt || b.createdAt || 0).getTime();
+          return tb - ta;
+        })
+      );
       setTotal(list.total);
       setStats(summary);
       setProjects(

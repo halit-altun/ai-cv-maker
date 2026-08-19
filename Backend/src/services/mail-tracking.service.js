@@ -907,8 +907,8 @@ async function getUserMailTrackings(
   const [rawTrackings, total, companyCount] = await Promise.all([
     MailTracking.find(query)
       .sort({ sentAt: -1, createdAt: -1 })
-      .limit(limit)
       .skip(skip)
+      .limit(limit)
       .lean(),
     MailTracking.countDocuments(query),
     countDistinctCompanies(query),

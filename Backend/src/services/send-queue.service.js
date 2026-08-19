@@ -128,7 +128,7 @@ async function listSendQueue(userId, filters = {}) {
 
   const [docs, total, pendingJobItems] = await Promise.all([
     EmailQueue.find(query)
-      .sort({ scheduledAt: 1, createdAt: 1 })
+      .sort({ sentAt: -1, scheduledAt: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .select("-attachments.contentBase64 -bodyHtml -bodyText")
@@ -312,7 +312,7 @@ async function getSendQueueDetail(userId, { jobId, itemId, queueId } = {}) {
       userId: uid,
       "metadata.todoItemId": String(resolvedItemId),
     })
-      .sort({ scheduledAt: 1, createdAt: 1 })
+      .sort({ sentAt: -1, scheduledAt: -1, createdAt: -1 })
       .select("-attachments.contentBase64 -bodyHtml -bodyText")
       .lean();
     relatedQueueItems = related.map(mapQueueItem);
