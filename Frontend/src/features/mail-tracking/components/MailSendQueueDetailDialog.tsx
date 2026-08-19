@@ -2,6 +2,7 @@
 
 import { useMemo, type ComponentProps } from 'react';
 import {
+  Alert,
   Box,
   Chip,
   CircularProgress,
@@ -120,7 +121,9 @@ export function MailSendQueueDetailDialog({
             {analysis?.companyName || 'Gönderim detayı'}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Analizden gönderime kadar süreç özeti
+            {snap
+              ? 'Analizden gönderime kadar süreç özeti'
+              : 'Gönderim kaydı — bu mailde analiz özeti yok'}
           </Typography>
         </Box>
         <IconButton onClick={onClose} aria-label="Kapat">
@@ -136,6 +139,13 @@ export function MailSendQueueDetailDialog({
           <Typography>Detay bulunamadı.</Typography>
         ) : (
           <Stack spacing={2.5}>
+            {!snap ? (
+              <Alert severity="info">
+                Bu gönderim kaydında eşleşme skoru ve KW tablosu saklanmamış. Analiz o sırada
+                ekranda yapılmış olsa bile bu SMTP satırına yazılmamış (eski gönderim). Yeni
+                kuyruk gönderimlerinde bu detayda görünür.
+              </Alert>
+            ) : null}
             {analysis?.companyUrl ? (
               <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
                 {analysis.companyUrl}

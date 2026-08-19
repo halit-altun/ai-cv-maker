@@ -33,6 +33,8 @@ export type OutreachSendPayload = {
   companyUrl?: string;
   /** Yeniden analiz için tercih snapshot */
   reanalyzeContext?: Record<string, unknown>;
+  /** Mail takip detayında gösterilecek analiz özeti */
+  analysisSnapshot?: Record<string, unknown>;
 };
 
 export type OutreachSendResult = {

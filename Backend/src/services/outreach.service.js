@@ -204,6 +204,7 @@ async function sendCompanyOutreachEmailsImpl({
   reanalyzeContext,
   todoJobId,
   todoItemId,
+  analysisSnapshot,
 }) {
   const limits = getOutreachLimits();
   const candidates = Array.isArray(recipients)
@@ -581,6 +582,10 @@ async function sendCompanyOutreachEmailsImpl({
           companyUrl: companyUrl || undefined,
           todoJobId: todoJobId ? String(todoJobId) : undefined,
           todoItemId: todoItemId ? String(todoItemId) : undefined,
+          analysisSnapshot:
+            analysisSnapshot && typeof analysisSnapshot === "object"
+              ? analysisSnapshot
+              : undefined,
         }
       );
 

@@ -2203,6 +2203,29 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       const coverForSnapshot = String(
         opts?.cvDataOverride?.coverLetter || coverLetter || ''
       ).trim();
+      const analysisSnapshot = {
+        matchScore: analysisForSnapshot?.matchScore,
+        originalAbout: analysisForSnapshot?.originalAbout,
+        updatedAbout: analysisForSnapshot?.updatedAbout,
+        originalExperience: analysisForSnapshot?.originalExperience,
+        updatedExperience: analysisForSnapshot?.updatedExperience,
+        originalSkills: analysisForSnapshot?.originalSkills,
+        updatedSkills: analysisForSnapshot?.updatedSkills,
+        recommendations: analysisForSnapshot?.recommendations,
+        positiveMatches: analysisForSnapshot?.positiveMatches,
+        negativeMismatches: analysisForSnapshot?.negativeMismatches,
+        keywordIntegrationReport: analysisForSnapshot?.keywordIntegrationReport,
+        detectedKeywords: analysisForSnapshot?.detectedKeywords,
+        candidateKeywords: analysisForSnapshot?.candidateKeywords,
+        extractedKeywords:
+          opts?.cvDataOverride?.companyInfo?.extractedKeywords ||
+          companyInfo?.extractedKeywords,
+        deliverabilityScore: deliverabilityScore || null,
+        coverLetter: coverForSnapshot || undefined,
+        targetPosition: targetPosition || undefined,
+        cvLanguage,
+        cvSectionLengthMode,
+      };
       const rawDomainInput =
         emailDomainOverride.trim() ||
         companyInfo?.website ||
@@ -2293,29 +2316,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
               : '',
           reanalyzeContext,
           adaptationNotes: (analysisForSnapshot?.recommendations || []).join('\n'),
-          analysisSnapshot: {
-            matchScore: analysisForSnapshot?.matchScore,
-            originalAbout: analysisForSnapshot?.originalAbout,
-            updatedAbout: analysisForSnapshot?.updatedAbout,
-            originalExperience: analysisForSnapshot?.originalExperience,
-            updatedExperience: analysisForSnapshot?.updatedExperience,
-            originalSkills: analysisForSnapshot?.originalSkills,
-            updatedSkills: analysisForSnapshot?.updatedSkills,
-            recommendations: analysisForSnapshot?.recommendations,
-            positiveMatches: analysisForSnapshot?.positiveMatches,
-            negativeMismatches: analysisForSnapshot?.negativeMismatches,
-            keywordIntegrationReport: analysisForSnapshot?.keywordIntegrationReport,
-            detectedKeywords: analysisForSnapshot?.detectedKeywords,
-            candidateKeywords: analysisForSnapshot?.candidateKeywords,
-            extractedKeywords:
-              opts?.cvDataOverride?.companyInfo?.extractedKeywords ||
-              companyInfo?.extractedKeywords,
-            deliverabilityScore: deliverabilityScore || null,
-            coverLetter: coverForSnapshot || undefined,
-            targetPosition: targetPosition || undefined,
-            cvLanguage,
-            cvSectionLengthMode,
-          },
+          analysisSnapshot,
         });
         setOutreachSendResult(
           `${result.message} PDF eki: ${attachmentLabel}. Sıra ve tahmini saat için Mail Takip → Aralıklı gönderim sekmesine bakın.`
@@ -2348,6 +2349,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           linkedinMessageText,
           companyUrl: bestCompanyUrl || undefined,
           reanalyzeContext,
+          analysisSnapshot,
         });
         setOutreachSendResult(
           `${result.message}${pdfAttachment?.contentBase64 ? ` PDF eki: ${attachmentLabel}.` : ''}`

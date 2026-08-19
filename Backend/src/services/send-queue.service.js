@@ -6,6 +6,7 @@ const {
 const {
   listPendingCompanySendItems,
   getTodoJobItemDetail,
+  findLatestJobItemWithAnalysis,
 } = require("./todo-application.service");
 const { AppError } = require("../utils/app-error");
 
@@ -206,6 +207,27 @@ async function getSendQueueSummary(userId, filters = {}) {
   };
 }
 
+function analysisFromQueueDoc(doc, queueItem) {
+  if (!doc || !queueItem) return null;
+  const meta = doc.metadata && typeof doc.metadata === "object" ? doc.metadata : {};
+  const snapshot =
+    meta.analysisSnapshot && typeof meta.analysisSnapshot === "object"
+      ? meta.analysisSnapshot
+      : null;
+  return {
+    jobId: queueItem.todoJobId || "",
+    itemId: queueItem.todoItemId || "",
+    jobStatus: "",
+    itemStatus: queueItem.status || "",
+    companyName: queueItem.companyName || "",
+    companyUrl: meta.companyUrl || queueItem.companyUrl || "",
+    emailDomainInput: queueItem.domain || "",
+    coldEmailSubject: doc.subject || queueItem.subject || "",
+    coldEmailBody: doc.bodyText || "",
+    analysisSnapshot: snapshot,
+  };
+}
+
 async function getSendQueueDetail(userId, { jobId, itemId, queueId } = {}) {
   if (!queueId && !(jobId && itemId)) {
     throw new AppError(
@@ -220,26 +242,68 @@ async function getSendQueueDetail(userId, { jobId, itemId, queueId } = {}) {
       : userId;
 
   let queueItem = null;
+  let queueDoc = null;
   let resolvedJobId = jobId;
   let resolvedItemId = itemId;
 
   if (queueId) {
-    const doc = await EmailQueue.findOne({ _id: queueId, userId: uid })
+    queueDoc = await EmailQueue.findOne({ _id: queueId, userId: uid })
       .select("-attachments.contentBase64")
       .lean();
-    if (!doc) {
+    if (!queueDoc) {
       const err = new Error("Kuyruk kaydı bulunamadı.");
       err.statusCode = 404;
       throw err;
     }
-    queueItem = mapQueueItem(doc);
+    queueItem = mapQueueItem(queueDoc);
     resolvedJobId = resolvedJobId || queueItem.todoJobId;
     resolvedItemId = resolvedItemId || queueItem.todoItemId;
   }
 
   let analysis = null;
   if (resolvedJobId && resolvedItemId) {
-    analysis = await getTodoJobItemDetail(userId, resolvedJobId, resolvedItemId);
+    try {
+      analysis = await getTodoJobItemDetail(userId, resolvedJobId, resolvedItemId);
+    } catch (err) {
+      const code = err && err.code;
+      if (
+        err.statusCode !== 404 &&
+        code !== "TODO_JOB_NOT_FOUND" &&
+        code !== "TODO_JOB_ITEM_NOT_FOUND"
+      ) {
+        throw err;
+      }
+    }
+  }
+
+  if (!analysis?.analysisSnapshot && queueDoc) {
+    const fromMeta = analysisFromQueueDoc(queueDoc, queueItem);
+    if (fromMeta?.analysisSnapshot) {
+      analysis = { ...(analysis || {}), ...fromMeta };
+    } else if (!analysis) {
+      analysis = fromMeta;
+    } else if (fromMeta?.coldEmailBody && !analysis.coldEmailBody) {
+      analysis = {
+        ...analysis,
+        coldEmailSubject: analysis.coldEmailSubject || fromMeta.coldEmailSubject,
+        coldEmailBody: fromMeta.coldEmailBody,
+      };
+    }
+  }
+
+  if (!analysis?.analysisSnapshot) {
+    const fallback = await findLatestJobItemWithAnalysis(userId, {
+      companyName: queueItem?.companyName || analysis?.companyName,
+      domain: queueItem?.domain || analysis?.emailDomainInput,
+    });
+    if (fallback?.analysisSnapshot) {
+      analysis = {
+        ...(analysis || {}),
+        ...fallback,
+        coldEmailSubject: analysis?.coldEmailSubject || fallback.coldEmailSubject,
+        coldEmailBody: analysis?.coldEmailBody || fallback.coldEmailBody,
+      };
+    }
   }
 
   let relatedQueueItems = [];

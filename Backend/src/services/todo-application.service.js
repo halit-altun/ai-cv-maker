@@ -1053,6 +1053,7 @@ async function resumeSendOnlyForItem(job, item, settings, user) {
     reanalyzeContext: buildTodoReanalyzeContext(job, item, settings),
     todoJobId: String(job._id),
     todoItemId: String(item._id),
+    analysisSnapshot: item.analysisSnapshot || undefined,
   });
 
   item.outreachLogId = sendResult.logId || null;
@@ -1451,6 +1452,7 @@ async function processSingleJobItem(job, item) {
     reanalyzeContext: buildTodoReanalyzeContext(job, item, settings),
     todoJobId: String(job._id),
     todoItemId: String(item._id),
+    analysisSnapshot: item.analysisSnapshot || undefined,
   });
 
   item.outreachLogId = sendResult.logId || null;
@@ -1996,6 +1998,49 @@ async function getTodoJobItemDetail(userId, jobId, itemId) {
   return mapJobItemPublicDetail(job, item);
 }
 
+function domainLooksRelated(a, b) {
+  const left = String(a || "").trim().toLowerCase();
+  const right = String(b || "").trim().toLowerCase();
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
+}
+
+function companyLooksRelated(a, b) {
+  const left = String(a || "").trim().toLowerCase();
+  const right = String(b || "").trim().toLowerCase();
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
+}
+
+/** Mail kuyruğunda job id yoksa son şirket analiz özetini eşleştirir. */
+async function findLatestJobItemWithAnalysis(userId, { companyName, domain } = {}) {
+  const company = String(companyName || "").trim();
+  const domainRaw = String(domain || "").trim();
+  if (!company && !domainRaw) return null;
+
+  const jobs = await TodoApplicationJob.find({ userId })
+    .sort({ updatedAt: -1 })
+    .limit(40)
+    .select(
+      "-settings.pdfAttachment.contentBase64 -items.pdfAttachment.contentBase64 -settings.cvText"
+    )
+    .lean();
+
+  let companyFallback = null;
+  for (const job of jobs) {
+    for (const it of job.items || []) {
+      if (!it.analysisSnapshot) continue;
+      if (domainLooksRelated(it.emailDomainInput, domainRaw)) {
+        return mapJobItemPublicDetail(job, it);
+      }
+      if (!companyFallback && companyLooksRelated(it.companyName, company)) {
+        companyFallback = mapJobItemPublicDetail(job, it);
+      }
+    }
+  }
+  return companyFallback;
+}
+
 module.exports = {
   listTodoItems,
   createTodoItems,
@@ -2006,6 +2051,7 @@ module.exports = {
   enqueueCompanySend,
   listPendingCompanySendItems,
   getTodoJobItemDetail,
+  findLatestJobItemWithAnalysis,
   listTodoJobs,
   getTodoJob,
   setTodoJobStatus,

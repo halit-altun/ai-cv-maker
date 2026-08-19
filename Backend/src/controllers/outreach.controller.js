@@ -60,6 +60,7 @@ async function sendCompanyEmailHandler(req, res, next) {
       linkedinMessageText,
       companyUrl,
       reanalyzeContext,
+      analysisSnapshot,
     } = req.body || {};
 
     const senderName = resolveOutreachSenderName(req.user);
@@ -104,6 +105,7 @@ async function sendCompanyEmailHandler(req, res, next) {
       linkedinMessageText,
       companyUrl,
       reanalyzeContext,
+      analysisSnapshot,
     });
 
     const selectedList = Array.isArray(result.selectedRecipients)
