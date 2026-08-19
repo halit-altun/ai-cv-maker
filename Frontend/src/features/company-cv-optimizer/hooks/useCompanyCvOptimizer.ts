@@ -58,6 +58,7 @@ import {
   anyInfoOrContactEmail,
   wrapColdEmailForInfoContactInbox,
 } from '@/lib/outreach/coldEmailGenericInbox';
+import { sanitizeOutreachPlaceholders } from '@/lib/outreach/sanitizeOutreachPlaceholders';
 import {
   checkMailInfraRequest,
   createOutreachAiErrorLogRequest,
@@ -1618,8 +1619,22 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           includePrimaryEmail: includePrimaryEmailInSend,
           includeEnteredMainDomain: includeEnteredMainDomainInSend,
         });
-        setOutreachEmailSubject(bundle.coldEmail.subject);
-        setOutreachEmailBody(standardBody);
+        setOutreachEmailSubject(
+          sanitizeOutreachPlaceholders(bundle.coldEmail.subject, {
+            kind: 'subject',
+            language: coldLanguage === 'english' ? 'english' : 'turkish',
+            companyName: companyLabel,
+            recipientName: coverLetterRecipientName.trim(),
+          })
+        );
+        setOutreachEmailBody(
+          sanitizeOutreachPlaceholders(standardBody, {
+            kind: 'body',
+            language: coldLanguage === 'english' ? 'english' : 'turkish',
+            companyName: companyLabel,
+            recipientName: coverLetterRecipientName.trim(),
+          })
+        );
         setOutreachInfoContactEmailBody(
           anyInfoOrContactEmail(candidateEmails)
             ? buildInfoContactColdBody({

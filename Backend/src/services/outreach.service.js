@@ -21,6 +21,9 @@ const {
 } = require("../utils/email-attachment.utils");
 const { resolveCompanyDisplayName } = require("../utils/company-display-name");
 const {
+  sanitizeOutreachPlaceholders,
+} = require("../utils/outreach-placeholder.utils");
+const {
   isPersistOutreachHistoryEnabled,
 } = require("../utils/persist-outreach-history");
 const {
@@ -443,11 +446,21 @@ async function sendCompanyOutreachEmailsImpl({
   const attachments = attachment ? [attachment] : [];
   const storedPdf = toQueueAttachment(pdfAttachment);
 
-  const safeSubject =
+  const safeSubject = sanitizeOutreachPlaceholders(
     String(subject || "").trim() ||
-    `Başvuru${resolvedCompanyName ? ` — ${resolvedCompanyName}` : ""} | ${fromDisplayName}`;
+      `Başvuru${resolvedCompanyName ? ` — ${resolvedCompanyName}` : ""} | ${fromDisplayName}`,
+    {
+      kind: "subject",
+      companyName: resolvedCompanyName,
+      candidateName: fromDisplayName,
+    }
+  );
 
-  const baseText = String(bodyText).trim();
+  const baseText = sanitizeOutreachPlaceholders(String(bodyText).trim(), {
+    kind: "body",
+    companyName: resolvedCompanyName,
+    candidateName: fromDisplayName,
+  });
   const infoContactBodyText = anyInfoOrContactEmail(list)
     ? wrapColdEmailForInfoContactInbox({
         bodyText: baseText,

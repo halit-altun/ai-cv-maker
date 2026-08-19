@@ -1357,6 +1357,9 @@ async function processSingleJobItem(job, item) {
     item.status = "completed";
     item.step = "analyzed_only";
     item.completedAt = new Date();
+    job.progress = computeProgress(job.items);
+    job.currentItemId = null;
+    await job.save();
     return;
   }
 
@@ -2007,6 +2010,7 @@ module.exports = {
   getTodoJob,
   setTodoJobStatus,
   processTodoApplicationJobs,
+  processSingleJobItem,
   getProjectTodoSummary,
   getProjectCompanyResults,
   getTodoProjectSettings,

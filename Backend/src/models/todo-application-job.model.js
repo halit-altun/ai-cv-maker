@@ -216,6 +216,8 @@ const todoApplicationJobSchema = new mongoose.Schema(
       cvId: { type: String, default: null },
       cvTitle: { type: String, default: "" },
       cvFileName: { type: String, default: "" },
+      /** startTodoJob PDF extract cache — yoksa her item PDF’i yeniden okur */
+      cvText: { type: String, default: "" },
       replyTo: { type: String, default: "" },
       /** Tek CV eki — tüm firmalara aynı ek (base64) */
       pdfAttachment: {

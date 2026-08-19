@@ -18,6 +18,10 @@ const {
 const {
   wrapColdEmailForInfoContactInbox,
 } = require("../../utils/cold-email-generic-inbox");
+const {
+  sanitizeOutreachPlaceholders,
+  stillHasTemplatePlaceholder,
+} = require("../../utils/outreach-placeholder.utils");
 
 const GEMINI_MAX_RETRIES = 3;
 const GEMINI_RETRY_DELAY_MS = 1500;
@@ -74,6 +78,15 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
         coverLetter = normalizeOutreachLetterFormatting(
           coverLetter.replace(/\[company\]/gi, "")
         );
+        coverLetter = sanitizeOutreachPlaceholders(coverLetter, {
+          language: meta.lang === "English" ? "english" : "turkish",
+          companyName: recipientCompany,
+          candidateName: `${parsedCV.personalInfo?.firstName || ""} ${
+            parsedCV.personalInfo?.lastName || ""
+          }`.trim(),
+          recipientName: String(request.recipientName || "").trim(),
+          kind: "body",
+        });
         if (!recipientCompany && request.companyInfo?.name) {
           const escaped = String(request.companyInfo.name).replace(
             /[.*+?^${}()|[\]\\]/g,
@@ -91,6 +104,15 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
         linkedinMessage = normalizeOutreachLetterFormatting(
           linkedinMessage.replace(/\[company\]/gi, "")
         );
+        linkedinMessage = sanitizeOutreachPlaceholders(linkedinMessage, {
+          language: meta.linkedInLang === "English" ? "english" : "turkish",
+          companyName: recipientCompany,
+          candidateName: `${parsedCV.personalInfo?.firstName || ""} ${
+            parsedCV.personalInfo?.lastName || ""
+          }`.trim(),
+          recipientName: String(request.recipientName || "").trim(),
+          kind: "body",
+        });
         if (!recipientCompany && request.companyInfo?.name) {
           const escaped = String(request.companyInfo.name).replace(
             /[.*+?^${}()|[\]\\]/g,
@@ -141,6 +163,28 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
             missing.push(website);
           }
           if (missing.length) body = `${body}\n${missing.join(" | ")}`.trim();
+          const sanitizeOpts = {
+            language: coldLang === "English" ? "english" : "turkish",
+            companyName:
+              String(request.recipientCompanyName || "").trim() ||
+              String(request.companyInfo?.name || "").trim() ||
+              recipientCompany,
+            candidateName: fullName,
+            recipientName: String(request.recipientName || "").trim(),
+          };
+          subject = sanitizeOutreachPlaceholders(subject, {
+            ...sanitizeOpts,
+            kind: "subject",
+          });
+          body = sanitizeOutreachPlaceholders(body, {
+            ...sanitizeOpts,
+            kind: "body",
+          });
+          if (stillHasTemplatePlaceholder(body) || stillHasTemplatePlaceholder(subject)) {
+            console.warn(
+              "[runFullOptimizationBundle] Cold mail şablon artığı temizlendi ama şüpheli token kaldı."
+            );
+          }
           if (request.coldEmailGenericInboxRouting) {
             body = wrapColdEmailForInfoContactInbox({
               bodyText: body,

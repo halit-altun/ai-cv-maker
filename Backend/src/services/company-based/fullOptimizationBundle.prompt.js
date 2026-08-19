@@ -244,7 +244,9 @@ ${buildCvSectionLengthPromptAddon({
    - Avoid empty flattery without a grounded work-area detail.
    - Subject may lightly reflect role + grounded domain (keep short).
    - Do NOT mention CV attachment, filename, or "CV eki" in the body — PDF is attached separately; naming it is unprofessional.
-${genericInboxAddon}9) Recipient name: ${recipientName || "none"}; company for outreach: ${recipientCompany || "none"}.
+   - SEND-READY (CRITICAL): Never output template tokens or field labels: [İlgili Kişi Adı Soyadı], [Name], [Company], [Şirket], [kullanıcı], {Name}, <Name>, "Adı Soyadı". The email must be ready to send as-is.
+   - GREETING: If recipient name is provided, first line is "Sayın {that name}," (TR) or "Dear {that name}," (EN). If recipient name is unknown/none, first line MUST be exactly "Sayın ilgili," (TR) or "Dear Hiring Team," (EN). Do not invent a person.
+${genericInboxAddon}9) Recipient name: ${recipientName || "UNKNOWN — do not invent a person; use the generic greeting above"}; company for outreach: ${recipientCompany || "none"}.
 10) Outreach optional links if non-empty: LinkedIn=${request.outreachLinkedinUrl || "n/a"}, Portfolio=${request.outreachPortfolioUrl || "n/a"}, Website=${request.outreachWebsiteUrl || "n/a"}, Phone=${request.outreachPhone || "n/a"}.
 11) If a GENERATE flag is NO, return empty string / null for that field.
 12) If Extract companyInfo=YES, fill companyInfo from pages; extractedKeywords may list up to 10 candidate hints (pipeline will filter). companyInfo.name MUST be the brand/legal company name only — NEVER a URL, www., or domain (put those in website).

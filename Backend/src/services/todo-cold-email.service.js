@@ -1,5 +1,6 @@
 const { generateAIContent } = require("./ai-provider.service");
 const { waitAndProceed } = require("./gemini-rate-limiter");
+const { sanitizeOutreachPlaceholders } = require("../utils/outreach-placeholder.utils");
 
 function safeJsonParse(text) {
   const raw = String(text || "").trim();
@@ -79,6 +80,8 @@ Rules:
 - Professional, concise, no fluff
 - Mention interest in the company / role naturally
 - Do NOT invent fake metrics
+- NEVER use template tokens: [Name], [Company], [İlgili Kişi Adı Soyadı], [kullanıcı]
+- If you do not know the recipient person, greet with "Sayın ilgili," (Turkish) or "Dear Hiring Team," (English)
 - Include a short ask to review the attached CV if relevant
 - Sign with the candidate info if provided
 - Subject max 80 chars
@@ -114,17 +117,29 @@ ${String(pageText || "").slice(0, 9000)}
     companyName ||
     "";
 
-  let body = String(parsed.body || "").trim();
+  let body = sanitizeOutreachPlaceholders(String(parsed.body || "").trim(), {
+    kind: "body",
+    language,
+    companyName: resolvedCompanyName,
+    candidateName: String(settings.candidateFullName || "").trim(),
+  });
+  const subject = sanitizeOutreachPlaceholders(
+    String(parsed.subject || "").trim() ||
+      (targetPosition ? `${targetPosition} başvurusu` : "İş başvurusu"),
+    {
+      kind: "subject",
+      language,
+      companyName: resolvedCompanyName,
+      candidateName: String(settings.candidateFullName || "").trim(),
+    }
+  );
   if (signature.length && !signature.some((line) => body.includes(line))) {
     body = `${body}\n\n${signature.join("\n")}`;
   }
 
   return {
     companyName: resolvedCompanyName,
-    subject: String(parsed.subject || "").trim() ||
-      (targetPosition
-        ? `${targetPosition} başvurusu`
-        : "İş başvurusu"),
+    subject,
     body,
     adaptationNotes: String(parsed.adaptationNotes || "").trim(),
     model: result.model,

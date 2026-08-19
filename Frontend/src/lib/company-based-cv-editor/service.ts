@@ -28,6 +28,7 @@ import {
   buildGenericInboxRoutingPromptAddon,
   wrapColdEmailForInfoContactInbox,
 } from '@/lib/outreach/coldEmailGenericInbox';
+import { sanitizeOutreachPlaceholders } from '@/lib/outreach/sanitizeOutreachPlaceholders';
 import { resolveCompanyDisplayName } from '@/lib/company/normalizeCompanyDisplayName';
 import { stripTrailingOutreachSignOff } from './outreachSignature';
 
@@ -1357,7 +1358,7 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
     const company =
       (recipientCompanyName || '').trim() ||
       (companyInfo?.name || '').trim() ||
-      '[Şirket Adı]';
+      '';
     const recipient = (recipientName || '').trim();
     const skills = Array.isArray(candidateSkills) ? candidateSkills.slice(0, 12).join(', ') : 'N/A';
     const highlights = Array.isArray(candidateHighlights)
@@ -1430,7 +1431,7 @@ E-MAIL WRITING RULES:
 1. LENGTH: Maximum 120-150 words. 3 short paragraphs OR clear bullet points. Must be readable in under 30 seconds.
 2. TONE: Professional, direct, confident, corporate but modern — not overly stiff. Sound researched, never fabricated.
 3. PERSONALIZATION (RESEARCHED VIBE) + HARD GROUNDING:
-   - Address recipient name if known, otherwise the company/HR team.
+   - Address a real recipient name only if provided below. If recipient is none/unknown, first line MUST be exactly "Sayın ilgili," (TR) or "Dear Hiring Team," (EN). NEVER write [İlgili Kişi Adı Soyadı], [Name], [Company], [kullanıcı], {Name}, or any similar template token anywhere in subject or body.
    - Company facts: use ONLY what appears in the target company profile / job description block below. Paraphrase is OK; invention is NOT.
    - FORBIDDEN company claims: products, services, clients, partners, awards, funding rounds, office cities, headcount, tech stack, slogans, or "you specialize in X" unless that exact idea is in the target text.
    - Preferred hook: 1 short sentence on work area / industry / domain ONLY if grounded in target text.
@@ -1444,20 +1445,20 @@ E-MAIL WRITING RULES:
    - Opening: who you are + role/tech focus (CV-true) + grounded company hook (if available) + overlap or interest (not fake mastery).
    - Middle: 2-3 strongest achievements/skills WITH numbers/impact when available from CV highlights only (prefer ones relevant to company if overlap exists).
    - Closing (CTA): short meeting invite only. Do NOT mention CV attachment, filename, or "CV eki" — the file is already attached; naming it is unprofessional.
-5. FORBIDDEN: "I hope you are well". Empty flattery. Fake company knowledge. Fake candidate tech ownership. Full CV dump. Do not write "CV eki", attachment filename, or "I attached my CV" — recipient already sees the file.
+5. FORBIDDEN: "I hope you are well". Empty flattery. Fake company knowledge. Fake candidate tech ownership. Full CV dump. Do not write "CV eki", attachment filename, or "I attached my CV" — recipient already sees the file. FORBIDDEN template tokens anywhere: [Name], [Company], [İlgili Kişi Adı Soyadı], [kullanıcı].
 6. CANDIDATE FACTS: Never invent metrics or technologies not supported by candidate data. ${experienceRule}
 7. Optional links below may be used in the signature only if provided; do not invent URLs.
 8. Language: ${isEnglish ? 'English only' : 'Turkish only'}.
 ${genericInboxAddon}
 STYLE EXAMPLES (only when domain is grounded in target data — otherwise omit domain phrase):
 
-Example EN subject: "Full Stack (Next.js) – [Company] – [Name]"
-Example EN opening (grounded): "I reviewed [Company]'s focus on [domain FROM target text] and would like to contribute as a Full Stack developer…"
-Example EN opening (thin data): "I am reaching out regarding Full Stack opportunities at [Company]…"
+Example EN subject: "Full Stack (Next.js) application"
+Example EN opening (grounded): "Dear Hiring Team,\n\nI reviewed the company's focus on the domain stated in the target text and would like to contribute as a Full Stack developer…"
+Example EN opening (thin data): "Dear Hiring Team,\n\nI am reaching out regarding Full Stack opportunities at the company…"
 
-Example TR subject: "Full Stack başvurusu – [Name]"
-Example TR opening (grounded): "[Şirket]’in [hedef metindeki alan] tarafındaki çalışmalarını inceledim; bu alanda Full Stack olarak katkı vermek istiyorum…"
-Example TR opening (thin data): "[Şirket] ekibine Full Stack olarak katkı vermek üzere yazıyorum…"
+Example TR subject: "Full Stack başvurusu"
+Example TR opening (grounded): "Sayın ilgili,\n\nŞirketin hedef metindeki alan tarafındaki çalışmalarını inceledim; bu alanda Full Stack olarak katkı vermek istiyorum…"
+Example TR opening (thin data): "Sayın ilgili,\n\nŞirket ekibine Full Stack olarak katkı vermek üzere yazıyorum…"
 
 CANDIDATE:
 - Name: ${fullName || 'N/A'}
@@ -1500,6 +1501,15 @@ Return ONLY valid JSON:
     if (!body) {
       throw new Error('Cold mail gövdesi üretilemedi.');
     }
+
+    const sanitizeOpts = {
+      language: isEnglish ? ('english' as const) : ('turkish' as const),
+      companyName: company,
+      candidateName: fullName,
+      recipientName: recipient,
+    };
+    subject = sanitizeOutreachPlaceholders(subject, { ...sanitizeOpts, kind: 'subject' });
+    body = sanitizeOutreachPlaceholders(body, { ...sanitizeOpts, kind: 'body' });
 
     // İmza linkleri AI unuttuysa ve opsiyonel link varsa ekle
     const missingLinks: string[] = [];
