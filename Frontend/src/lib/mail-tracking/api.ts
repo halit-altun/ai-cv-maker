@@ -329,6 +329,8 @@ export type PendingJobSendItem = {
   recipientCount: number;
   scheduledAt?: string | null;
   waitingForJob: boolean;
+  errorMessage?: string;
+  errorCode?: string;
   cvFileName?: string;
   coldEmailSubject?: string;
   hasAnalysisSnapshot?: boolean;

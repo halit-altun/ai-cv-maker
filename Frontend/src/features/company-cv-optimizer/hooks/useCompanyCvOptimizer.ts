@@ -2360,6 +2360,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
             (companyLinks[0]?.pageType || lastCompanyPageType) === 'other'
               ? companyLinks[0]?.pageTypeOther || lastCompanyPageTypeOther
               : '',
+          includeEnteredMainDomainInSend,
+          includePrimaryEmailInSend,
+          skipPrimaryEmailVerification,
           reanalyzeContext,
           adaptationNotes: (analysisForSnapshot?.recommendations || []).join('\n'),
           analysisSnapshot,

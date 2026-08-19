@@ -264,6 +264,26 @@ function allowMxOnlyFallback() {
 }
 
 /**
+ * Mailbox API'leri (Reacher/EmailVerify) catch-all / rol adreslerini invalid sayınca
+ * MX varsa kuyruk adaylarını kabul et. EMAIL_VERIFY_MX_ONLY_FALLBACK=false ile kapatılır.
+ */
+function acceptCandidatesAfterMailboxChecks({
+  mxOk,
+  validEmails,
+  candidates,
+} = {}) {
+  const valid = Array.isArray(validEmails) ? validEmails.filter(Boolean) : [];
+  if (valid.length) {
+    return { ok: true, emails: valid, usedMxFallback: false };
+  }
+  const list = Array.isArray(candidates) ? candidates.filter(Boolean) : [];
+  if (mxOk && allowMxOnlyFallback() && list.length) {
+    return { ok: true, emails: list, usedMxFallback: true };
+  }
+  return { ok: false, emails: [], usedMxFallback: false };
+}
+
+/**
  * Kademe 1 — Domain'de MX kaydı var mı?
  */
 async function checkMx(domain) {
@@ -777,7 +797,14 @@ async function pickValidRecipient(candidates, options = {}) {
         getRecipientPriority(a.email, trusted) - getRecipientPriority(b.email, trusted)
     );
 
-  if (!validChecks.length) {
+  const validEmailsFromChecks = validChecks.map((c) => c.email);
+  const accepted = acceptCandidatesAfterMailboxChecks({
+    mxOk: true,
+    validEmails: validEmailsFromChecks,
+    candidates: list,
+  });
+
+  if (!accepted.ok) {
     return {
       ok: false,
       validEmail: null,
@@ -790,8 +817,20 @@ async function pickValidRecipient(candidates, options = {}) {
     };
   }
 
-  const validEmails = validChecks.map((c) => c.email);
-  const primary = validChecks[0];
+  if (accepted.usedMxFallback) {
+    console.log(
+      `[VERIFY MX-FALLBACK] ${domain}: mailbox doğrulanamadı ama MX var; ${accepted.emails.length} aday kuyruğa alınacak.`
+    );
+  }
+
+  const validEmails = accepted.emails;
+  const primaryEmail = validEmails[0];
+  const primary = validChecks[0] || {
+    provider: "mx-only",
+    warning: accepted.usedMxFallback
+      ? "Mailbox doğrulanamadı; MX kaydı olduğu için gönderim kuyruğa alındı."
+      : null,
+  };
 
   console.log(
     `[VERIFY SELECT] ${validEmails.length} geçerli adres: ${validEmails.join(", ")}`
@@ -799,13 +838,15 @@ async function pickValidRecipient(candidates, options = {}) {
 
   return {
     ok: true,
-    validEmail: primary.email,
+    validEmail: primaryEmail,
     validEmails,
     domain,
     mx,
     checks,
-    provider: primary.provider,
-    message: `${validEmails.length} geçerli adres: ${validEmails.join(", ")}`,
+    provider: accepted.usedMxFallback ? "mx-only" : primary.provider,
+    message: accepted.usedMxFallback
+      ? `${domain} MX var; mailbox doğrulanamadı, ${validEmails.length} aday kuyruğa alındı.`
+      : `${validEmails.length} geçerli adres: ${validEmails.join(", ")}`,
     warning: primary.warning || null,
   };
 }
@@ -821,6 +862,8 @@ module.exports = {
   getRecipientPriority,
   selectByPriority,
   isVerifyEnabled,
+  allowMxOnlyFallback,
+  acceptCandidatesAfterMailboxChecks,
   isRoleBasedCareerAddress,
   interpretEmailVerifyResult,
   DEFAULT_CANDIDATE_PREFIXES,

@@ -173,13 +173,6 @@ export function MailSendQueueView({
     void loadData();
   }, [loadData, refreshToken]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      void loadData();
-    }, 8000);
-    return () => window.clearInterval(timer);
-  }, [loadData]);
-
   const openDetail = async (params: { jobId?: string; itemId?: string; queueId?: string }) => {
     setDetailOpen(true);
     setDetailLoading(true);
@@ -274,7 +267,7 @@ export function MailSendQueueView({
           }}
         >
           <Typography sx={{ px: 2, pt: 1.5, fontWeight: 600 }}>
-            Job kuyruğunda (henüz SMTP zamanı yok) — satıra tıklayınca analiz detayı
+            Job kuyruğunda (henüz SMTP zamanı yok) — satıra tıklayınca analiz detayı. Liste Yenile ile güncellenir.
           </Typography>
           <Table size="small">
             <TableHead>
@@ -302,9 +295,17 @@ export function MailSendQueueView({
                     {` (${row.recipientCount})`}
                   </TableCell>
                   <TableCell>
-                    <Chip size="small" label={row.itemStatus} color="warning" />
+                    <Chip
+                      size="small"
+                      label={row.itemStatus}
+                      color={row.itemStatus === 'failed' ? 'error' : 'warning'}
+                    />
                   </TableCell>
-                  <TableCell>Gönderim bekleniyor</TableCell>
+                  <TableCell>
+                    {row.itemStatus === 'failed'
+                      ? row.errorMessage || 'Gönderilemedi'
+                      : 'Gönderim bekleniyor'}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

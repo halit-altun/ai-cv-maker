@@ -189,6 +189,9 @@ export type EnqueueCompanySendPayload = {
     contentType?: string;
   };
   linkedinMessageText?: string;
+  skipPrimaryEmailVerification?: boolean;
+  includePrimaryEmailInSend?: boolean;
+  includeEnteredMainDomainInSend?: boolean;
   reanalyzeContext?: Record<string, unknown>;
   adaptationNotes?: string;
   analysisSnapshot?: Record<string, unknown> | null;

@@ -3,12 +3,21 @@ function pickNextPendingJobItem(items, jobStatus, pauseAfterCurrent = false) {
   const inProgress = list.find((i) =>
     ["fetching", "analyzing", "sending"].includes(String(i.status || ""))
   );
-  if (inProgress) return inProgress;
-  if (jobStatus === "paused" || pauseAfterCurrent) return null;
+  const inProgressSendOnly = list.find(
+    (i) =>
+      ["fetching", "analyzing", "sending"].includes(String(i.status || "")) &&
+      i.pipeline === "send_only"
+  );
+  if (inProgressSendOnly) return inProgressSendOnly;
+  if (jobStatus === "paused" || pauseAfterCurrent) {
+    if (inProgress) return inProgress;
+    return null;
+  }
   const sendOnly = list.find(
     (i) => i.status === "pending" && i.pipeline === "send_only"
   );
   if (sendOnly) return sendOnly;
+  if (inProgress) return inProgress;
   return list.find((i) => i.status === "pending") || null;
 }
 
@@ -41,6 +50,36 @@ function enqueuePausedJobFilter(clientId, userId) {
   };
 }
 
+function enqueueSendOnlyLiveJobFilter(clientId, userId) {
+  return {
+    clientId,
+    userId,
+    status: { $in: ["pending", "running"] },
+    items: {
+      $not: {
+        $elemMatch: {
+          pipeline: { $ne: "send_only" },
+          status: { $in: ["pending", "fetching", "analyzing", "sending"] },
+        },
+      },
+    },
+  };
+}
+
+function enqueueSendOnlyPausedJobFilter(clientId, userId) {
+  return {
+    ...enqueuePausedJobFilter(clientId, userId),
+    items: {
+      $not: {
+        $elemMatch: {
+          pipeline: { $ne: "send_only" },
+          status: { $in: ["pending", "fetching", "analyzing", "sending"] },
+        },
+      },
+    },
+  };
+}
+
 function resumePausedJobOnEnqueue(item) {
   return {
     $push: { items: item },
@@ -51,7 +90,9 @@ function resumePausedJobOnEnqueue(item) {
 module.exports = {
   pickNextPendingJobItem,
   pendingSendOnlyJobFilter,
+  enqueueSendOnlyLiveJobFilter,
   enqueueLiveJobFilter,
   enqueuePausedJobFilter,
+  enqueueSendOnlyPausedJobFilter,
   resumePausedJobOnEnqueue,
 };
