@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, type MouseEvent } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Alert,
   Box,
@@ -19,6 +20,8 @@ import {
   Select,
   Snackbar,
   Stack,
+  Tab,
+  Tabs,
   Table,
   TableBody,
   TableCell,
@@ -51,6 +54,8 @@ import {
   type MailTrackingStats,
   type MailTrackingStatus,
 } from '@/lib/mail-tracking/api';
+import { MailSendQueueView } from './MailSendQueueView';
+import type { SendQueueStatus } from '@/lib/mail-tracking/api';
 import { listOutreachProjectsRequest } from '@/lib/projects/api';
 import { dashboardTokens } from '@/features/dashboard/styles/dashboardTokens';
 import {
@@ -162,6 +167,13 @@ function formatProjectName(value?: string | null): string {
 
 export function MailTrackingView() {
   const { colors, fonts } = dashboardTokens;
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<'tracking' | 'queue'>(
+    searchParams.get('tab') === 'queue' ? 'queue' : 'tracking'
+  );
+  const [queueRefreshToken, setQueueRefreshToken] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [trackings, setTrackings] = useState<MailTrackingItem[]>([]);
@@ -171,6 +183,7 @@ export function MailTrackingView() {
 
   const [recipientFilter, setRecipientFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'' | MailTrackingStatus>('');
+  const [queueStatusFilter, setQueueStatusFilter] = useState<'' | SendQueueStatus>('');
   const [projectFilter, setProjectFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   /** Tek gün — gönderim tarihi (YYYY-MM-DD) */
@@ -247,8 +260,31 @@ export function MailTrackingView() {
   }, [recipientFilter, statusFilter, projectFilter, companyFilter, sentDateFilter, limit, skip]);
 
   useEffect(() => {
+    if (tab !== 'tracking') return;
     void loadData();
-  }, [loadData]);
+  }, [loadData, tab]);
+
+  useEffect(() => {
+    void listOutreachProjectsRequest()
+      .then((projectList) => {
+        setProjects(
+          (projectList.projects || []).map((p: { id: string; name: string }) => ({
+            id: p.id,
+            name: p.name,
+          }))
+        );
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const changeTab = (next: 'tracking' | 'queue') => {
+    setTab(next);
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === 'queue') params.set('tab', 'queue');
+    else params.delete('tab');
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
 
   const openDetail = async (item: MailTrackingItem) => {
     setSelected(item);
@@ -458,22 +494,41 @@ export function MailTrackingView() {
             </Typography>
           </Box>
           <Typography sx={{ color: colors.onSurfaceVariant }}>
-            Gönderilen maillerin durumu ve okundu takibi. Spam skorunu güçlendirmek için her maili
-            “Gelen kutusu” veya “Spam” olarak işaretleyin.
+            {tab === 'queue'
+              ? 'Şirket bazlı ve bulk gönderimlerin planlanan sırası, tahmini bitiş ve tamamlanma sayıları.'
+              : 'Gönderilen maillerin durumu ve okundu takibi. Spam skorunu güçlendirmek için her maili “Gelen kutusu” veya “Spam” olarak işaretleyin.'}
           </Typography>
-          <Alert severity="warning" sx={{ mt: 1.5, borderRadius: 2 }}>
-            Gmail görselleri Google proxy ile yüklenir — pixel URL <strong>localhost</strong> ise
-            OPENED asla düşmez. Backend .env: <code>TRACKING_PUBLIC_BASE_URL</code> = ngrok HTTPS
-            adresi. Sonra <strong>yeni mail</strong> gönderin (eski maillerdeki pixel hâlâ
-            localhost).
-          </Alert>
+          {tab === 'tracking' && (
+            <Alert severity="warning" sx={{ mt: 1.5, borderRadius: 2 }}>
+              Gmail görselleri Google proxy ile yüklenir — pixel URL <strong>localhost</strong> ise
+              OPENED asla düşmez. Backend .env: <code>TRACKING_PUBLIC_BASE_URL</code> = ngrok HTTPS
+              adresi. Sonra <strong>yeni mail</strong> gönderin (eski maillerdeki pixel hâlâ
+              localhost).
+            </Alert>
+          )}
         </Box>
-        <IconButton onClick={() => void loadData()} disabled={loading} aria-label="Yenile">
+        <IconButton
+          onClick={() => {
+            if (tab === 'queue') setQueueRefreshToken((n) => n + 1);
+            else void loadData();
+          }}
+          disabled={loading}
+          aria-label="Yenile"
+        >
           <RefreshIcon />
         </IconButton>
       </Box>
 
-      {stats && (
+      <Tabs
+        value={tab}
+        onChange={(_e, value: 'tracking' | 'queue') => changeTab(value)}
+        sx={{ borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab value="tracking" label="Mail takip" />
+        <Tab value="queue" label="Aralıklı gönderim" />
+      </Tabs>
+
+      {tab === 'tracking' && stats && (
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} flexWrap="wrap" useFlexGap>
           {[
             { label: 'Toplam mail', value: stats.total },
@@ -525,14 +580,31 @@ export function MailTrackingView() {
           <InputLabel>Statü</InputLabel>
           <Select
             label="Statü"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as '' | MailTrackingStatus)}
+            value={tab === 'tracking' ? statusFilter : queueStatusFilter}
+            onChange={(e) => {
+              if (tab === 'tracking') {
+                setStatusFilter(e.target.value as '' | MailTrackingStatus);
+              } else {
+                setQueueStatusFilter(e.target.value as '' | SendQueueStatus);
+              }
+            }}
           >
             <MenuItem value="">Tümü</MenuItem>
-            <MenuItem value="SENT">Gönderildi</MenuItem>
-            <MenuItem value="DELIVERED">Teslim edildi</MenuItem>
-            <MenuItem value="OPENED">Okundu</MenuItem>
-            <MenuItem value="FAILED">Başarısız</MenuItem>
+            {tab === 'tracking' ? (
+              [
+                <MenuItem key="SENT" value="SENT">Gönderildi</MenuItem>,
+                <MenuItem key="DELIVERED" value="DELIVERED">Teslim edildi</MenuItem>,
+                <MenuItem key="OPENED" value="OPENED">Okundu</MenuItem>,
+                <MenuItem key="FAILED" value="FAILED">Başarısız</MenuItem>,
+              ]
+            ) : (
+              [
+                <MenuItem key="pending" value="pending">Sırada</MenuItem>,
+                <MenuItem key="processing" value="processing">Gönderiliyor</MenuItem>,
+                <MenuItem key="sent" value="sent">Gönderildi</MenuItem>,
+                <MenuItem key="failed" value="failed">Başarısız</MenuItem>,
+              ]
+            )}
           </Select>
         </FormControl>
 
@@ -572,13 +644,22 @@ export function MailTrackingView() {
         />
       </Stack>
 
-      {error && (
+      {error && tab === 'tracking' && (
         <Alert severity="error" sx={{ borderRadius: 2 }}>
           {error}
         </Alert>
       )}
 
-      {loading ? (
+      {tab === 'queue' ? (
+        <MailSendQueueView
+          recipientFilter={recipientFilter}
+          companyFilter={companyFilter}
+          projectFilter={projectFilter}
+          sentDateFilter={sentDateFilter}
+          statusFilter={queueStatusFilter}
+          refreshToken={queueRefreshToken}
+        />
+      ) : loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress />
         </Box>

@@ -119,6 +119,8 @@ type JobAnalysisStepProps = Pick<
   | 'shouldSendCompanyEmail'
   | 'setShouldSendCompanyEmail'
   | 'autoSendOutreachAfterAnalysis'
+  | 'queuedIntervalOutreach'
+  | 'outreachSendResult'
   | 'selectedEmailPrefixCategories'
   | 'setSelectedEmailPrefixCategories'
   | 'customEmailLocalPartsText'
@@ -590,6 +592,11 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
             Seçili proje altında analiz ve mail kayıtları gruplanır (ör. DUBAI). Projesiz
             bırakırsanız mevcut akış devam eder; proje sayfasında görünmez.
           </Typography>
+          {props.queuedIntervalOutreach && (
+            <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+              Aralıklı kuyruk açıkken bir outreach projesi seçmelisiniz.
+            </Alert>
+          )}
           <FormControl fullWidth size="small" disabled={props.outreachProjectsLoading}>
             <InputLabel id="optimizer-project-label">Proje</InputLabel>
             <Select
@@ -628,9 +635,23 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
           <Typography sx={{ fontSize: '0.875rem', color: colors.onSurfaceVariant, mb: 2 }}>
             Opsiyonel. Analiz sırasında cold mail hazırlanır. Profilim&apos;de &quot;Analiz sonrası
             mailleri otomatik gönder&quot; açıksa gönderim analiz bitince yapılır; kapalıysa Önizleme
-            adımında onayınızdan sonra gönderilir. Site domaininden İK prefix&apos;leriyle alıcı
-            üretilir; SMTP (.env) üzerinden gönderilir.
+            adımında onayınızdan sonra gönderilir. Aralıklı kuyruk açıksa mailler kuyruğa alınır ve
+            analiz bitince bu adıma dönülür. Site domaininden İK prefix&apos;leriyle alıcı üretilir;
+            SMTP (.env) üzerinden gönderilir.
           </Typography>
+
+          {props.outreachSendResult && (
+            <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
+              {props.outreachSendResult}
+            </Alert>
+          )}
+
+          {props.queuedIntervalOutreach && (
+            <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+              Aralıklı kuyruk açık: AI tamamlanınca mailler kuyruğa alınır ve bu analiz sekmesine
+              dönülür. Sıra için Mail Takip → Aralıklı gönderim. Değiştirmek için Profilim.
+            </Alert>
+          )}
 
           {props.autoSendOutreachAfterAnalysis && (
             <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>

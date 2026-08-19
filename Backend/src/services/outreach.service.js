@@ -199,6 +199,8 @@ async function sendCompanyOutreachEmailsImpl({
   linkedinMessageText,
   companyUrl,
   reanalyzeContext,
+  todoJobId,
+  todoItemId,
 }) {
   const limits = getOutreachLimits();
   const candidates = Array.isArray(recipients)
@@ -562,6 +564,10 @@ async function sendCompanyOutreachEmailsImpl({
           selectedCategories,
           mailId, // Tracking ID
           persistHistory,
+          projectId: resolvedProjectId ? String(resolvedProjectId) : undefined,
+          companyUrl: companyUrl || undefined,
+          todoJobId: todoJobId ? String(todoJobId) : undefined,
+          todoItemId: todoItemId ? String(todoItemId) : undefined,
         }
       );
 

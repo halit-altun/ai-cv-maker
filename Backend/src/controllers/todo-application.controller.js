@@ -5,6 +5,7 @@ const {
   deleteTodoItem,
   deleteTodoItemsBulk,
   startTodoJob,
+  enqueueCompanySend,
   listTodoJobs,
   getTodoJob,
   setTodoJobStatus,
@@ -148,6 +149,27 @@ async function startJobHandler(req, res, next) {
   }
 }
 
+async function enqueueCompanySendHandler(req, res, next) {
+  try {
+    const result = await enqueueCompanySend(
+      req.clientId,
+      req.user?.id,
+      req.body || {}
+    );
+    const pausedNote = result.jobPaused
+      ? " Aktif iş duraklatılmış; gönderim resume edilene kadar bekler."
+      : "";
+    return res.status(201).json({
+      ok: true,
+      message: `${result.queuedRecipientCount} alıcı aralıklı gönderim kuyruğuna alındı. Sekme kapansa da devam eder.${pausedNote}`,
+      ...result,
+    });
+  } catch (error) {
+    if (sendError(res, error)) return undefined;
+    return next(error);
+  }
+}
+
 async function getProjectCvHandler(req, res, next) {
   try {
     const cv = await getTodoProjectSettings(req.clientId, req.params.projectId);
@@ -273,6 +295,7 @@ module.exports = {
   projectSummaryHandler,
   projectCompanyResultsHandler,
   startJobHandler,
+  enqueueCompanySendHandler,
   listJobsHandler,
   getJobHandler,
   pauseJobHandler,

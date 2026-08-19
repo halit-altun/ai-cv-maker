@@ -23,6 +23,7 @@ export type OutreachSendPayload = {
   templateType?: 'cover_letter' | 'linkedin' | 'custom' | 'cold_email' | 'none';
   targetPosition?: string;
   forceResend?: boolean;
+  skipVerification?: boolean;
   pdfAttachment?: OutreachPdfAttachment;
   /** Seçili outreach projesi — yoksa projesiz akış */
   projectId?: string | null;

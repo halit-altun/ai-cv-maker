@@ -14,6 +14,8 @@ export type AuthUser = {
   githubUrl?: string;
   /** Company Based: analiz bitince mailleri otomatik gönder */
   autoSendOutreachAfterAnalysis?: boolean;
+  /** Company Based: aralıklı kuyruk (kapalı = tarayıcıda eski gönderim) */
+  queuedIntervalOutreach?: boolean;
   /** AI Provider: gemini-free (3 key) / gemini-pro (1 key paid) / openai */
   preferredAiProvider?: 'gemini-free' | 'gemini-pro' | 'openai';
   /** Gmail queue: min aralık toplam saniye (0 = sınırsız) */

@@ -23,6 +23,11 @@ const userSchema = new mongoose.Schema(
     githubUrl: { type: String, trim: true, default: "" },
     /** Company Based: analiz sonrası cold mail'leri otomatik gönder */
     autoSendOutreachAfterAnalysis: { type: Boolean, default: false },
+    /**
+     * Company Based: aralıklı kuyruk (Todo job). Kapalıysa gönderim tarayıcı açıkken
+     * eski HTTP akışında kalır.
+     */
+    queuedIntervalOutreach: { type: Boolean, default: false },
     preferredAiProvider: {
       type: String,
       enum: ["gemini-free", "gemini-pro", "openai"],

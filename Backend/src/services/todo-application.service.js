@@ -61,7 +61,36 @@ function itemAlreadyMailed(item) {
   );
 }
 
+function resolveItemProjectId(job, item) {
+  return item?.projectId || job?.projectId || null;
+}
+
+function resolveItemPdf(item, settings = {}) {
+  if (item?.pdfAttachment?.contentBase64) {
+    return {
+      filename: item.pdfAttachment.filename || "CV.pdf",
+      contentBase64: item.pdfAttachment.contentBase64,
+      contentType: item.pdfAttachment.contentType || "application/pdf",
+    };
+  }
+  if (settings.pdfAttachment?.contentBase64) {
+    return {
+      filename: settings.pdfAttachment.filename || "CV.pdf",
+      contentBase64: settings.pdfAttachment.contentBase64,
+      contentType: settings.pdfAttachment.contentType || "application/pdf",
+    };
+  }
+  return null;
+}
+
 function buildTodoReanalyzeContext(job, item, settings = {}) {
+  const itemProjectId = resolveItemProjectId(job, item);
+  if (item?.reanalyzeContext && typeof item.reanalyzeContext === "object") {
+    return {
+      ...item.reanalyzeContext,
+      projectId: item.reanalyzeContext.projectId || itemProjectId || null,
+    };
+  }
   return {
     companyUrl: item.companyUrl || "",
     rawDomainInput: item.emailDomainInput || "",
@@ -69,7 +98,9 @@ function buildTodoReanalyzeContext(job, item, settings = {}) {
     pageTypeOther: item.pageTypeOther || "",
     cvLanguage: settings.cvLanguage || "turkish",
     outreachEmailLanguageMode: settings.outreachEmailLanguageMode || "auto",
-    selectedCategories: settings.selectedEmailPrefixCategories || [],
+    selectedCategories: item.selectedCategories?.length
+      ? item.selectedCategories
+      : settings.selectedEmailPrefixCategories || [],
     customEmailLocalParts: settings.customEmailLocalParts || [],
     includePrimaryEmailInSend: settings.includePrimaryEmailInSend !== false,
     skipPrimaryEmailVerification: Boolean(settings.skipPrimaryEmailVerification),
@@ -89,7 +120,7 @@ function buildTodoReanalyzeContext(job, item, settings = {}) {
     ),
     companyName: item.companyName || "",
     targetPosition: settings.targetPosition || "",
-    projectId: job.projectId || null,
+    projectId: itemProjectId || null,
     linkedinMessageSnapshot: String(item.linkedinMessage || "").trim(),
   };
 }
@@ -265,6 +296,9 @@ function mapJob(doc, { includePdf = false } = {}) {
     items: (doc.items || []).map((item) => ({
       id: String(item._id),
       sourceItemId: item.sourceItemId ? String(item.sourceItemId) : null,
+      pipeline: item.pipeline || "full",
+      source: item.source || "bulk",
+      projectId: item.projectId ? String(item.projectId) : String(doc.projectId),
       companyUrl: item.companyUrl,
       pageType: item.pageType,
       pageTypeOther: item.pageTypeOther || "",
@@ -279,6 +313,7 @@ function mapJob(doc, { includePdf = false } = {}) {
       linkedinMessage: item.linkedinMessage || "",
       adaptationNotes: item.adaptationNotes || "",
       cvFileName: item.cvFileName || "",
+      hasPdf: Boolean(item.pdfAttachment?.contentBase64),
       candidateRecipients: item.candidateRecipients || [],
       selectedRecipients: item.selectedRecipients || [],
       recipientResults: item.recipientResults || [],
@@ -294,6 +329,7 @@ function mapJob(doc, { includePdf = false } = {}) {
       verification: item.verification || null,
       startedAt: item.startedAt,
       completedAt: item.completedAt,
+      analysisSnapshot: item.analysisSnapshot || null,
     })),
     progress: doc.progress || computeProgress(doc.items || []),
     currentItemId: doc.currentItemId ? String(doc.currentItemId) : null,
@@ -972,14 +1008,12 @@ async function resumeSendOnlyForItem(job, item, settings, user) {
   await job.save();
 
   const senderName = resolveSenderName(user);
-  let pdf = null;
-  if (settings.pdfAttachment?.contentBase64) {
-    pdf = {
-      filename: settings.pdfAttachment.filename || "CV.pdf",
-      contentBase64: settings.pdfAttachment.contentBase64,
-      contentType: settings.pdfAttachment.contentType || "application/pdf",
-    };
-  }
+  const pdf = resolveItemPdf(item, settings);
+  const categories =
+    Array.isArray(item.selectedCategories) && item.selectedCategories.length
+      ? item.selectedCategories
+      : settings.selectedEmailPrefixCategories;
+  const itemProjectId = resolveItemProjectId(job, item);
 
   const trustedEmail = resolveTrustedSendEmail({
     rawDomainInput: item.emailDomainInput,
@@ -996,7 +1030,7 @@ async function resumeSendOnlyForItem(job, item, settings, user) {
     recipients: selected,
     subject: item.coldEmailSubject,
     bodyText: item.coldEmailBody,
-    replyTo: settings.replyTo || user.email,
+    replyTo: item.replyTo || settings.replyTo || user.email,
     senderName,
     companyName: item.companyName,
     domain,
@@ -1005,18 +1039,20 @@ async function resumeSendOnlyForItem(job, item, settings, user) {
     cvId: settings.cvId,
     cvTitle: settings.cvTitle,
     cvFileName: item.cvFileName || settings.cvFileName,
-    selectedCategories: settings.selectedEmailPrefixCategories,
+    selectedCategories: categories,
     templateType: "cold_email",
     targetPosition: settings.targetPosition,
-    forceResend: Boolean(settings.forceResend),
+    forceResend: Boolean(item.forceResend || settings.forceResend),
     pdfAttachment: pdf,
     skipVerification: false,
     rawDomainInput: item.emailDomainInput,
     trustedEmail,
-    projectId: job.projectId,
+    projectId: itemProjectId,
     linkedinMessageText: String(item.linkedinMessage || "").trim() || undefined,
     companyUrl: item.companyUrl,
     reanalyzeContext: buildTodoReanalyzeContext(job, item, settings),
+    todoJobId: String(job._id),
+    todoItemId: String(item._id),
   });
 
   item.outreachLogId = sendResult.logId || null;
@@ -1110,6 +1146,26 @@ async function processSingleJobItem(job, item) {
     item.completedAt = new Date();
     job.progress = computeProgress(job.items);
     await job.save();
+    return;
+  }
+
+  if (item.pipeline === "send_only") {
+    if (
+      !String(item.coldEmailBody || "").trim() ||
+      !Array.isArray(item.selectedRecipients) ||
+      item.selectedRecipients.length === 0
+    ) {
+      item.status = "failed";
+      item.step = "failed";
+      item.errorMessage = "Gönderim kuyruğu öğesinde alıcı veya cold mail eksik.";
+      item.errorCode = "SEND_ONLY_INCOMPLETE";
+      item.completedAt = new Date();
+      job.progress = computeProgress(job.items);
+      await job.save();
+      return;
+    }
+    console.log(`[TODO_JOB] send_only item: ${item._id}`);
+    await resumeSendOnlyForItem(job, item, settings, user);
     return;
   }
 
@@ -1390,6 +1446,8 @@ async function processSingleJobItem(job, item) {
     linkedinMessageText: String(item.linkedinMessage || "").trim() || undefined,
     companyUrl: item.companyUrl,
     reanalyzeContext: buildTodoReanalyzeContext(job, item, settings),
+    todoJobId: String(job._id),
+    todoItemId: String(item._id),
   });
 
   item.outreachLogId = sendResult.logId || null;
@@ -1647,6 +1705,294 @@ async function getProjectCompanyResults(clientId, projectId, { limit = 50 } = {}
   return { companies, totals, cv: await getTodoProjectSettings(clientId, projectId) };
 }
 
+function buildSendOnlyJobItem(body = {}) {
+  const recipients = [
+    ...new Set(
+      (Array.isArray(body.recipients) ? body.recipients : [])
+        .map((r) => String(r || "").trim().toLowerCase())
+        .filter(Boolean)
+    ),
+  ];
+  const emailDomainInput = String(
+    body.emailDomainInput || body.domain || body.rawDomainInput || ""
+  )
+    .trim()
+    .toLowerCase();
+  const companyUrl = String(body.companyUrl || body.url || "").trim();
+  const domain = normalizeEmailDomainInput(emailDomainInput || companyUrl);
+  const pdf = body.pdfAttachment || null;
+
+  return {
+    sourceItemId: null,
+    pipeline: "send_only",
+    source: "company-based",
+    projectId: body.projectId || null,
+    companyUrl: companyUrl || (domain ? `https://${domain}` : ""),
+    pageType:
+      String(body.pageType || body.reanalyzeContext?.pageType || "careers").trim() ||
+      "careers",
+    pageTypeOther: String(
+      body.pageTypeOther || body.reanalyzeContext?.pageTypeOther || ""
+    ).trim(),
+    emailDomainInput: emailDomainInput || domain,
+    companyName: String(body.companyName || "").trim(),
+    status: "pending",
+    step: "queued_send_only",
+    coldEmailSubject: String(body.subject || "").trim(),
+    coldEmailBody: String(body.bodyText || "").trim(),
+    linkedinMessage: String(body.linkedinMessageText || "").trim(),
+    cvFileName: String(body.cvFileName || pdf?.filename || "").trim(),
+    candidateRecipients: recipients,
+    selectedRecipients: recipients,
+    forceResend: Boolean(body.forceResend),
+    selectedCategories: Array.isArray(body.selectedCategories)
+      ? body.selectedCategories
+      : [],
+    replyTo: String(body.replyTo || "").trim(),
+    pdfAttachment:
+      pdf && pdf.contentBase64
+        ? {
+            filename: String(pdf.filename || "CV.pdf"),
+            contentBase64: String(pdf.contentBase64),
+            contentType: String(pdf.contentType || "application/pdf"),
+          }
+        : { filename: "", contentBase64: "", contentType: "application/pdf" },
+    reanalyzeContext:
+      body.reanalyzeContext && typeof body.reanalyzeContext === "object"
+        ? body.reanalyzeContext
+        : null,
+    adaptationNotes: String(body.adaptationNotes || "").trim(),
+    analysisSnapshot:
+      body.analysisSnapshot && typeof body.analysisSnapshot === "object"
+        ? body.analysisSnapshot
+        : null,
+  };
+}
+
+/**
+ * Company-based analiz sonrası gönderimi mevcut Todo job kuyruğuna ekler.
+ * Yeni processor açılmaz; aktif job varsa append, yoksa yeni job.
+ */
+async function enqueueCompanySend(clientId, userId, body = {}) {
+  const projectId = body.projectId;
+  if (!projectId) {
+    throw new AppError(
+      "Aralıklı gönderim kuyruğu için outreach projesi seçmelisiniz.",
+      400,
+      "PROJECT_REQUIRED"
+    );
+  }
+  await getProjectOrThrow(clientId, projectId);
+
+  const user = await User.findById(userId).lean();
+  if (!user) {
+    throw new AppError("Kullanıcı bulunamadı.", 404, "USER_NOT_FOUND");
+  }
+  if (!resolveSenderName(user)) {
+    throw new AppError(
+      "Mail gönderimi için profilinizde ad ve soyad zorunludur.",
+      400,
+      "SENDER_NAME_REQUIRED"
+    );
+  }
+
+  const item = buildSendOnlyJobItem({ ...body, projectId });
+  if (!item.companyUrl) {
+    throw new AppError("Şirket URL zorunlu.", 400, "COMPANY_URL_REQUIRED");
+  }
+  if (!item.emailDomainInput || !normalizeEmailDomainInput(item.emailDomainInput)) {
+    throw new AppError("Geçersiz ana domain.", 400, "DOMAIN_INVALID");
+  }
+  if (!item.selectedRecipients.length) {
+    throw new AppError("En az bir alıcı seçmelisiniz.", 400, "RECIPIENTS_REQUIRED");
+  }
+  if (!item.coldEmailBody) {
+    throw new AppError("Cold mail gövdesi zorunludur.", 400, "BODY_REQUIRED");
+  }
+  if (!item.pdfAttachment?.contentBase64) {
+    throw new AppError(
+      "Kuyruğa almak için CV PDF eki zorunludur.",
+      400,
+      "PDF_REQUIRED"
+    );
+  }
+
+  const activeFilter = {
+    clientId,
+    userId,
+    status: { $in: ["pending", "running", "paused"] },
+  };
+
+  let job = await TodoApplicationJob.findOneAndUpdate(
+    activeFilter,
+    { $push: { items: item } },
+    { new: true, sort: { createdAt: 1 } }
+  );
+
+  if (!job) {
+    const settings = buildSettingsSnapshot(
+      {
+        ...body,
+        mode: "analyze_and_send",
+        sendMail: true,
+        selectedEmailPrefixCategories: item.selectedCategories.length
+          ? item.selectedCategories
+          : body.selectedEmailPrefixCategories,
+        pdfAttachment: item.pdfAttachment,
+        cvFileName: item.cvFileName,
+      },
+      user
+    );
+    try {
+      job = await TodoApplicationJob.create({
+        clientId,
+        userId,
+        projectId,
+        mode: "analyze_and_send",
+        status: "pending",
+        settings,
+        items: [item],
+        progress: computeProgress([item]),
+      });
+    } catch (err) {
+      job = await TodoApplicationJob.findOneAndUpdate(
+        activeFilter,
+        { $push: { items: item } },
+        { new: true, sort: { createdAt: 1 } }
+      );
+      if (!job) throw err;
+    }
+  }
+
+  job.progress = computeProgress(job.items);
+  await job.save();
+
+  const lastItem = job.items[job.items.length - 1];
+  return {
+    jobId: String(job._id),
+    itemId: lastItem ? String(lastItem._id) : null,
+    jobStatus: job.status,
+    queuedRecipientCount: item.selectedRecipients.length,
+    companyName: item.companyName,
+    pauseAfterCurrent: Boolean(job.pauseAfterCurrent),
+    jobPaused: job.status === "paused",
+  };
+}
+
+/**
+ * EmailQueue'ya henüz düşmemiş bekleyen job mailleri.
+ */
+async function listPendingCompanySendItems(userId, { projectId, company, recipient } = {}) {
+  const jobs = await TodoApplicationJob.find({
+    userId,
+    status: { $in: ["pending", "running", "paused"] },
+  })
+    .select("projectId status items pauseAfterCurrent")
+    .sort({ createdAt: 1 })
+    .lean();
+
+  const pending = [];
+  for (const job of jobs) {
+    for (const it of job.items || []) {
+      if (!["pending", "fetching", "analyzing", "sending"].includes(it.status)) {
+        continue;
+      }
+      if (itemAlreadyMailed(it)) continue;
+      const itemProjectId = it.projectId || job.projectId;
+      if (projectId && String(itemProjectId) !== String(projectId)) continue;
+      const companyName = String(it.companyName || "");
+      if (
+        company &&
+        !companyName.toLowerCase().includes(String(company).toLowerCase())
+      ) {
+        continue;
+      }
+      const recipients = Array.isArray(it.selectedRecipients)
+        ? it.selectedRecipients
+        : [];
+      if (
+        recipient &&
+        !recipients.some((r) =>
+          String(r).toLowerCase().includes(String(recipient).toLowerCase())
+        )
+      ) {
+        continue;
+      }
+      pending.push({
+        jobId: String(job._id),
+        itemId: String(it._id),
+        jobStatus: job.status,
+        itemStatus: it.status,
+        pipeline: it.pipeline || "full",
+        source: it.source || "bulk",
+        projectId: itemProjectId ? String(itemProjectId) : null,
+        companyName,
+        companyUrl: it.companyUrl || "",
+        recipients,
+        recipientCount: recipients.length,
+        scheduledAt: null,
+        waitingForJob: true,
+        cvFileName: it.cvFileName || "",
+        coldEmailSubject: it.coldEmailSubject || "",
+        hasAnalysisSnapshot: Boolean(it.analysisSnapshot),
+      });
+    }
+  }
+  return pending;
+}
+
+function mapJobItemPublicDetail(job, item) {
+  if (!job || !item) return null;
+  return {
+    jobId: String(job._id),
+    itemId: String(item._id),
+    jobStatus: job.status,
+    itemStatus: item.status,
+    pipeline: item.pipeline || "full",
+    source: item.source || "bulk",
+    projectId: item.projectId
+      ? String(item.projectId)
+      : job.projectId
+        ? String(job.projectId)
+        : null,
+    companyName: item.companyName || "",
+    companyUrl: item.companyUrl || "",
+    emailDomainInput: item.emailDomainInput || "",
+    cvFileName: item.cvFileName || "",
+    selectedRecipients: item.selectedRecipients || [],
+    candidateRecipients: item.candidateRecipients || [],
+    recipientResults: item.recipientResults || [],
+    coldEmailSubject: item.coldEmailSubject || "",
+    coldEmailBody: item.coldEmailBody || "",
+    linkedinMessage: item.linkedinMessage || "",
+    adaptationNotes: item.adaptationNotes || "",
+    analysisSnapshot: item.analysisSnapshot || null,
+    verification: item.verification || null,
+    sentCount: item.sentCount || 0,
+    failedCount: item.failedCount || 0,
+    queuedCount: item.queuedCount || 0,
+    errorMessage: item.errorMessage || "",
+    step: item.step || "",
+  };
+}
+
+async function getTodoJobItemDetail(userId, jobId, itemId) {
+  if (!jobId || !itemId) {
+    throw new AppError("jobId ve itemId zorunlu.", 400, "ITEM_DETAIL_REQUIRED");
+  }
+  const job = await TodoApplicationJob.findOne({ _id: jobId, userId }).select(
+    "-settings.pdfAttachment.contentBase64 -items.pdfAttachment.contentBase64 -settings.cvText"
+  );
+  if (!job) {
+    throw new AppError("İş bulunamadı.", 404, "TODO_JOB_NOT_FOUND");
+  }
+  const item = (job.items || []).find((it) => String(it._id) === String(itemId));
+  if (!item) {
+    throw new AppError("Kuyruk öğesi bulunamadı.", 404, "TODO_JOB_ITEM_NOT_FOUND");
+  }
+  return mapJobItemPublicDetail(job, item);
+}
+
 module.exports = {
   listTodoItems,
   createTodoItems,
@@ -1654,6 +2000,9 @@ module.exports = {
   deleteTodoItem,
   deleteTodoItemsBulk,
   startTodoJob,
+  enqueueCompanySend,
+  listPendingCompanySendItems,
+  getTodoJobItemDetail,
   listTodoJobs,
   getTodoJob,
   setTodoJobStatus,

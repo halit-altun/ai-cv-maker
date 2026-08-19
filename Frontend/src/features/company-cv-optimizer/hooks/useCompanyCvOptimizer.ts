@@ -65,6 +65,7 @@ import {
   fileToBase64,
   sendCompanyOutreachRequest,
 } from '@/lib/outreach/api';
+import { enqueueCompanySendRequest } from '@/lib/todo-applications/api';
 import {
   listOutreachProjectsRequest,
   selectOutreachProjectRequest,
@@ -235,6 +236,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     useState<OutreachCvAttachmentSource>('optimized');
   /** Profilim ayarı: analiz sonrası otomatik mail */
   const [autoSendOutreachAfterAnalysis, setAutoSendOutreachAfterAnalysis] = useState(false);
+  const [queuedIntervalOutreach, setQueuedIntervalOutreach] = useState(false);
   const sendCompanyEmailRef = useRef<
     (opts?: {
       recipientsOverride?: string[];
@@ -243,8 +245,8 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       cvDataOverride?: CompanyBasedCVData | null;
       linkedinMessageOverride?: string;
       forceResend?: boolean;
-    }) => Promise<void>
-  >(async () => undefined);
+    }) => Promise<boolean>
+  >(async () => false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Deliverability Score */
@@ -335,6 +337,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
             phone?: string;
             githubUrl?: string;
             autoSendOutreachAfterAnalysis?: boolean;
+            queuedIntervalOutreach?: boolean;
             profileImageUrl?: string;
           };
         };
@@ -345,6 +348,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         const profilePhone = String(data.user.phone || '').trim();
         const profileGithub = String(data.user.githubUrl || '').trim();
         setAutoSendOutreachAfterAnalysis(data.user.autoSendOutreachAfterAnalysis === true);
+        setQueuedIntervalOutreach(data.user.queuedIntervalOutreach === true);
         if (profileLinkedin) {
           setOutreachLinkedinUrl((prev) => (prev.trim() ? prev : profileLinkedin));
         }
@@ -1278,7 +1282,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   };
 
   /** Aynı PDF ile ilan/şirket hedefini değiştirip yeniden analiz (sonuçları sıfırlar, CV kalır). */
-  const handlePrepareNewAnalysisSameCv = () => {
+  const handlePrepareNewAnalysisSameCv = (options?: { preserveSendNotice?: boolean }) => {
     setAnalysisResult(null);
     setCvData(null);
     setEditableCVData(null);
@@ -1287,7 +1291,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     setCompanyInfo(null);
     setIsEditing(false);
     setError(null);
-    setOutreachSendResult(null);
+    if (!options?.preserveSendNotice) {
+      setOutreachSendResult(null);
+    }
     setOutreachSending(false);
     setOutreachEmailSubject('');
     setOutreachEmailBody('');
@@ -1730,7 +1736,15 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         setSelectedOutreachRecipients(recipientsForAutoSend);
       }
 
-      setActiveStep(2);
+      const willQueueAfterAnalysis =
+        queuedIntervalOutreach &&
+        shouldSendCompanyEmail &&
+        Boolean(bundle.coldEmail?.body) &&
+        recipientsForAutoSend.length > 0;
+
+      if (!willQueueAfterAnalysis) {
+        setActiveStep(2);
+      }
 
       // Proje seçiliyse analiz kaydı (mail yok — otomatik gönderim ayrıca çalışır)
       if (selectedOutreachProjectId) {
@@ -1806,20 +1820,23 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         }).catch(() => undefined);
       }
 
-      // Profil ayarı: analiz sonrası otomatik mail (mail gönderimi de açık olmalı)
+      // Otomatik gönderim veya aralıklı kuyruk: analiz bitince mail aşamasına geç
       if (
         shouldSendCompanyEmail &&
-        autoSendOutreachAfterAnalysis &&
+        (autoSendOutreachAfterAnalysis || queuedIntervalOutreach) &&
         bundle.coldEmail?.body &&
         recipientsForAutoSend.length > 0
       ) {
-        await sendCompanyEmailRef.current({
+        const sendOk = await sendCompanyEmailRef.current({
           recipientsOverride: recipientsForAutoSend,
           bodyOverride: bundle.coldEmail.body,
           subjectOverride: bundle.coldEmail.subject,
           cvDataOverride: adaptedCVData,
           linkedinMessageOverride: linkedinText || undefined,
         });
+        if (willQueueAfterAnalysis && sendOk !== true) {
+          setActiveStep(2);
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1983,7 +2000,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   }) => {
     // Çift tıklama / auto-send + manuel yarışı: aynı maili 2 kez göndermeyi engelle
     if (outreachSendingLockRef.current || outreachSending) {
-      return;
+      return false;
     }
 
     const isAutoSendPipelineCall = Boolean(
@@ -1996,12 +2013,19 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       setError(
         'Profil ayarı: otomatik gönderim açık. Manuel gönderim kapalıdır. Profilim’den ayarı kapatabilirsiniz.'
       );
-      return;
+      return false;
     }
 
     if (!shouldSendCompanyEmail) {
       setError('Mail gönderimi seçili değil.');
-      return;
+      return false;
+    }
+
+    if (queuedIntervalOutreach && !selectedOutreachProjectId) {
+      setError(
+        'Aralıklı gönderim kuyruğu için bir outreach projesi seçmelisiniz.'
+      );
+      return false;
     }
 
     const cvDataForSend = opts?.cvDataOverride ?? cvData;
@@ -2016,7 +2040,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
     if (!recipients.length) {
       setError('En az bir alıcı seçmelisiniz (tek tek işaretleyin).');
-      return;
+      return false;
     }
 
     const companyLabel = resolveCompanyDisplayName({
@@ -2053,7 +2077,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     }
     if (!bodyText) {
       setError('Cold mail henüz üretilmedi. Optimizasyonu çalıştırın veya Yeniden üret kullanın.');
-      return;
+      return false;
     }
 
     const inferredDomain = normalizeEmailDomainInput(
@@ -2080,7 +2104,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         setError(
           'Mail gönderimi için profilinizde ad ve soyad zorunludur. Profilim sayfasından kaydedin.'
         );
-        return;
+        return false;
       }
 
       let pdfAttachment: { filename: string; contentBase64: string; contentType: string } | undefined;
@@ -2109,7 +2133,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         const sourceData = opts?.cvDataOverride || editableCVData || cvDataForSend;
         if (!sourceData) {
           setError('Optimize CV henüz hazır değil. Önce optimizasyonu tamamlayın veya orijinal CV seçin.');
-          return;
+          return false;
         }
         const pdfSource =
           displayCompanyName && sourceData.companyInfo
@@ -2154,114 +2178,169 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       const attachmentLabel =
         outreachCvAttachmentSource === 'optimized' ? 'optimize edilmiş CV' : 'orijinal yüklenen CV';
 
-      const result = await sendCompanyOutreachRequest({
-        recipients,
-        subject:
-          (opts?.subjectOverride ?? outreachEmailSubject).trim() ||
-          `Başvuru${displayCompanyName ? ` — ${displayCompanyName}` : ''}`,
-        bodyText,
-        replyTo: cvDataForSend?.personalInfo?.email || undefined,
-        companyName: displayCompanyName || undefined,
+      if (queuedIntervalOutreach && !pdfAttachment?.contentBase64) {
+        setError('Kuyruğa almak için CV PDF eki zorunludur.');
+        return false;
+      }
+
+      const analysisForSnapshot =
+        opts?.cvDataOverride?.analysisResult || analysisResult;
+      const coverForSnapshot = String(
+        opts?.cvDataOverride?.coverLetter || coverLetter || ''
+      ).trim();
+      const rawDomainInput =
+        emailDomainOverride.trim() ||
+        companyInfo?.website ||
+        companyLinks[0]?.url ||
+        inferredDomain;
+      const subject =
+        (opts?.subjectOverride ?? outreachEmailSubject).trim() ||
+        `Başvuru${displayCompanyName ? ` — ${displayCompanyName}` : ''}`;
+      const cvTitle =
+        [
+          cvDataForSend?.personalInfo?.firstName,
+          cvDataForSend?.personalInfo?.lastName,
+          cvDataForSend?.personalInfo?.title,
+        ]
+          .filter(Boolean)
+          .join(' ') || cvFile?.name;
+      const linkedinMessageText = (() => {
+        const fromOverride = String(opts?.linkedinMessageOverride || '').trim();
+        const fromRef = String(linkedinMessageRef.current || '').trim();
+        const fromState = String(linkedinMessage || '').trim();
+        const fromCv = String(cvDataForSend?.linkedinMessage || '').trim();
+        const text = fromOverride || fromRef || fromState || fromCv;
+        if (text) linkedinMessageRef.current = text;
+        return text || undefined;
+      })();
+      const reanalyzeContext = {
+        companyUrl: bestCompanyUrl || '',
+        rawDomainInput,
         domain: inferredDomain,
-        rawDomainInput:
-          emailDomainOverride.trim() ||
-          companyInfo?.website ||
-          companyLinks[0]?.url ||
-          inferredDomain,
-        trustedEmail: resolveTrustedSendEmail({
-          rawDomainInput: emailDomainOverride.trim(),
-          domain: inferredDomain,
-          includeEnteredMainDomain: includeEnteredMainDomainInSend,
-          includePrimaryEmail: includePrimaryEmailInSend,
-          skipPrimaryEmailVerification,
-        }),
-        cvFileName: pdfAttachment?.filename || cvFile?.name || undefined,
-        cvTitle:
-          [
-            cvDataForSend?.personalInfo?.firstName,
-            cvDataForSend?.personalInfo?.lastName,
-            cvDataForSend?.personalInfo?.title,
-          ]
-            .filter(Boolean)
-            .join(' ') || cvFile?.name,
-        selectedCategories: selectedEmailPrefixCategories,
-        templateType: 'cold_email',
-        targetPosition: targetPosition || undefined,
-        forceResend: opts?.forceResend ?? forceOutreachResend,
-        pdfAttachment,
+        companyName: displayCompanyName || '',
+        targetPosition: targetPosition || '',
         projectId: selectedOutreachProjectId,
-        linkedinMessageText: (() => {
-          const fromOverride = String(opts?.linkedinMessageOverride || '').trim();
-          const fromRef = String(linkedinMessageRef.current || '').trim();
-          const fromState = String(linkedinMessage || '').trim();
-          const fromCv = String(cvDataForSend?.linkedinMessage || '').trim();
-          const text = fromOverride || fromRef || fromState || fromCv;
-          if (text) linkedinMessageRef.current = text;
-          return text || undefined;
-        })(),
-        companyUrl: bestCompanyUrl || undefined,
-        reanalyzeContext: {
-          companyUrl: bestCompanyUrl || '',
-          rawDomainInput:
-            emailDomainOverride.trim() ||
-            companyLinks[0]?.url ||
-            companyInfo?.website ||
-            inferredDomain,
+        selectedCategories: selectedEmailPrefixCategories,
+        pageType: companyLinks[0]?.pageType || lastCompanyPageType,
+        pageTypeOther:
+          (companyLinks[0]?.pageType || lastCompanyPageType) === 'other'
+            ? companyLinks[0]?.pageTypeOther || lastCompanyPageTypeOther
+            : '',
+        cvLanguage,
+        outreachEmailLanguageMode,
+        customEmailLocalParts: customEmailLocalPartsText
+          .split(/[\n,;]+/)
+          .map((s) => s.trim())
+          .filter(Boolean),
+        includePrimaryEmailInSend,
+        skipPrimaryEmailVerification,
+        includeEnteredMainDomainInSend,
+        shouldSendCompanyEmail,
+        shouldGenerateCoverLetter,
+        shouldGenerateLinkedInMessage,
+        coverLetterSource,
+        linkedinMessageSource,
+        cvAdaptationSource,
+        outreachCvAttachmentSource,
+        includeCvPhoto,
+        aiSettings,
+        cvSectionLengthMode,
+        linkedinMessageSnapshot: linkedinMessageText || '',
+      };
+
+      if (queuedIntervalOutreach) {
+        if (!selectedOutreachProjectId) {
+          setError('Aralıklı gönderim kuyruğu için bir outreach projesi seçmelisiniz.');
+          return false;
+        }
+        const result = await enqueueCompanySendRequest({
+          recipients,
+          subject,
+          bodyText,
+          replyTo: cvDataForSend?.personalInfo?.email || undefined,
+          companyName: displayCompanyName || undefined,
           domain: inferredDomain,
-          companyName: displayCompanyName || '',
-          targetPosition: targetPosition || '',
-          projectId: selectedOutreachProjectId,
+          rawDomainInput,
+          emailDomainInput: inferredDomain,
+          cvFileName: pdfAttachment?.filename || cvFile?.name || undefined,
+          cvTitle,
           selectedCategories: selectedEmailPrefixCategories,
+          targetPosition: targetPosition || undefined,
+          forceResend: opts?.forceResend ?? forceOutreachResend,
+          pdfAttachment,
+          projectId: selectedOutreachProjectId,
+          linkedinMessageText,
+          companyUrl: bestCompanyUrl || undefined,
           pageType: companyLinks[0]?.pageType || lastCompanyPageType,
           pageTypeOther:
             (companyLinks[0]?.pageType || lastCompanyPageType) === 'other'
               ? companyLinks[0]?.pageTypeOther || lastCompanyPageTypeOther
               : '',
-          cvLanguage,
-          outreachEmailLanguageMode,
-          customEmailLocalParts: customEmailLocalPartsText
-            .split(/[\n,;]+/)
-            .map((s) => s.trim())
-            .filter(Boolean),
-          includePrimaryEmailInSend,
-          skipPrimaryEmailVerification,
-          includeEnteredMainDomainInSend,
-          shouldSendCompanyEmail,
-          shouldGenerateCoverLetter,
-          shouldGenerateLinkedInMessage,
-          coverLetterSource,
-          linkedinMessageSource,
-          cvAdaptationSource,
-          outreachCvAttachmentSource,
-          includeCvPhoto,
-          aiSettings,
-          cvSectionLengthMode,
-          linkedinMessageSnapshot: (() => {
-            const fromOverride = String(opts?.linkedinMessageOverride || '').trim();
-            const fromRef = String(linkedinMessageRef.current || '').trim();
-            const fromState = String(linkedinMessage || '').trim();
-            const fromCv = String(cvDataForSend?.linkedinMessage || '').trim();
-            return fromOverride || fromRef || fromState || fromCv || '';
-          })(),
-        },
-      });
-      setOutreachSendResult(
-        `${result.message || `${result.sentCount}/${result.total} alıcıya gönderildi.`}${
-          result.attachmentIncluded ? ` PDF eki: ${attachmentLabel}.` : ''
-        }${
-          result.verification?.provider
-            ? ` Doğrulama: ${result.verification.provider}.`
-            : ''
-        }${
-          result.persisted === false
-            ? ' (Kaydetme tercihi kapalı — geçmişe yazılmadı.)'
-            : result.logId
-              ? ' Log kaydı oluşturuldu.'
-              : ''
-        }`
-      );
+          reanalyzeContext,
+          adaptationNotes: (analysisForSnapshot?.recommendations || []).join('\n'),
+          analysisSnapshot: {
+            matchScore: analysisForSnapshot?.matchScore,
+            originalAbout: analysisForSnapshot?.originalAbout,
+            updatedAbout: analysisForSnapshot?.updatedAbout,
+            originalExperience: analysisForSnapshot?.originalExperience,
+            updatedExperience: analysisForSnapshot?.updatedExperience,
+            originalSkills: analysisForSnapshot?.originalSkills,
+            updatedSkills: analysisForSnapshot?.updatedSkills,
+            recommendations: analysisForSnapshot?.recommendations,
+            positiveMatches: analysisForSnapshot?.positiveMatches,
+            negativeMismatches: analysisForSnapshot?.negativeMismatches,
+            keywordIntegrationReport: analysisForSnapshot?.keywordIntegrationReport,
+            detectedKeywords: analysisForSnapshot?.detectedKeywords,
+            candidateKeywords: analysisForSnapshot?.candidateKeywords,
+            extractedKeywords:
+              opts?.cvDataOverride?.companyInfo?.extractedKeywords ||
+              companyInfo?.extractedKeywords,
+            deliverabilityScore: deliverabilityScore || null,
+            coverLetter: coverForSnapshot || undefined,
+            targetPosition: targetPosition || undefined,
+            cvLanguage,
+            cvSectionLengthMode,
+          },
+        });
+        setOutreachSendResult(
+          `${result.message} PDF eki: ${attachmentLabel}. Sıra ve tahmini saat için Mail Takip → Aralıklı gönderim sekmesine bakın.`
+        );
+        handlePrepareNewAnalysisSameCv({ preserveSendNotice: true });
+      } else {
+        const result = await sendCompanyOutreachRequest({
+          recipients,
+          subject,
+          bodyText,
+          replyTo: cvDataForSend?.personalInfo?.email || undefined,
+          companyName: displayCompanyName || undefined,
+          domain: inferredDomain,
+          rawDomainInput,
+          trustedEmail: resolveTrustedSendEmail({
+            rawDomainInput,
+            domain: inferredDomain,
+            includeEnteredMainDomain: includeEnteredMainDomainInSend,
+            includePrimaryEmail: includePrimaryEmailInSend,
+            skipPrimaryEmailVerification,
+          }),
+          skipVerification: skipPrimaryEmailVerification,
+          cvFileName: pdfAttachment?.filename || cvFile?.name || undefined,
+          cvTitle,
+          selectedCategories: selectedEmailPrefixCategories,
+          targetPosition: targetPosition || undefined,
+          forceResend: opts?.forceResend ?? forceOutreachResend,
+          pdfAttachment,
+          projectId: selectedOutreachProjectId,
+          linkedinMessageText,
+          companyUrl: bestCompanyUrl || undefined,
+          reanalyzeContext,
+        });
+        setOutreachSendResult(
+          `${result.message}${pdfAttachment?.contentBase64 ? ` PDF eki: ${attachmentLabel}.` : ''}`
+        );
+      }
       // Gönderim sonrası itibar skorunu yenile (engagement sayısı güncellensin)
       void refreshDeliverabilityScore(false);
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Mail gönderilemedi.';
       const details = (err as Error & { details?: { logId?: string; canForceResend?: boolean; code?: string } }).details;
@@ -2277,6 +2356,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
             : message
         );
       }
+      return false;
     } finally {
       outreachSendingLockRef.current = false;
       setOutreachSending(false);
@@ -2404,6 +2484,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     shouldSendCompanyEmail,
     setShouldSendCompanyEmail,
     autoSendOutreachAfterAnalysis,
+    queuedIntervalOutreach,
     selectedEmailPrefixCategories,
     setSelectedEmailPrefixCategories,
     customEmailLocalPartsText,

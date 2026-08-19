@@ -93,6 +93,38 @@ const jobItemSchema = new mongoose.Schema(
     mailDispatchStartedAt: { type: Date, default: null },
     startedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
+    /**
+     * full → fetch + AI + gönderim (bulk)
+     * send_only → analiz tarayıcıda bitti; yalnızca mail kuyruğa
+     */
+    pipeline: {
+      type: String,
+      enum: ["full", "send_only"],
+      default: "full",
+      index: true,
+    },
+    source: {
+      type: String,
+      enum: ["bulk", "company-based"],
+      default: "bulk",
+    },
+    /** Sekmeler farklı proje seçebilir — job.projectId fallback */
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "OutreachProject",
+      default: null,
+    },
+    forceResend: { type: Boolean, default: false },
+    selectedCategories: { type: [String], default: [] },
+    replyTo: { type: String, default: "" },
+    pdfAttachment: {
+      filename: { type: String, default: "" },
+      contentBase64: { type: String, default: "" },
+      contentType: { type: String, default: "application/pdf" },
+    },
+    reanalyzeContext: { type: mongoose.Schema.Types.Mixed, default: null },
+    /** Company-based analiz özeti (KW, CV farkları, itibar skoru) */
+    analysisSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
   },
   { _id: true }
 );

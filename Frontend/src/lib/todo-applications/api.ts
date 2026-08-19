@@ -164,6 +164,47 @@ export type TodoJobStartPayload = {
   sendMail?: boolean;
 };
 
+export type EnqueueCompanySendPayload = {
+  projectId: string;
+  recipients: string[];
+  subject?: string;
+  bodyText: string;
+  replyTo?: string;
+  companyName?: string;
+  domain?: string;
+  rawDomainInput?: string;
+  emailDomainInput?: string;
+  companyUrl?: string;
+  pageType?: string;
+  pageTypeOther?: string;
+  cvId?: string | null;
+  cvTitle?: string;
+  cvFileName?: string;
+  selectedCategories?: string[];
+  targetPosition?: string;
+  forceResend?: boolean;
+  pdfAttachment?: {
+    filename: string;
+    contentBase64: string;
+    contentType?: string;
+  };
+  linkedinMessageText?: string;
+  reanalyzeContext?: Record<string, unknown>;
+  adaptationNotes?: string;
+  analysisSnapshot?: Record<string, unknown> | null;
+};
+
+export type EnqueueCompanySendResult = {
+  ok: boolean;
+  message: string;
+  jobId: string;
+  itemId: string | null;
+  jobStatus: string;
+  queuedRecipientCount: number;
+  companyName?: string;
+  jobPaused?: boolean;
+};
+
 export type TodoSendHistoryFilter = 'all' | 'sent' | 'unsent';
 
 export type TodoProjectCvMeta = {
@@ -469,6 +510,21 @@ export async function startTodoJobRequest(
     throwApiError(data, 'İş başlatılamadı.');
   }
   return data.job as TodoApplicationJob;
+}
+
+export async function enqueueCompanySendRequest(
+  payload: EnqueueCompanySendPayload
+): Promise<EnqueueCompanySendResult> {
+  const response = await authFetch('/api/todo-applications/jobs/enqueue-company-send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson(response);
+  if (!response.ok || data.ok === false) {
+    throwApiError(data, 'Gönderim kuyruğa alınamadı.');
+  }
+  return data as unknown as EnqueueCompanySendResult;
 }
 
 export async function listTodoJobsRequest(params?: {

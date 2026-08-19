@@ -9,6 +9,7 @@ const {
   getMailTrackingReanalyzeContext,
   setDeliveryOutcome,
 } = require("../services/mail-tracking.service");
+const { listSendQueue, getSendQueueSummary, getSendQueueDetail } = require("../services/send-queue.service");
 const MailTracking = require("../models/mail-tracking.model");
 const { requireAuth } = require("../middlewares/auth.middleware");
 const { requireClientId } = require("../middlewares/client-id.middleware");
@@ -40,6 +41,87 @@ router.get("/stats/summary", async (req, res, next) => {
       ok: true,
       stats,
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * Aralıklı gönderim kuyruğu özeti
+ * GET /api/mail-tracking/send-queue/summary
+ */
+router.get("/send-queue/summary", async (req, res, next) => {
+  try {
+    const { projectId, status, company, recipient, date, startDate, endDate } = req.query;
+    const summary = await getSendQueueSummary(req.user.id, {
+      projectId: projectId || undefined,
+      status: status || undefined,
+      company: company || undefined,
+      recipient: recipient || undefined,
+      date: date || undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+    });
+    return res.json({ ok: true, summary });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * Aralıklı gönderim firma/analiz detayı
+ * GET /api/mail-tracking/send-queue/detail
+ */
+router.get("/send-queue/detail", async (req, res, next) => {
+  try {
+    const { jobId, itemId, queueId } = req.query;
+    const detail = await getSendQueueDetail(req.user.id, {
+      jobId: jobId || undefined,
+      itemId: itemId || undefined,
+      queueId: queueId || undefined,
+    });
+    return res.json({ ok: true, ...detail });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        ok: false,
+        message: error.message,
+        code: error.code,
+      });
+    }
+    return next(error);
+  }
+});
+
+/**
+ * Aralıklı gönderim kuyruğu listesi
+ * GET /api/mail-tracking/send-queue
+ */
+router.get("/send-queue", async (req, res, next) => {
+  try {
+    const {
+      limit = 50,
+      skip = 0,
+      status,
+      projectId,
+      company,
+      recipient,
+      date,
+      startDate,
+      endDate,
+    } = req.query;
+    const result = await listSendQueue(req.user.id, {
+      limit,
+      skip,
+      status: status || undefined,
+      projectId: projectId || undefined,
+      company: company || undefined,
+      recipient: recipient || undefined,
+      date: date || undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+    });
+    return res.json({ ok: true, ...result });
   } catch (error) {
     return next(error);
   }

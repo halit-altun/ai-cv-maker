@@ -71,6 +71,7 @@ export function ProfileView() {
   const [portfolioUrl, setPortfolioUrl] = useState('');
   const [githubUrl, setGithubUrl] = useState('');
   const [autoSendOutreachAfterAnalysis, setAutoSendOutreachAfterAnalysis] = useState(false);
+  const [queuedIntervalOutreach, setQueuedIntervalOutreach] = useState(false);
   const [preferredAiProvider, setPreferredAiProvider] = useState<'gemini-free' | 'gemini-pro' | 'openai'>('gemini-free');
   const [intervalMinMinutes, setIntervalMinMinutes] = useState(0);
   const [intervalMinSecondsPart, setIntervalMinSecondsPart] = useState(0);
@@ -103,6 +104,7 @@ export function ProfileView() {
     setPortfolioUrl(u.portfolioUrl || '');
     setGithubUrl(u.githubUrl || '');
     setAutoSendOutreachAfterAnalysis(u.autoSendOutreachAfterAnalysis === true);
+    setQueuedIntervalOutreach(u.queuedIntervalOutreach === true);
     setPreferredAiProvider(u.preferredAiProvider || 'gemini-free');
     const minTotal =
       typeof u.gmailSendIntervalMinSeconds === 'number' && u.gmailSendIntervalMinSeconds > 0
@@ -182,6 +184,7 @@ export function ProfileView() {
         portfolioUrl: portfolioUrl.trim(),
         githubUrl: githubUrl.trim(),
         autoSendOutreachAfterAnalysis,
+        queuedIntervalOutreach,
         preferredAiProvider,
         gmailSendIntervalMinSeconds: minTotal,
         gmailSendIntervalMaxSeconds: maxTotal,
@@ -391,8 +394,10 @@ export function ProfileView() {
               Company Based — mail
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Analiz sırasında &quot;Mail gönderimini etkinleştir&quot; açıksa, bu ayar aktifken
-              önizleme onayı beklemeden cold mail&apos;ler doğrudan gönderilir.
+              Analiz sırasında &quot;Mail gönderimini etkinleştir&quot; açıksa, otomatik gönderim
+              aktifken önizleme onayı beklemeden cold mail&apos;ler gönderilir. Aralıklı kuyruk
+              kapalıysa gönderim tarayıcı açıkken eski HTTP akışında kalır; açıksa Todo kuyruğuna
+              alınır ve analiz tamamlanınca şirket adımına dönülür.
             </Typography>
             <FormControlLabel
               control={
@@ -403,6 +408,27 @@ export function ProfileView() {
                 />
               }
               label="Analiz sonrası mailleri otomatik gönder"
+            />
+            <FormControlLabel
+              sx={{ mt: 0.5, alignItems: 'flex-start' }}
+              control={
+                <Switch
+                  checked={queuedIntervalOutreach}
+                  onChange={(e) => setQueuedIntervalOutreach(e.target.checked)}
+                  color="secondary"
+                />
+              }
+              label={
+                <Box>
+                  <Typography component="span" variant="body1">
+                    Aralıklı (kuyruk) gönderim
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Açık: mailler profil aralığıyla kuyruğa gider; AI bitince analiz sekmesine
+                    dönülür. Kapalı: tarayıcı kapanırsa kalan gönderimler durur.
+                  </Typography>
+                </Box>
+              }
             />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 2 }}>
               <Button

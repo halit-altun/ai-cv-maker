@@ -8,6 +8,7 @@ const {
   projectSummaryHandler,
   projectCompanyResultsHandler,
   startJobHandler,
+  enqueueCompanySendHandler,
   listJobsHandler,
   getJobHandler,
   pauseJobHandler,
@@ -42,6 +43,7 @@ router.patch("/projects/:projectId/settings", updateProjectPrefsHandler);
 
 /** Arka plan işleri */
 router.post("/jobs", startJobHandler);
+router.post("/jobs/enqueue-company-send", enqueueCompanySendHandler);
 router.get("/jobs", listJobsHandler);
 router.get("/jobs/:id", getJobHandler);
 router.post("/jobs/:id/pause", pauseJobHandler);

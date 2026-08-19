@@ -117,6 +117,7 @@ type PreviewStepProps = Pick<
   | 'setLinkedinMessage'
   | 'shouldSendCompanyEmail'
   | 'autoSendOutreachAfterAnalysis'
+  | 'queuedIntervalOutreach'
   | 'emailDomainOverride'
   | 'includePrimaryEmailInSend'
   | 'setIncludePrimaryEmailInSend'
@@ -1040,7 +1041,12 @@ export function PreviewStep(props: PreviewStepProps) {
             Mail gönderimi — onay adımı
           </Typography>
           <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
-            {props.autoSendOutreachAfterAnalysis ? (
+            {props.queuedIntervalOutreach ? (
+              <>
+                Aralıklı kuyruk açık: mailler kuyruğa alındıktan sonra analiz sekmesine dönülür.
+                Sıra için Mail Takip → Aralıklı gönderim.
+              </>
+            ) : props.autoSendOutreachAfterAnalysis ? (
               <>
                 Profil ayarı açık: analiz sonrası mailler <strong>otomatik gönderilir</strong>.
                 Bu adımda yalnızca sonucu ve metni görürsünüz; manuel gönderim kapalıdır.
@@ -1050,7 +1056,7 @@ export function PreviewStep(props: PreviewStepProps) {
               <>
                 Analiz sonrası mailler <strong>otomatik gönderilmez</strong>. Aşağıdaki içeriği
                 kontrol edin, onaylayın; ardından onay diyaloğunda kesinleştirin. Otomatik gönderim
-                için Profilim ayarını açın.
+                için Profilim ayarını açın. Tarayıcı kapanırsa kalan gönderimler durur.
               </>
             )}
           </Alert>
@@ -1699,7 +1705,7 @@ export function PreviewStep(props: PreviewStepProps) {
           Harika bir iş çıkardın! Bu başvuru için her şey hazır. Yeni bir fırsat mı buldun?
         </Typography>
         <Button
-          onClick={props.handlePrepareNewAnalysisSameCv}
+          onClick={() => props.handlePrepareNewAnalysisSameCv()}
           disabled={
             props.outreachSending ||
             (props.autoSendOutreachAfterAnalysis &&

@@ -77,7 +77,7 @@ async function getUserIntervalMinutes(userId) {
  * kuyruktaki en geç planlanan pending mail.
  */
 async function getUserScheduleCursor(userId) {
-  const [lastSent, lastPending] = await Promise.all([
+  const [lastSent, lastPending, lastProcessing] = await Promise.all([
     EmailQueue.findOne({ userId, status: "sent" })
       .sort({ sentAt: -1 })
       .select("sentAt")
@@ -86,15 +86,23 @@ async function getUserScheduleCursor(userId) {
       .sort({ scheduledAt: -1 })
       .select("scheduledAt")
       .lean(),
+    EmailQueue.findOne({ userId, status: "processing" })
+      .sort({ scheduledAt: -1 })
+      .select("scheduledAt processedAt")
+      .lean(),
   ]);
 
-  const sentAt = lastSent?.sentAt ? new Date(lastSent.sentAt) : null;
-  const pendingAt = lastPending?.scheduledAt ? new Date(lastPending.scheduledAt) : null;
+  const times = [
+    lastSent?.sentAt,
+    lastPending?.scheduledAt,
+    lastProcessing?.scheduledAt,
+    lastProcessing?.processedAt,
+  ]
+    .filter(Boolean)
+    .map((d) => new Date(d).getTime());
 
-  if (sentAt && pendingAt) {
-    return sentAt > pendingAt ? sentAt : pendingAt;
-  }
-  return sentAt || pendingAt || null;
+  if (!times.length) return null;
+  return new Date(Math.max(...times));
 }
 
 function formatIntervalLabel(seconds) {

@@ -76,6 +76,8 @@ export interface CompanyCvOptimizerState {
   setShouldSendCompanyEmail: (v: boolean) => void;
   /** Profilim: analiz sonrası otomatik mail */
   autoSendOutreachAfterAnalysis: boolean;
+  /** Profilim: aralıklı kuyruk (kapalı = tarayıcıda eski gönderim) */
+  queuedIntervalOutreach: boolean;
   selectedEmailPrefixCategories: EmailPrefixCategoryId[];
   setSelectedEmailPrefixCategories: React.Dispatch<React.SetStateAction<EmailPrefixCategoryId[]>>;
   customEmailLocalPartsText: string;
@@ -134,7 +136,7 @@ export interface CompanyCvOptimizerState {
     cvDataOverride?: CompanyBasedCVData | null;
     linkedinMessageOverride?: string;
     forceResend?: boolean;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   handleRegenerateColdEmail: () => Promise<void>;
   loading: boolean;
   error: string | null;
@@ -157,7 +159,7 @@ export interface CompanyCvOptimizerState {
   setSkillsFontSize: (v: CvSkillsFontSize) => void;
   handleFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   handleClearStoredCv: () => Promise<void>;
-  handlePrepareNewAnalysisSameCv: () => void;
+  handlePrepareNewAnalysisSameCv: (options?: { preserveSendNotice?: boolean }) => void;
   addCompanyLink: () => void;
   removeCompanyLink: (index: number) => void;
   updateCompanyLink: (index: number, field: keyof CompanyLink, value: string) => void;

@@ -7,7 +7,7 @@ const { AppError } = require("../utils/app-error");
 const ALLOWED_SELF_REGISTER_ROLES = new Set(["user"]);
 
 const PUBLIC_USER_FIELDS =
-  "email fullName firstName lastName title contactEmail phone country city linkedinUrl portfolioUrl githubUrl autoSendOutreachAfterAnalysis preferredAiProvider gmailSendIntervalMinMinutes gmailSendIntervalMaxMinutes gmailSendIntervalMinSeconds gmailSendIntervalMaxSeconds enableMailTracking persistOutreachHistory profileImageUrl profileImagePublicId clientId role isActive emailVerified emailVerifiedAt createdAt updatedAt";
+  "email fullName firstName lastName title contactEmail phone country city linkedinUrl portfolioUrl githubUrl autoSendOutreachAfterAnalysis queuedIntervalOutreach preferredAiProvider gmailSendIntervalMinMinutes gmailSendIntervalMaxMinutes gmailSendIntervalMinSeconds gmailSendIntervalMaxSeconds enableMailTracking persistOutreachHistory profileImageUrl profileImagePublicId clientId role isActive emailVerified emailVerifiedAt createdAt updatedAt";
 
 function toPublicUser(user) {
   if (!user) {
@@ -29,6 +29,7 @@ function toPublicUser(user) {
     portfolioUrl: user.portfolioUrl || "",
     githubUrl: user.githubUrl || "",
     autoSendOutreachAfterAnalysis: user.autoSendOutreachAfterAnalysis === true,
+    queuedIntervalOutreach: user.queuedIntervalOutreach === true,
     preferredAiProvider: user.preferredAiProvider || "gemini-free",
     gmailSendIntervalMinMinutes: user.gmailSendIntervalMinMinutes || 0,
     gmailSendIntervalMaxMinutes: user.gmailSendIntervalMaxMinutes || 0,
@@ -172,6 +173,7 @@ async function updateUserProfile(
     portfolioUrl,
     githubUrl,
     autoSendOutreachAfterAnalysis,
+    queuedIntervalOutreach,
     preferredAiProvider,
     gmailSendIntervalMinMinutes,
     gmailSendIntervalMaxMinutes,
@@ -197,6 +199,9 @@ async function updateUserProfile(
   if (githubUrl !== undefined) updates.githubUrl = String(githubUrl || "").trim();
   if (autoSendOutreachAfterAnalysis !== undefined) {
     updates.autoSendOutreachAfterAnalysis = Boolean(autoSendOutreachAfterAnalysis);
+  }
+  if (queuedIntervalOutreach !== undefined) {
+    updates.queuedIntervalOutreach = Boolean(queuedIntervalOutreach);
   }
   if (preferredAiProvider !== undefined) {
     const provider = String(preferredAiProvider || "gemini-free").toLowerCase().trim();

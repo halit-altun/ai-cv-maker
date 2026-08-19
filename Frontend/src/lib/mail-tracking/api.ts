@@ -292,3 +292,190 @@ export async function getMailTrackingReanalyzeRequest(mailId: string): Promise<{
     reanalyze: data.reanalyze as MailTrackingReanalyzeContext,
   };
 }
+
+export type SendQueueStatus = 'pending' | 'processing' | 'sent' | 'failed';
+
+export type SendQueueItem = {
+  id: string;
+  status: SendQueueStatus | string;
+  to: string[];
+  recipient: string;
+  subject?: string;
+  companyName?: string;
+  domain?: string;
+  scheduledAt?: string | null;
+  sentAt?: string | null;
+  lastError?: string;
+  projectId?: string | null;
+  companyUrl?: string;
+  todoJobId?: string | null;
+  todoItemId?: string | null;
+  mailId?: string;
+  appliedIntervalSeconds?: number | null;
+  createdAt?: string;
+};
+
+export type PendingJobSendItem = {
+  jobId: string;
+  itemId: string;
+  jobStatus: string;
+  itemStatus: string;
+  pipeline?: string;
+  source?: string;
+  projectId?: string | null;
+  companyName?: string;
+  companyUrl?: string;
+  recipients: string[];
+  recipientCount: number;
+  scheduledAt?: string | null;
+  waitingForJob: boolean;
+  cvFileName?: string;
+  coldEmailSubject?: string;
+  hasAnalysisSnapshot?: boolean;
+};
+
+export type SendQueueAnalysisDetail = {
+  jobId: string;
+  itemId: string;
+  jobStatus: string;
+  itemStatus: string;
+  pipeline?: string;
+  source?: string;
+  projectId?: string | null;
+  companyName?: string;
+  companyUrl?: string;
+  emailDomainInput?: string;
+  cvFileName?: string;
+  selectedRecipients?: string[];
+  candidateRecipients?: string[];
+  recipientResults?: Array<{ email: string; status: string; errorMessage?: string }>;
+  coldEmailSubject?: string;
+  coldEmailBody?: string;
+  linkedinMessage?: string;
+  adaptationNotes?: string;
+  analysisSnapshot?: {
+    matchScore?: number;
+    originalAbout?: string;
+    updatedAbout?: string;
+    originalExperience?: string;
+    updatedExperience?: string;
+    originalSkills?: string;
+    updatedSkills?: string;
+    recommendations?: string[];
+    positiveMatches?: Array<{ label: string; evidence: string }>;
+    negativeMismatches?: Array<{ label: string; gap: string; evidence?: string }>;
+    keywordIntegrationReport?: Array<{
+      keyword: string;
+      integratedIn: 'about' | 'experience' | 'both' | 'none' | 'already_present';
+      note: string;
+    }>;
+    detectedKeywords?: string[];
+    candidateKeywords?: string[];
+    extractedKeywords?: string[];
+    deliverabilityScore?: Record<string, unknown> | null;
+    coverLetter?: string;
+    targetPosition?: string;
+    cvLanguage?: string;
+    cvSectionLengthMode?: string;
+  } | null;
+  verification?: Record<string, unknown> | null;
+  sentCount?: number;
+  failedCount?: number;
+  queuedCount?: number;
+  errorMessage?: string;
+  step?: string;
+};
+
+export type SendQueueDetailResponse = {
+  queueItem: SendQueueItem | null;
+  relatedQueueItems: SendQueueItem[];
+  analysis: SendQueueAnalysisDetail | null;
+};
+
+export type SendQueueSummary = {
+  queued: number;
+  pending: number;
+  processing: number;
+  sent: number;
+  failed: number;
+  pendingJobItemCount: number;
+  pendingJobRecipientCount: number;
+  estimatedCompletionAt?: string | null;
+  intervalMinSeconds?: number;
+  intervalMaxSeconds?: number;
+};
+
+export async function listSendQueueRequest(params?: MailTrackingListFilters & {
+  limit?: number;
+  skip?: number;
+}): Promise<{
+  items: SendQueueItem[];
+  total: number;
+  pendingJobItems: PendingJobSendItem[];
+}> {
+  const qs = new URLSearchParams();
+  if (params?.limit != null) qs.set('limit', String(params.limit));
+  if (params?.skip != null) qs.set('skip', String(params.skip));
+  if (params?.status) qs.set('status', params.status);
+  if (params?.projectId) qs.set('projectId', params.projectId);
+  if (params?.company) qs.set('company', params.company);
+  if (params?.recipient) qs.set('recipient', params.recipient);
+  if (params?.date) qs.set('date', params.date);
+  if (params?.startDate) qs.set('startDate', params.startDate);
+  if (params?.endDate) qs.set('endDate', params.endDate);
+
+  const res = await authFetch(`/api/mail-tracking/send-queue?${qs.toString()}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    throw new Error(data.message || 'Gönderim kuyruğu alınamadı.');
+  }
+  return {
+    items: (data.items || []) as SendQueueItem[],
+    total: Number(data.total || 0),
+    pendingJobItems: (data.pendingJobItems || []) as PendingJobSendItem[],
+  };
+}
+
+export async function getSendQueueSummaryRequest(
+  filters?: MailTrackingListFilters
+): Promise<SendQueueSummary> {
+  const qs = new URLSearchParams();
+  if (filters?.projectId) qs.set('projectId', filters.projectId);
+  if (filters?.status) qs.set('status', filters.status);
+  if (filters?.company) qs.set('company', filters.company);
+  if (filters?.recipient) qs.set('recipient', filters.recipient);
+  if (filters?.date) qs.set('date', filters.date);
+  if (filters?.startDate) qs.set('startDate', filters.startDate);
+  if (filters?.endDate) qs.set('endDate', filters.endDate);
+  const query = qs.toString();
+  const res = await authFetch(
+    `/api/mail-tracking/send-queue/summary${query ? `?${query}` : ''}`
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    throw new Error(data.message || 'Kuyruk özeti alınamadı.');
+  }
+  return data.summary as SendQueueSummary;
+}
+
+export async function getSendQueueDetailRequest(params: {
+  jobId?: string;
+  itemId?: string;
+  queueId?: string;
+}): Promise<SendQueueDetailResponse> {
+  const qs = new URLSearchParams();
+  if (params.jobId) qs.set('jobId', params.jobId);
+  if (params.itemId) qs.set('itemId', params.itemId);
+  if (params.queueId) qs.set('queueId', params.queueId);
+  const res = await authFetch(`/api/mail-tracking/send-queue/detail?${qs.toString()}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    throw new Error(data.message || 'Kuyruk detayı alınamadı.');
+  }
+  return {
+    queueItem: (data.queueItem || null) as SendQueueItem | null,
+    relatedQueueItems: (data.relatedQueueItems || []) as SendQueueItem[],
+    analysis: (data.analysis || null) as SendQueueAnalysisDetail | null,
+  };
+}
+

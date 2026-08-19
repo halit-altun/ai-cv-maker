@@ -252,6 +252,7 @@ export async function updateProfileRequest(payload: {
   portfolioUrl?: string;
   githubUrl?: string;
   autoSendOutreachAfterAnalysis?: boolean;
+  queuedIntervalOutreach?: boolean;
   preferredAiProvider?: 'gemini-free' | 'gemini-pro' | 'openai';
   gmailSendIntervalMinSeconds?: number;
   gmailSendIntervalMaxSeconds?: number;
