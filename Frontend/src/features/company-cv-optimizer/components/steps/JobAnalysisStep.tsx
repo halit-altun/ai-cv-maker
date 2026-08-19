@@ -646,7 +646,7 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
             </Alert>
           )}
 
-          {props.queuedIntervalOutreach && (
+              {props.queuedIntervalOutreach && (
             <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
               Aralıklı kuyruk açık: AI tamamlanınca mailler kuyruğa alınır ve bu analiz sekmesine
               dönülür. Sıra için Mail Takip → Aralıklı gönderim. Değiştirmek için Profilim.
@@ -655,8 +655,8 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
 
           {props.autoSendOutreachAfterAnalysis && (
             <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
-              Profil ayarı aktif: mail gönderimi etkinleştirilirse analiz sonrası mailler{' '}
-              <strong>otomatik gönderilecek</strong>. Değiştirmek için Profilim sayfasını kullanın.
+              Profil ayarı aktif: analiz bitince mailler otomatik gönderilir / kuyruğa alınır.
+              &quot;Mail gönderimini etkinleştir&quot; bu ayar açıkken açık tutulur.
             </Alert>
           )}
 

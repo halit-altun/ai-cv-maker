@@ -67,6 +67,7 @@ import {
   sendCompanyOutreachRequest,
 } from '@/lib/outreach/api';
 import { enqueueCompanySendRequest } from '@/lib/todo-applications/api';
+import { planPostAnalysisDispatch } from '../lib/postAnalysisDispatch';
 import {
   listOutreachProjectsRequest,
   selectOutreachProjectRequest,
@@ -246,6 +247,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       cvDataOverride?: CompanyBasedCVData | null;
       linkedinMessageOverride?: string;
       forceResend?: boolean;
+      allowAutoDispatch?: boolean;
     }) => Promise<boolean>
   >(async () => false);
   const [loading, setLoading] = useState(false);
@@ -350,6 +352,12 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         const profileGithub = String(data.user.githubUrl || '').trim();
         setAutoSendOutreachAfterAnalysis(data.user.autoSendOutreachAfterAnalysis === true);
         setQueuedIntervalOutreach(data.user.queuedIntervalOutreach === true);
+        if (
+          data.user.autoSendOutreachAfterAnalysis === true ||
+          data.user.queuedIntervalOutreach === true
+        ) {
+          setShouldSendCompanyEmail(true);
+        }
         if (profileLinkedin) {
           setOutreachLinkedinUrl((prev) => (prev.trim() ? prev : profileLinkedin));
         }
@@ -949,6 +957,12 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldSendCompanyEmail]);
 
+  useEffect(() => {
+    if (autoSendOutreachAfterAnalysis || queuedIntervalOutreach) {
+      setShouldSendCompanyEmail(true);
+    }
+  }, [autoSendOutreachAfterAnalysis, queuedIntervalOutreach]);
+
   // Cold mail konusu/gövdesi gelince veya değişince mesaj riskini güncelle
   useEffect(() => {
     if (!shouldSendCompanyEmail) return;
@@ -1363,6 +1377,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     if (!cvFile) return;
 
     const fromJobAnalysis = Boolean(options?.fromJobAnalysis);
+    const mailDispatchEnabled = Boolean(
+      shouldSendCompanyEmail || autoSendOutreachAfterAnalysis || queuedIntervalOutreach
+    );
     const outreachSource = resolveOutreachSource();
     const needsCompanyInfoForCV = cvAdaptationSource === 'company';
     const needsCompanyForOutreach = outreachSource === 'company';
@@ -1411,7 +1428,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       return;
     }
 
-    if (shouldSendCompanyEmail && fromJobAnalysis) {
+    if (mailDispatchEnabled && fromJobAnalysis) {
       const hasCategory = selectedEmailPrefixCategories.some((id) => id !== 'custom');
       const hasCustom = customEmailLocalPartsText
         .split(/[\n,;]+/)
@@ -1483,7 +1500,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         );
       }
 
-      const coldLanguage = shouldSendCompanyEmail
+      const coldLanguage = mailDispatchEnabled
         ? resolveOutreachEmailLanguage({
             mode: outreachEmailLanguageMode,
             pageLanguage: companyInfo?.detectedLanguage,
@@ -1524,7 +1541,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         manualMustNotMentionTopics,
         generateCoverLetter: shouldGenerateCoverLetter,
         generateLinkedInMessage: shouldGenerateLinkedInMessage,
-        generateColdEmail: shouldSendCompanyEmail,
+        generateColdEmail: mailDispatchEnabled,
         coverLetterSource,
         linkedinMessageSource: outreachSourceForLinkedIn,
         coldEmailLanguage: coldLanguage,
@@ -1591,7 +1608,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         setOutreachPhone(resolvedPhone);
       }
 
-      if (shouldSendCompanyEmail && bundle.coldEmail) {
+      if (mailDispatchEnabled && bundle.coldEmail) {
         const standardBody = String(bundle.coldEmail.body || '').trim();
         const companyLabel = resolveCompanyDisplayName({
           name:
@@ -1644,7 +1661,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
               })
             : ''
         );
-      } else if (!shouldSendCompanyEmail) {
+      } else if (!mailDispatchEnabled) {
         setOutreachEmailBody('');
         setOutreachInfoContactEmailBody('');
       }
@@ -1723,7 +1740,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
       // Alıcı adaylarını üret; varsayılan olarak ilk 3 (veya max limit) seç
       let recipientsForAutoSend: string[] = [];
-      if (shouldSendCompanyEmail) {
+      if (mailDispatchEnabled) {
         const domain = normalizeEmailDomainInput(
           emailDomainOverride ||
             extractDomainFromUrl(resolvedCompany?.website || '') ||
@@ -1751,13 +1768,16 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         setSelectedOutreachRecipients(recipientsForAutoSend);
       }
 
-      const willQueueAfterAnalysis =
-        queuedIntervalOutreach &&
-        shouldSendCompanyEmail &&
-        Boolean(bundle.coldEmail?.body) &&
-        recipientsForAutoSend.length > 0;
+      const dispatchPlan = planPostAnalysisDispatch({
+        shouldSendCompanyEmail: mailDispatchEnabled,
+        autoSendOutreachAfterAnalysis,
+        queuedIntervalOutreach,
+        hasColdEmailBody: Boolean(bundle.coldEmail?.body),
+        recipientCount: recipientsForAutoSend.length,
+        hasOutreachProjectId: Boolean(selectedOutreachProjectId),
+      });
 
-      if (!willQueueAfterAnalysis) {
+      if (!dispatchPlan.stayOnAnalysisUntilDispatch) {
         setActiveStep(2);
       }
 
@@ -1836,20 +1856,16 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       }
 
       // Otomatik gönderim veya aralıklı kuyruk: analiz bitince mail aşamasına geç
-      if (
-        shouldSendCompanyEmail &&
-        (autoSendOutreachAfterAnalysis || queuedIntervalOutreach) &&
-        bundle.coldEmail?.body &&
-        recipientsForAutoSend.length > 0
-      ) {
+      if (dispatchPlan.shouldDispatch) {
         const sendOk = await sendCompanyEmailRef.current({
           recipientsOverride: recipientsForAutoSend,
-          bodyOverride: bundle.coldEmail.body,
-          subjectOverride: bundle.coldEmail.subject,
+          bodyOverride: bundle.coldEmail?.body,
+          subjectOverride: bundle.coldEmail?.subject,
           cvDataOverride: adaptedCVData,
           linkedinMessageOverride: linkedinText || undefined,
+          allowAutoDispatch: true,
         });
-        if (willQueueAfterAnalysis && sendOk !== true) {
+        if (dispatchPlan.goToPreviewIfDispatchFails && sendOk !== true) {
           setActiveStep(2);
         }
       }
@@ -2012,9 +2028,10 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     cvDataOverride?: CompanyBasedCVData | null;
     linkedinMessageOverride?: string;
     forceResend?: boolean;
+    allowAutoDispatch?: boolean;
   }) => {
     // Çift tıklama / auto-send + manuel yarışı: aynı maili 2 kez göndermeyi engelle
-    if (outreachSendingLockRef.current || outreachSending) {
+    if (outreachSendingLockRef.current) {
       return false;
     }
 
@@ -2031,7 +2048,12 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       return false;
     }
 
-    if (!shouldSendCompanyEmail) {
+    if (
+      !shouldSendCompanyEmail &&
+      !autoSendOutreachAfterAnalysis &&
+      !queuedIntervalOutreach &&
+      !opts?.allowAutoDispatch
+    ) {
       setError('Mail gönderimi seçili değil.');
       return false;
     }

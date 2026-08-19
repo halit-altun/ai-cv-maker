@@ -13,6 +13,12 @@ const {
 } = require("../utils/cold-email-generic-inbox");
 const { resolveCompanyDisplayName } = require("../utils/company-display-name");
 const { getProjectOrThrow } = require("./outreach-project.service");
+const {
+  pickNextPendingJobItem,
+  enqueueLiveJobFilter,
+  enqueuePausedJobFilter,
+  resumePausedJobOnEnqueue,
+} = require("../utils/todo-job-dispatch");
 const { fetchPageText } = require("./todo-page-fetch.service");
 const {
   buildRecipientEmails,
@@ -1512,12 +1518,13 @@ async function processNextTodoApplicationItem() {
     await job.save();
   }
 
-  // Önce yarım kalan firmayı bitir
-  let item = (job.items || []).find((i) =>
-    ["fetching", "analyzing", "sending"].includes(i.status)
+  // Önce yarım kalan firmayı bitir; ardından send_only (company-based kuyruk) öncelikli
+  let item = pickNextPendingJobItem(
+    job.items || [],
+    job.status,
+    Boolean(job.pauseAfterCurrent)
   );
 
-  // Duraklatılmışsa yeni firmaya geçme
   if (!item) {
     if (job.status === "paused" || job.pauseAfterCurrent) {
       job.pauseAfterCurrent = false;
@@ -1527,10 +1534,6 @@ async function processNextTodoApplicationItem() {
       await job.save();
       return { processed: false, jobId: String(job._id), paused: true };
     }
-    item = (job.items || []).find((i) => i.status === "pending");
-  }
-
-  if (!item) {
     const hasRunning = (job.items || []).some((i) =>
       ["fetching", "analyzing", "sending"].includes(i.status)
     );
@@ -1822,17 +1825,20 @@ async function enqueueCompanySend(clientId, userId, body = {}) {
     );
   }
 
-  const activeFilter = {
-    clientId,
-    userId,
-    status: { $in: ["pending", "running", "paused"] },
-  };
-
+  const liveFilter = enqueueLiveJobFilter(clientId, userId);
   let job = await TodoApplicationJob.findOneAndUpdate(
-    activeFilter,
+    liveFilter,
     { $push: { items: item } },
     { new: true, sort: { createdAt: 1 } }
   );
+
+  if (!job) {
+    job = await TodoApplicationJob.findOneAndUpdate(
+      enqueuePausedJobFilter(clientId, userId),
+      resumePausedJobOnEnqueue(item),
+      { new: true, sort: { createdAt: 1 } }
+    );
+  }
 
   if (!job) {
     const settings = buildSettingsSnapshot(
@@ -1861,10 +1867,17 @@ async function enqueueCompanySend(clientId, userId, body = {}) {
       });
     } catch (err) {
       job = await TodoApplicationJob.findOneAndUpdate(
-        activeFilter,
+        liveFilter,
         { $push: { items: item } },
         { new: true, sort: { createdAt: 1 } }
       );
+      if (!job) {
+        job = await TodoApplicationJob.findOneAndUpdate(
+          enqueuePausedJobFilter(clientId, userId),
+          resumePausedJobOnEnqueue(item),
+          { new: true, sort: { createdAt: 1 } }
+        );
+      }
       if (!job) throw err;
     }
   }
