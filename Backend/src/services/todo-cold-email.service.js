@@ -1,6 +1,6 @@
 const { generateAIContent } = require("./ai-provider.service");
 const { waitAndProceed } = require("./gemini-rate-limiter");
-const { sanitizeOutreachPlaceholders } = require("../utils/outreach-placeholder.utils");
+const { sanitizeOutreachPlaceholders, textAlreadyHasUrl } = require("../utils/outreach-placeholder.utils");
 
 function safeJsonParse(text) {
   const raw = String(text || "").trim();
@@ -34,8 +34,21 @@ function buildSignatureLines(settings = {}) {
   if (name) lines.push(name);
   if (title) lines.push(title);
   if (settings.linkedinUrl) lines.push(String(settings.linkedinUrl).trim());
-  if (settings.portfolioUrl) lines.push(String(settings.portfolioUrl).trim());
-  if (settings.websiteUrl) lines.push(String(settings.websiteUrl).trim());
+  const urls = [
+    String(settings.portfolioUrl || "").trim(),
+    String(settings.websiteUrl || "").trim(),
+  ].filter(Boolean);
+  const seen = new Set();
+  for (const url of urls) {
+    const key = url
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/^www\./, "")
+      .replace(/\/+$/, "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    lines.push(url);
+  }
   if (settings.phone) lines.push(String(settings.phone).trim());
   return lines.filter(Boolean);
 }
@@ -133,8 +146,16 @@ ${String(pageText || "").slice(0, 9000)}
       candidateName: String(settings.candidateFullName || "").trim(),
     }
   );
-  if (signature.length && !signature.some((line) => body.includes(line))) {
-    body = `${body}\n\n${signature.join("\n")}`;
+  const extraSignature = signature.filter(
+    (line) => !body.includes(line) && !textAlreadyHasUrl(body, line)
+  );
+  if (extraSignature.length) {
+    body = sanitizeOutreachPlaceholders(`${body}\n\n${extraSignature.join("\n")}`, {
+      kind: "body",
+      language,
+      companyName: resolvedCompanyName,
+      candidateName: String(settings.candidateFullName || "").trim(),
+    });
   }
 
   return {

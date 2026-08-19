@@ -182,7 +182,85 @@ function sanitizeOutreachPlaceholders(text, opts = {}) {
   out = collapseBrokenGreetings(out, language);
   out = fixGreetingLine(out, language, opts.recipientName);
   out = collapseSpaces(out);
-  return out;
+  return dedupeRepeatedOutreachUrls(out);
+}
+
+const HOST_ONLY_URL_RE =
+  /^(?:https?:\/\/)?(?:www\.)?[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:\/[^\s]*)?$/i;
+const EXPLICIT_OUTREACH_URL_RE =
+  /https?:\/\/[^\s|]+|(?:www\.)?(?:linkedin\.com|github\.com|gitlab\.com)[^\s|]*/gi;
+
+function normalizeOutreachUrlKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[),.;:]+$/g, "")
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/+$/, "");
+}
+
+function textAlreadyHasUrl(text, url) {
+  const key = normalizeOutreachUrlKey(url);
+  if (!key) return true;
+  const hay = String(text || "")
+    .toLowerCase()
+    .replace(/https?:\/\//g, "")
+    .replace(/www\./g, "")
+    .replace(/\/+(?=[\s|]|$)/g, "");
+  return hay.includes(key);
+}
+
+function urlsInPart(part) {
+  const t = String(part || "").trim();
+  if (!t || (t.includes("@") && !/^https?:\/\//i.test(t))) return [];
+  if (HOST_ONLY_URL_RE.test(t) && !t.includes("@")) return [t];
+  return (t.match(EXPLICIT_OUTREACH_URL_RE) || []).map((m) =>
+    m.replace(/[),.;:]+$/g, "")
+  );
+}
+
+function dedupeRepeatedOutreachUrls(text) {
+  const seen = new Set();
+  const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+  const out = [];
+
+  for (const line of lines) {
+    if (!line.trim()) {
+      out.push(line);
+      continue;
+    }
+    const parts = line.split(/\s*\|\s*/);
+    const kept = [];
+    for (const part of parts) {
+      const urls = urlsInPart(part);
+      if (!urls.length) {
+        kept.push(part);
+        continue;
+      }
+      let remaining = part;
+      let droppedAll = true;
+      for (const url of urls) {
+        const key = normalizeOutreachUrlKey(url);
+        if (!key) continue;
+        if (seen.has(key)) {
+          remaining = remaining
+            .replace(url, "")
+            .replace(/\s{2,}/g, " ")
+            .trim();
+        } else {
+          seen.add(key);
+          droppedAll = false;
+        }
+      }
+      const leftover = remaining.trim();
+      if (leftover && !droppedAll) kept.push(leftover);
+      else if (leftover && urlsInPart(leftover).length === 0) kept.push(leftover);
+    }
+    if (kept.length) out.push(kept.join(" | "));
+  }
+
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
 function stillHasTemplatePlaceholder(text) {
@@ -199,4 +277,7 @@ module.exports = {
   sanitizeOutreachPlaceholders,
   stillHasTemplatePlaceholder,
   genericGreeting,
+  normalizeOutreachUrlKey,
+  textAlreadyHasUrl,
+  dedupeRepeatedOutreachUrls,
 };

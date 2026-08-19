@@ -21,6 +21,7 @@ const {
 const {
   sanitizeOutreachPlaceholders,
   stillHasTemplatePlaceholder,
+  textAlreadyHasUrl,
 } = require("../../utils/outreach-placeholder.utils");
 
 const GEMINI_MAX_RETRIES = 3;
@@ -97,7 +98,17 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
           );
         }
         const signature = buildOutreachSignatureBlock(parsedCV.personalInfo);
-        coverLetter = `${stripTrailingOutreachSignOff(coverLetter)}\n\n${signature}`.trim();
+        coverLetter = sanitizeOutreachPlaceholders(
+          `${stripTrailingOutreachSignOff(coverLetter)}\n\n${signature}`.trim(),
+          {
+            kind: "body",
+            language: meta.coverLang === "English" ? "english" : "turkish",
+            companyName: recipientCompany,
+            candidateName: `${parsedCV.personalInfo?.firstName || ""} ${
+              parsedCV.personalInfo?.lastName || ""
+            }`.trim(),
+          }
+        );
       }
 
       if (linkedinMessage) {
@@ -123,7 +134,17 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
           );
         }
         const signature = buildOutreachSignatureBlock(parsedCV.personalInfo);
-        linkedinMessage = `${stripTrailingOutreachSignOff(linkedinMessage)}\n\n${signature}`.trim();
+        linkedinMessage = sanitizeOutreachPlaceholders(
+          `${stripTrailingOutreachSignOff(linkedinMessage)}\n\n${signature}`.trim(),
+          {
+            kind: "body",
+            language: meta.linkedInLang === "English" ? "english" : "turkish",
+            companyName: recipientCompany,
+            candidateName: `${parsedCV.personalInfo?.firstName || ""} ${
+              parsedCV.personalInfo?.lastName || ""
+            }`.trim(),
+          }
+        );
       }
 
       let coldEmail = null;
@@ -153,13 +174,13 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
             "";
           const website = String(request.outreachWebsiteUrl || "").trim();
           const missing = [];
-          if (linkedin && !body.toLowerCase().includes(linkedin.toLowerCase())) {
+          if (linkedin && !textAlreadyHasUrl(body, linkedin)) {
             missing.push(linkedin);
           }
-          if (portfolio && !body.toLowerCase().includes(portfolio.toLowerCase())) {
+          if (portfolio && !textAlreadyHasUrl(body, portfolio)) {
             missing.push(portfolio);
           }
-          if (website && !body.toLowerCase().includes(website.toLowerCase())) {
+          if (website && !textAlreadyHasUrl(body, website)) {
             missing.push(website);
           }
           if (missing.length) body = `${body}\n${missing.join(" | ")}`.trim();
@@ -186,13 +207,19 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
             );
           }
           if (request.coldEmailGenericInboxRouting) {
-            body = wrapColdEmailForInfoContactInbox({
-              bodyText: body,
-              companyName:
-                String(request.recipientCompanyName || "").trim() ||
-                String(request.companyInfo?.name || "").trim(),
-              language: coldLang === "English" ? "english" : "turkish",
-            });
+            body = sanitizeOutreachPlaceholders(
+              wrapColdEmailForInfoContactInbox({
+                bodyText: body,
+                companyName:
+                  String(request.recipientCompanyName || "").trim() ||
+                  String(request.companyInfo?.name || "").trim(),
+                language: coldLang === "English" ? "english" : "turkish",
+              }),
+              {
+                ...sanitizeOpts,
+                kind: "body",
+              }
+            );
           }
           coldEmail = { subject, body };
         }

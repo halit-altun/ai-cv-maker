@@ -463,26 +463,47 @@ async function sendCompanyOutreachEmailsImpl({
     candidateName: fromDisplayName,
   });
   const infoContactBodyText = anyInfoOrContactEmail(list)
-    ? wrapColdEmailForInfoContactInbox({
-        bodyText: baseText,
-        companyName: resolvedCompanyName,
-      })
+    ? sanitizeOutreachPlaceholders(
+        wrapColdEmailForInfoContactInbox({
+          bodyText: baseText,
+          companyName: resolvedCompanyName,
+        }),
+        {
+          kind: "body",
+          companyName: resolvedCompanyName,
+          candidateName: fromDisplayName,
+        }
+      )
     : "";
 
-  const linkedinStandard =
+  let linkedinStandard =
     String(linkedinMessageText || "").trim() ||
     String(
       resolvedReanalyzeContext?.linkedinMessageSnapshot ||
         reanalyzeContext?.linkedinMessageSnapshot ||
         ""
     ).trim();
+  if (linkedinStandard) {
+    linkedinStandard = sanitizeOutreachPlaceholders(linkedinStandard, {
+      kind: "body",
+      companyName: resolvedCompanyName,
+      candidateName: fromDisplayName,
+    });
+  }
   if (linkedinStandard && resolvedReanalyzeContext) {
     resolvedReanalyzeContext.linkedinMessageSnapshot = linkedinStandard;
   }
   const linkedinInfoContact = linkedinStandard && anyInfoOrContactEmail(list)
-    ? wrapLinkedInForGenericInbox({
-        bodyText: linkedinStandard,
-      })
+    ? sanitizeOutreachPlaceholders(
+        wrapLinkedInForGenericInbox({
+          bodyText: linkedinStandard,
+        }),
+        {
+          kind: "body",
+          companyName: resolvedCompanyName,
+          candidateName: fromDisplayName,
+        }
+      )
     : "";
 
   const results = [];

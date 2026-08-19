@@ -28,7 +28,7 @@ import {
   buildGenericInboxRoutingPromptAddon,
   wrapColdEmailForInfoContactInbox,
 } from '@/lib/outreach/coldEmailGenericInbox';
-import { sanitizeOutreachPlaceholders } from '@/lib/outreach/sanitizeOutreachPlaceholders';
+import { sanitizeOutreachPlaceholders, textAlreadyHasUrl } from '@/lib/outreach/sanitizeOutreachPlaceholders';
 import { resolveCompanyDisplayName } from '@/lib/company/normalizeCompanyDisplayName';
 import { stripTrailingOutreachSignOff } from './outreachSignature';
 
@@ -1303,7 +1303,10 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
 
     const signatureBlock = CompanyBasedCVService.buildOutreachSignatureBlock(personalInfo);
 
-    return `${stripTrailingOutreachSignOff(letter)}\n\n${signatureBlock}`.trim();
+    return sanitizeOutreachPlaceholders(
+      `${stripTrailingOutreachSignOff(letter)}\n\n${signatureBlock}`.trim(),
+      { kind: 'body' }
+    );
   }
 
   /**
@@ -1513,25 +1516,31 @@ Return ONLY valid JSON:
 
     // İmza linkleri AI unuttuysa ve opsiyonel link varsa ekle
     const missingLinks: string[] = [];
-    if (linkedin && !body.toLowerCase().includes(linkedin.toLowerCase())) {
+    if (linkedin && !textAlreadyHasUrl(body, linkedin)) {
       missingLinks.push(linkedin);
     }
-    if (portfolio && !body.toLowerCase().includes(portfolio.toLowerCase())) {
+    if (portfolio && !textAlreadyHasUrl(body, portfolio)) {
       missingLinks.push(portfolio);
     }
-    if (website && !body.toLowerCase().includes(website.toLowerCase())) {
+    if (website && !textAlreadyHasUrl(body, website)) {
       missingLinks.push(website);
     }
     if (missingLinks.length) {
-      body = `${body}\n${missingLinks.join(' | ')}`.trim();
+      body = sanitizeOutreachPlaceholders(`${body}\n${missingLinks.join(' | ')}`.trim(), {
+        ...sanitizeOpts,
+        kind: 'body',
+      });
     }
 
     if (genericInboxRouting) {
-      body = wrapColdEmailForInfoContactInbox({
-        bodyText: body,
-        companyName: company === '[Şirket Adı]' ? '' : company,
-        language: isEnglish ? 'english' : 'turkish',
-      });
+      body = sanitizeOutreachPlaceholders(
+        wrapColdEmailForInfoContactInbox({
+          bodyText: body,
+          companyName: company === '[Şirket Adı]' ? '' : company,
+          language: isEnglish ? 'english' : 'turkish',
+        }),
+        { ...sanitizeOpts, kind: 'body' }
+      );
     }
 
     return { subject, body };
@@ -1737,7 +1746,10 @@ Return ONLY valid JSON:
 
     const signatureBlock = CompanyBasedCVService.buildOutreachSignatureBlock(personalInfo);
 
-    return `${stripTrailingOutreachSignOff(message)}\n\n${signatureBlock}`.trim();
+    return sanitizeOutreachPlaceholders(
+      `${stripTrailingOutreachSignOff(message)}\n\n${signatureBlock}`.trim(),
+      { kind: 'body' }
+    );
   }
 
   private static isRetriableGeminiHttpStatus(status: number): boolean {
