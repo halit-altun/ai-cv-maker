@@ -15,6 +15,7 @@ const { resolveCompanyDisplayName } = require("../utils/company-display-name");
 const { getProjectOrThrow } = require("./outreach-project.service");
 const {
   pickNextPendingJobItem,
+  pendingSendOnlyJobFilter,
   enqueueLiveJobFilter,
   enqueuePausedJobFilter,
   resumePausedJobOnEnqueue,
@@ -40,8 +41,12 @@ const {
   isPersistOutreachHistoryEnabled,
 } = require("../utils/persist-outreach-history");
 const { parseCvSectionLengthMode } = require("../utils/cv-section-length");
+const { getUserIntervalSeconds } = require("./email-queue.service");
 
 let processingLock = false;
+
+/** index.js job processor interval'ı ile aynı — kullanıcıya beklenen süreyi söylemek için. */
+const TODO_PROCESSOR_TICK_SECONDS = 20;
 
 /**
  * Kaydetme tercihi kapalıysa bitmiş bulk job kaydını sil (geçmiş oluşmasın).
@@ -1504,6 +1509,13 @@ async function processNextTodoApplicationItem() {
     "items.status": { $in: ["fetching", "analyzing", "sending"] },
   }).sort({ createdAt: 1 });
 
+  // Sonra: company-based tekil gönderimler (kullanıcı ekranda bekliyor)
+  if (!job) {
+    job = await TodoApplicationJob.findOne(pendingSendOnlyJobFilter()).sort({
+      updatedAt: -1,
+    });
+  }
+
   if (!job) {
     job = await TodoApplicationJob.findOne({
       status: { $in: ["pending", "running"] },
@@ -1886,6 +1898,12 @@ async function enqueueCompanySend(clientId, userId, body = {}) {
   await job.save();
 
   const lastItem = job.items[job.items.length - 1];
+  const diagnostics = await buildEnqueueDiagnostics({
+    job,
+    user,
+    enqueuedItemId: lastItem ? String(lastItem._id) : null,
+  });
+
   return {
     jobId: String(job._id),
     itemId: lastItem ? String(lastItem._id) : null,
@@ -1894,6 +1912,61 @@ async function enqueueCompanySend(clientId, userId, body = {}) {
     companyName: item.companyName,
     pauseAfterCurrent: Boolean(job.pauseAfterCurrent),
     jobPaused: job.status === "paused",
+    ...diagnostics,
+  };
+}
+
+/**
+ * Kuyruğa alma sonrası "ne olacak" teşhisi — kullanıcıya net sonuç mesajı verebilmek için.
+ * Sessiz kalan tüm durumlar (duraklatılmış iş, önünde bekleyen işler, kayıt kapalı,
+ * profil aralığı 0) burada uyarıya dönüşür.
+ */
+async function buildEnqueueDiagnostics({ job, user, enqueuedItemId }) {
+  const { minSeconds, maxSeconds } = await getUserIntervalSeconds(job.userId);
+  const persistHistory = user?.persistOutreachHistory !== false;
+
+  const liveJobs = await TodoApplicationJob.find({
+    userId: job.userId,
+    status: { $in: ["pending", "running", "paused"] },
+  })
+    .select("status items")
+    .lean();
+
+  let aheadCount = 0;
+  for (const j of liveJobs) {
+    for (const it of Array.isArray(j.items) ? j.items : []) {
+      if (String(it._id) === String(enqueuedItemId)) continue;
+      if (!["pending", "fetching", "analyzing", "sending"].includes(it.status)) {
+        continue;
+      }
+      // send_only öncelikli işlendiği için bulk (full) itemlar sırada önde sayılmaz
+      if (it.pipeline === "send_only") aheadCount += 1;
+    }
+  }
+
+  const warnings = [];
+  if (job.status === "paused" || job.pauseAfterCurrent) {
+    warnings.push(
+      "Aktif toplu iş duraklatılmış görünüyor; gönderim iş devam ettirilene kadar bekler."
+    );
+  }
+  if (!persistHistory) {
+    warnings.push(
+      "Profilde “geçmişi kaydet” kapalı: mail kuyruğa yazılmadan anında gönderilir ve Mail Takip → Aralıklı gönderim listesinde görünmez."
+    );
+  } else if (minSeconds <= 0 && maxSeconds <= 0) {
+    warnings.push(
+      "Profil gönderim aralığı 0 (anında). Mail kuyruğa yazılır ama beklemeden gönderilir; aralık istiyorsanız Profilim’den süre girin."
+    );
+  }
+
+  return {
+    aheadSendOnlyCount: aheadCount,
+    intervalMinSeconds: minSeconds,
+    intervalMaxSeconds: maxSeconds,
+    persistHistory,
+    processorTickSeconds: TODO_PROCESSOR_TICK_SECONDS,
+    warnings,
   };
 }
 

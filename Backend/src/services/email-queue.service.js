@@ -182,10 +182,21 @@ async function enqueueEmail(userId, emailData, metadata = {}) {
       : await isPersistOutreachHistoryEnabled(userId);
   const { minSeconds, maxSeconds, intervalSeconds } = await getUserIntervalSeconds(userId);
 
-  // Kayıt kapalı veya interval 0 → kuyruk dokümanı yazmadan direkt gönder
-  if (!persistHistory || intervalSeconds === 0) {
+  /**
+   * Aralıklı kuyruk pipeline'ı (Todo job / company-based kuyruk): profil aralığı 0 olsa bile
+   * kuyruk dokümanı yazılır — aksi halde mail "Mail Takip → Aralıklı gönderim" listesinde
+   * hiç görünmeden anında gider ve kullanıcı gönderimi izleyemez.
+   */
+  const forceQueue = Boolean(metadata.forceQueue) && persistHistory;
+  const skipQueueReason = !persistHistory
+    ? "history_off"
+    : intervalSeconds === 0 && !forceQueue
+      ? "interval_zero"
+      : null;
+
+  if (skipQueueReason) {
     console.log(
-      `[EMAIL_QUEUE] ${!persistHistory ? "Kayıt kapalı," : "Interval 0,"} direkt gönderiliyor: ${emailData.to?.join(", ")}`
+      `[EMAIL_QUEUE] ${skipQueueReason === "history_off" ? "Kayıt kapalı," : "Interval 0,"} direkt gönderiliyor: ${emailData.to?.join(", ")}`
     );
     try {
       const result = await sendMail({
@@ -198,6 +209,7 @@ async function enqueueEmail(userId, emailData, metadata = {}) {
         sent: true,
         immediate: true,
         persisted: persistHistory,
+        skipQueueReason,
         result,
       };
     } catch (error) {

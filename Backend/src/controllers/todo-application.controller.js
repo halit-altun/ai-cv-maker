@@ -149,6 +149,29 @@ async function startJobHandler(req, res, next) {
   }
 }
 
+/** Kuyruğa alma sonucunu kullanıcıya tek cümlede net anlat (bekleme, sıra, uyarılar). */
+function buildEnqueueMessage(result) {
+  const parts = [
+    `${result.queuedRecipientCount} alıcı aralıklı gönderim kuyruğuna alındı. Sekme kapansa da devam eder.`,
+  ];
+
+  if (result.jobPaused || result.pauseAfterCurrent) {
+    parts.push("Aktif iş duraklatılmış; gönderim iş devam ettirilene kadar bekler.");
+  } else if (result.aheadSendOnlyCount > 0) {
+    parts.push(
+      `Önünüzde ${result.aheadSendOnlyCount} gönderim var; sıra gelince yaklaşık ${result.processorTickSeconds} sn içinde işlenir.`
+    );
+  } else {
+    parts.push(`İlk deneme yaklaşık ${result.processorTickSeconds} sn içinde yapılır.`);
+  }
+
+  if (Array.isArray(result.warnings) && result.warnings.length) {
+    parts.push(...result.warnings);
+  }
+
+  return parts.join(" ");
+}
+
 async function enqueueCompanySendHandler(req, res, next) {
   try {
     const result = await enqueueCompanySend(
@@ -156,12 +179,9 @@ async function enqueueCompanySendHandler(req, res, next) {
       req.user?.id,
       req.body || {}
     );
-    const pausedNote = result.jobPaused
-      ? " Aktif iş duraklatılmış; gönderim resume edilene kadar bekler."
-      : "";
     return res.status(201).json({
       ok: true,
-      message: `${result.queuedRecipientCount} alıcı aralıklı gönderim kuyruğuna alındı. Sekme kapansa da devam eder.${pausedNote}`,
+      message: buildEnqueueMessage(result),
       ...result,
     });
   } catch (error) {

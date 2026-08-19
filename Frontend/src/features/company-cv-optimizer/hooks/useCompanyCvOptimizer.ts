@@ -67,7 +67,7 @@ import {
   sendCompanyOutreachRequest,
 } from '@/lib/outreach/api';
 import { enqueueCompanySendRequest } from '@/lib/todo-applications/api';
-import { planPostAnalysisDispatch } from '../lib/postAnalysisDispatch';
+import { describeDispatchSkip, planPostAnalysisDispatch } from '../lib/postAnalysisDispatch';
 import {
   listOutreachProjectsRequest,
   selectOutreachProjectRequest,
@@ -1865,8 +1865,29 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           linkedinMessageOverride: linkedinText || undefined,
           allowAutoDispatch: true,
         });
-        if (dispatchPlan.goToPreviewIfDispatchFails && sendOk !== true) {
-          setActiveStep(2);
+        if (sendOk !== true) {
+          // handleSendCompanyEmail sebebi error'a yazar; sessiz kalmasın diye garanti mesaj
+          setError(
+            (prev) =>
+              prev ||
+              'Analiz tamamlandı ama mail gönderimi yapılamadı. Önizleme adımından tekrar deneyebilirsiniz.'
+          );
+          if (dispatchPlan.goToPreviewIfDispatchFails) {
+            setActiveStep(2);
+          }
+        }
+      } else {
+        // Gönderim atlandıysa nedenini mutlaka söyle (kullanıcı "hiçbir şey olmadı" sanmasın)
+        const skipMessage = describeDispatchSkip(dispatchPlan.skipReason);
+        if (skipMessage) {
+          if (
+            dispatchPlan.skipReason === 'mail_disabled' ||
+            dispatchPlan.skipReason === 'manual_preview'
+          ) {
+            setOutreachSendResult(skipMessage);
+          } else {
+            setError(skipMessage);
+          }
         }
       }
     } catch (err) {
@@ -2032,6 +2053,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   }) => {
     // Çift tıklama / auto-send + manuel yarışı: aynı maili 2 kez göndermeyi engelle
     if (outreachSendingLockRef.current) {
+      setError(
+        'Önceki gönderim hâlâ sürüyor. Aynı maili iki kez göndermemek için bu istek atlandı.'
+      );
       return false;
     }
 

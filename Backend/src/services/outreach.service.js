@@ -599,6 +599,9 @@ async function sendCompanyOutreachEmailsImpl({
           selectedCategories,
           mailId, // Tracking ID
           persistHistory,
+          // Todo job üzerinden gelen gönderimler aralıklı kuyruk pipeline'ıdır:
+          // profil aralığı 0 olsa da kuyrukta iz bırakmalı.
+          forceQueue: Boolean(todoJobId),
           projectId: resolvedProjectId ? String(resolvedProjectId) : undefined,
           companyUrl: companyUrl || undefined,
           todoJobId: todoJobId ? String(todoJobId) : undefined,

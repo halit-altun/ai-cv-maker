@@ -120,7 +120,6 @@ type JobAnalysisStepProps = Pick<
   | 'setShouldSendCompanyEmail'
   | 'autoSendOutreachAfterAnalysis'
   | 'queuedIntervalOutreach'
-  | 'outreachSendResult'
   | 'selectedEmailPrefixCategories'
   | 'setSelectedEmailPrefixCategories'
   | 'customEmailLocalPartsText'
@@ -640,13 +639,7 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
             SMTP (.env) üzerinden gönderilir.
           </Typography>
 
-          {props.outreachSendResult && (
-            <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
-              {props.outreachSendResult}
-            </Alert>
-          )}
-
-              {props.queuedIntervalOutreach && (
+          {props.queuedIntervalOutreach && (
             <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
               Aralıklı kuyruk açık: AI tamamlanınca mailler kuyruğa alınır ve bu analiz sekmesine
               dönülür. Sıra için Mail Takip → Aralıklı gönderim. Değiştirmek için Profilim.

@@ -7,6 +7,13 @@ export type PostAnalysisDispatchInput = {
   hasOutreachProjectId: boolean;
 };
 
+export type PostAnalysisDispatchSkipReason =
+  | 'mail_disabled'
+  | 'manual_preview'
+  | 'no_cold_email'
+  | 'no_recipient'
+  | 'project_required';
+
 export type PostAnalysisDispatchPlan = {
   mailDispatchEnabled: boolean;
   shouldGenerateColdEmail: boolean;
@@ -15,7 +22,27 @@ export type PostAnalysisDispatchPlan = {
   stayOnAnalysisUntilDispatch: boolean;
   goToPreviewIfDispatchFails: boolean;
   requiresProject: boolean;
+  skipReason: PostAnalysisDispatchSkipReason | null;
 };
+
+const SKIP_MESSAGES: Record<PostAnalysisDispatchSkipReason, string> = {
+  mail_disabled:
+    'Analiz tamamlandı. Mail gönderimi kapalı olduğu için gönderim yapılmadı — "Hedef firmaya mail gönder" kutusunu işaretleyin.',
+  manual_preview:
+    'Analiz tamamlandı. Profilde otomatik/aralıklı gönderim kapalı; maili Önizleme adımından kendiniz gönderebilirsiniz.',
+  no_cold_email:
+    'Analiz tamamlandı ama AI cold mail gövdesi üretemediği için gönderim yapılmadı. Önizleme adımından "Yeniden üret" ile deneyin.',
+  no_recipient:
+    'Analiz tamamlandı ama alıcı adresi üretilemediği için gönderim yapılmadı. Firma domainini ve e-posta prefix kategorilerini kontrol edin.',
+  project_required:
+    'Analiz tamamlandı ama aralıklı kuyruk için outreach projesi seçilmediğinden gönderim yapılmadı. Analiz adımından bir proje seçin.',
+};
+
+export function describeDispatchSkip(
+  reason: PostAnalysisDispatchSkipReason | null
+): string | null {
+  return reason ? SKIP_MESSAGES[reason] : null;
+}
 
 /**
  * Analiz bittiğinde mail üretilsin/gönderilsin mi?
@@ -32,11 +59,19 @@ export function planPostAnalysisDispatch(
   const wantsAutoOrQueue = Boolean(
     input.autoSendOutreachAfterAnalysis || input.queuedIntervalOutreach
   );
-  const canDispatch =
-    mailDispatchEnabled &&
-    wantsAutoOrQueue &&
-    input.hasColdEmailBody &&
-    input.recipientCount > 0;
+  const skipReason: PostAnalysisDispatchSkipReason | null = !mailDispatchEnabled
+    ? 'mail_disabled'
+    : !wantsAutoOrQueue
+      ? 'manual_preview'
+      : !input.hasColdEmailBody
+        ? 'no_cold_email'
+        : input.recipientCount <= 0
+          ? 'no_recipient'
+          : input.queuedIntervalOutreach && !input.hasOutreachProjectId
+            ? 'project_required'
+            : null;
+
+  const canDispatch = skipReason === null;
 
   const mode: PostAnalysisDispatchPlan['mode'] = !canDispatch
     ? 'none'
@@ -44,14 +79,18 @@ export function planPostAnalysisDispatch(
       ? 'enqueue'
       : 'http';
 
+  // Kuyruk modu gönderim başarısız olursa kullanıcı Önizleme'de manuel deneyebilmeli
+  const queueModeIntended = mailDispatchEnabled && input.queuedIntervalOutreach;
+
   return {
     mailDispatchEnabled,
     shouldGenerateColdEmail: mailDispatchEnabled,
     shouldDispatch: canDispatch,
     mode,
     stayOnAnalysisUntilDispatch: mode === 'enqueue',
-    goToPreviewIfDispatchFails: mode === 'enqueue',
-    requiresProject: mode === 'enqueue',
+    goToPreviewIfDispatchFails: queueModeIntended,
+    requiresProject: queueModeIntended,
+    skipReason,
   };
 }
 

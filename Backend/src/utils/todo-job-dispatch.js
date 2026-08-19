@@ -12,6 +12,19 @@ function pickNextPendingJobItem(items, jobStatus, pauseAfterCurrent = false) {
   return list.find((i) => i.status === "pending") || null;
 }
 
+/**
+ * Company-based tekil gönderimler (send_only) uzun bulk işlerin arkasında beklememeli:
+ * kullanıcı ekranda sonucu bekliyor.
+ */
+function pendingSendOnlyJobFilter() {
+  return {
+    status: { $in: ["pending", "running"] },
+    items: {
+      $elemMatch: { status: "pending", pipeline: "send_only" },
+    },
+  };
+}
+
 function enqueueLiveJobFilter(clientId, userId) {
   return {
     clientId,
@@ -37,6 +50,7 @@ function resumePausedJobOnEnqueue(item) {
 
 module.exports = {
   pickNextPendingJobItem,
+  pendingSendOnlyJobFilter,
   enqueueLiveJobFilter,
   enqueuePausedJobFilter,
   resumePausedJobOnEnqueue,

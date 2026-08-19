@@ -203,6 +203,15 @@ export type EnqueueCompanySendResult = {
   queuedRecipientCount: number;
   companyName?: string;
   jobPaused?: boolean;
+  pauseAfterCurrent?: boolean;
+  /** Bu gönderimden önce işlenecek company-based gönderim sayısı */
+  aheadSendOnlyCount?: number;
+  intervalMinSeconds?: number;
+  intervalMaxSeconds?: number;
+  /** false ise mail kuyruğa yazılmadan anında gider (listede görünmez) */
+  persistHistory?: boolean;
+  processorTickSeconds?: number;
+  warnings?: string[];
 };
 
 export type TodoSendHistoryFilter = 'all' | 'sent' | 'unsent';

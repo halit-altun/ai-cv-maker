@@ -53,6 +53,13 @@ export function CompanyCvOptimizerView() {
           </Alert>
         )}
 
+        {/* Önizleme adımı gönderim sonucunu kendi panelinde gösterir; diğer adımlarda üstte */}
+        {!isPreview && state.outreachSendResult && (
+          <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>
+            {state.outreachSendResult}
+          </Alert>
+        )}
+
         {state.activeStep === 0 && <UploadCvStep {...state} />}
         {state.activeStep === 1 && <JobAnalysisStep {...state} />}
         {state.activeStep === 2 && <PreviewStep {...state} />}
