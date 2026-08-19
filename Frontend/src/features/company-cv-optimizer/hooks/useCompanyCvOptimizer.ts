@@ -2239,11 +2239,6 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       const attachmentLabel =
         outreachCvAttachmentSource === 'optimized' ? 'optimize edilmiş CV' : 'orijinal yüklenen CV';
 
-      if (queuedIntervalOutreach && !pdfAttachment?.contentBase64) {
-        setError('Kuyruğa almak için CV PDF eki zorunludur.');
-        return false;
-      }
-
       const analysisForSnapshot =
         opts?.cvDataOverride?.analysisResult || analysisResult;
       const coverForSnapshot = String(
@@ -2330,7 +2325,24 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
         aiSettings,
         cvSectionLengthMode,
         linkedinMessageSnapshot: linkedinMessageText || '',
+        trustedEmail: resolveTrustedSendEmail({
+          rawDomainInput,
+          domain: inferredDomain,
+          includeEnteredMainDomain: includeEnteredMainDomainInSend,
+          includePrimaryEmail: includePrimaryEmailInSend,
+          skipPrimaryEmailVerification,
+        }),
       };
+
+      const trustedEmail =
+        reanalyzeContext.trustedEmail ||
+        resolveTrustedSendEmail({
+          rawDomainInput,
+          domain: inferredDomain,
+          includeEnteredMainDomain: includeEnteredMainDomainInSend,
+          includePrimaryEmail: includePrimaryEmailInSend,
+          skipPrimaryEmailVerification,
+        });
 
       if (queuedIntervalOutreach) {
         if (!selectedOutreachProjectId) {
@@ -2346,6 +2358,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           domain: inferredDomain,
           rawDomainInput,
           emailDomainInput: inferredDomain,
+          trustedEmail,
           cvFileName: pdfAttachment?.filename || cvFile?.name || undefined,
           cvTitle,
           selectedCategories: selectedEmailPrefixCategories,
@@ -2368,7 +2381,9 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           analysisSnapshot,
         });
         setOutreachSendResult(
-          `${result.message} PDF eki: ${attachmentLabel}. Sıra ve tahmini saat için Mail Takip → Aralıklı gönderim sekmesine bakın.`
+          `${result.message}${
+            pdfAttachment?.contentBase64 ? ` PDF eki: ${attachmentLabel}.` : ''
+          } Sıra için Mail Takip → Aralıklı gönderim.`
         );
         handlePrepareNewAnalysisSameCv({ preserveSendNotice: true });
       } else {
@@ -2380,13 +2395,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           companyName: displayCompanyName || undefined,
           domain: inferredDomain,
           rawDomainInput,
-          trustedEmail: resolveTrustedSendEmail({
-            rawDomainInput,
-            domain: inferredDomain,
-            includeEnteredMainDomain: includeEnteredMainDomainInSend,
-            includePrimaryEmail: includePrimaryEmailInSend,
-            skipPrimaryEmailVerification,
-          }),
+          trustedEmail,
           skipVerification: skipPrimaryEmailVerification,
           cvFileName: pdfAttachment?.filename || cvFile?.name || undefined,
           cvTitle,

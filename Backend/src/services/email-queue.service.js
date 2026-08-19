@@ -172,6 +172,99 @@ async function rescheduleUserPendingEmails(userId) {
   };
 }
 
+function resolveItemGapMs(item, minSeconds, maxSeconds) {
+  if (minSeconds === 0 && maxSeconds === 0) return 0;
+  const stored = Number(item?.metadata?.appliedIntervalSeconds);
+  if (Number.isFinite(stored) && stored >= 0) return stored * 1000;
+  return getRandomIntervalSeconds(minSeconds, maxSeconds) * 1000;
+}
+
+/**
+ * Sıradan mail silinince kalan pending'leri öne çek.
+ * Silinenin önündekilerin saati aynı kalır; sonrakiler tek aralıkla yeniden dizilir
+ * (2 → 4 atlar, 3'ün boş slotu beklenmez).
+ */
+async function compactPendingAfterRemovedSlots(userId, removedDocs = []) {
+  if (!userId) return { rescheduled: 0 };
+  const removed = (Array.isArray(removedDocs) ? removedDocs : [removedDocs]).filter(
+    (d) => d && String(d.status) === "pending" && d.scheduledAt
+  );
+  if (!removed.length) return { rescheduled: 0 };
+
+  const holeStart = Math.min(
+    ...removed.map((d) => new Date(d.scheduledAt).getTime())
+  );
+  if (!Number.isFinite(holeStart)) return { rescheduled: 0 };
+
+  const { minSeconds, maxSeconds } = await getUserIntervalSeconds(userId);
+  const pending = await EmailQueue.find({ userId, status: "pending" }).sort({
+    scheduledAt: 1,
+    createdAt: 1,
+  });
+  if (!pending.length) return { rescheduled: 0 };
+
+  const shifted = pending.filter(
+    (item) => new Date(item.scheduledAt).getTime() >= holeStart
+  );
+  const kept = pending.filter(
+    (item) => new Date(item.scheduledAt).getTime() < holeStart
+  );
+  if (!shifted.length) return { rescheduled: 0 };
+
+  const [lastSent, lastProcessing] = await Promise.all([
+    EmailQueue.findOne({ userId, status: "sent" })
+      .sort({ sentAt: -1 })
+      .select("sentAt")
+      .lean(),
+    EmailQueue.findOne({ userId, status: "processing" })
+      .sort({ processedAt: -1, scheduledAt: -1 })
+      .select("processedAt scheduledAt")
+      .lean(),
+  ]);
+
+  const now = new Date();
+  const processingTime = lastProcessing
+    ? new Date(lastProcessing.processedAt || lastProcessing.scheduledAt)
+    : null;
+
+  let cursor = kept.length
+    ? new Date(kept[kept.length - 1].scheduledAt)
+    : lastSent?.sentAt
+      ? new Date(lastSent.sentAt)
+      : processingTime;
+
+  if (processingTime && (!cursor || processingTime > cursor)) {
+    cursor = processingTime;
+  }
+
+  let count = 0;
+  for (const item of shifted) {
+    const gapMs = resolveItemGapMs(item, minSeconds, maxSeconds);
+    let next;
+    if (!cursor) {
+      next = now;
+    } else {
+      next = new Date(cursor.getTime() + gapMs);
+      if (next < now) next = now;
+    }
+    item.scheduledAt = next;
+    item.metadata = {
+      ...(item.metadata && typeof item.metadata === "object" ? item.metadata : {}),
+      compactedAt: now.toISOString(),
+      appliedIntervalSeconds: Math.round(gapMs / 1000),
+      appliedIntervalRangeSeconds: [minSeconds, maxSeconds],
+    };
+    await item.save();
+    cursor = next;
+    count += 1;
+  }
+
+  console.log(
+    `[EMAIL_QUEUE] İptal sonrası ${count} pending mail yeniden planlandı (boşluk kapatıldı).`
+  );
+  return { rescheduled: count, minSeconds, maxSeconds };
+}
+
 /**
  * Mail'i kuyruğa ekle — her seferinde güncel profil aralığını okur.
  */
@@ -298,6 +391,16 @@ async function enqueueEmail(userId, emailData, metadata = {}) {
     scheduledAt,
     estimatedSendTime: scheduledAt,
   };
+}
+
+async function attachOutreachLogToQueuedEmails(queueIds, outreachLogId) {
+  const ids = (Array.isArray(queueIds) ? queueIds : []).filter(Boolean);
+  if (!ids.length || !outreachLogId) return { updated: 0 };
+  const result = await EmailQueue.updateMany(
+    { _id: { $in: ids } },
+    { $set: { "metadata.pendingTracking.outreachLogId": outreachLogId } }
+  );
+  return { updated: result.modifiedCount || 0 };
 }
 
 /**
@@ -431,6 +534,16 @@ async function processEmailQueue() {
         item.sentAt = new Date();
         await item.save();
 
+        try {
+          const { finalizeQueuedMailTracking } = require("./mail-tracking.service");
+          await finalizeQueuedMailTracking(item);
+        } catch (trackErr) {
+          console.error(
+            `[EMAIL_QUEUE_PROCESSOR] Mail takip kaydı yazılamadı: ${item._id}`,
+            trackErr
+          );
+        }
+
         const attInfo = Array.isArray(item.attachments)
           ? item.attachments
               .map((a) => {
@@ -519,10 +632,12 @@ async function getUserNextAvailableTime(userId) {
 module.exports = {
   enqueueEmail,
   processEmailQueue,
+  attachOutreachLogToQueuedEmails,
   getUserPendingEmailCount,
   getUserLastEmailTime,
   getUserNextAvailableTime,
   rescheduleUserPendingEmails,
+  compactPendingAfterRemovedSlots,
   getUserIntervalSeconds,
   getUserIntervalMinutes,
   resolveUserIntervalSeconds,

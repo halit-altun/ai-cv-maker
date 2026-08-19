@@ -9,7 +9,7 @@ const {
   getMailTrackingReanalyzeContext,
   setDeliveryOutcome,
 } = require("../services/mail-tracking.service");
-const { listSendQueue, getSendQueueSummary, getSendQueueDetail } = require("../services/send-queue.service");
+const { listSendQueue, getSendQueueSummary, getSendQueueDetail, cancelSendQueueRow } = require("../services/send-queue.service");
 const MailTracking = require("../models/mail-tracking.model");
 const { requireAuth } = require("../middlewares/auth.middleware");
 const { requireClientId } = require("../middlewares/client-id.middleware");
@@ -122,6 +122,49 @@ router.get("/send-queue", async (req, res, next) => {
       endDate: endDate || undefined,
     });
     return res.json({ ok: true, ...result });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * DELETE /api/mail-tracking/send-queue/item
+ * Sıradaki veya başarısız SMTP/job satırını iptal eder (kalanların saati değişmez).
+ */
+router.delete("/send-queue/item", async (req, res, next) => {
+  try {
+    const { queueId, jobId, itemId } = req.query;
+    const result = await cancelSendQueueRow(req.user.id, {
+      queueId: queueId || undefined,
+      jobId: jobId || undefined,
+      itemId: itemId || undefined,
+    });
+    return res.json({
+      ok: true,
+      message:
+        result.status === "failed"
+          ? "Başarısız kayıt silindi."
+          : "Kuyruk kaydı iptal edildi. Kalan maillerin gönderim saatleri yeniden hesaplandı.",
+      ...result,
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * DELETE /api/mail-tracking/send-queue/failed
+ * Geriye uyum: aynı iptal/silme.
+ */
+router.delete("/send-queue/failed", async (req, res, next) => {
+  try {
+    const { queueId, jobId, itemId } = req.query;
+    const result = await cancelSendQueueRow(req.user.id, {
+      queueId: queueId || undefined,
+      jobId: jobId || undefined,
+      itemId: itemId || undefined,
+    });
+    return res.json({ ok: true, message: "Kayıt silindi.", ...result });
   } catch (error) {
     return next(error);
   }

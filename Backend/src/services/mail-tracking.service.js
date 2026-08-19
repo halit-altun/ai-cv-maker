@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const MailTracking = require("../models/mail-tracking.model");
 const MailOpenEvent = require("../models/mail-open-event.model");
+const EmailQueue = require("../models/email-queue.model");
 const {
   resolveCompanyDisplayName,
   isDomainLikeCompanyLabel,
@@ -43,8 +44,10 @@ async function createMailTracking({
   projectName,
   linkedinMessageText,
   linkedinInfoContactMessageText,
+  mailId: existingMailId,
+  sentAt,
 }) {
-  const mailId = crypto.randomUUID();
+  const mailId = existingMailId || crypto.randomUUID();
 
   const tracking = new MailTracking({
     mailId,
@@ -54,7 +57,7 @@ async function createMailTracking({
     jobTitle: String(jobTitle || "").trim(),
     subject,
     status: "SENT",
-    sentAt: new Date(),
+    sentAt: sentAt ? new Date(sentAt) : new Date(),
     linkedinMessageText: String(linkedinMessageText || "").trim(),
     linkedinInfoContactMessageText: String(
       linkedinInfoContactMessageText || ""
@@ -78,6 +81,60 @@ async function createMailTracking({
     mailId,
     tracking,
   };
+}
+
+/**
+ * Aralıklı kuyruk: Mail Takip kaydı SMTP başarısından sonra yazılır.
+ * Pixel HTML'e enqueue anında gömülür; doküman ise gerçek gönderimde oluşur.
+ */
+async function finalizeQueuedMailTracking(queueItem) {
+  if (!queueItem) return null;
+  const meta =
+    queueItem.metadata && typeof queueItem.metadata === "object"
+      ? queueItem.metadata
+      : {};
+  const mailId = String(meta.mailId || "").trim();
+  if (!mailId) return null;
+
+  const pending =
+    meta.pendingTracking && typeof meta.pendingTracking === "object"
+      ? meta.pendingTracking
+      : {};
+  const sentAt = queueItem.sentAt || new Date();
+  const recipient =
+    pending.recipient ||
+    (Array.isArray(queueItem.to) ? queueItem.to[0] : "") ||
+    "";
+  if (!recipient) return null;
+
+  const existing = await MailTracking.findOne({ mailId });
+  if (existing) {
+    existing.sentAt = sentAt;
+    if (pending.outreachLogId && !existing.outreachLogId) {
+      existing.outreachLogId = pending.outreachLogId;
+    }
+    if (existing.status === "FAILED") {
+      existing.status = "SENT";
+    }
+    await existing.save();
+    return existing;
+  }
+
+  const created = await createMailTracking({
+    mailId,
+    userId: queueItem.userId,
+    recipient,
+    company: pending.company || queueItem.companyName || "",
+    jobTitle: pending.jobTitle || "",
+    subject: pending.subject || queueItem.subject || "",
+    outreachLogId: pending.outreachLogId || null,
+    projectId: pending.projectId || meta.projectId || null,
+    projectName: pending.projectName || "",
+    linkedinMessageText: pending.linkedinMessageText || "",
+    linkedinInfoContactMessageText: pending.linkedinInfoContactMessageText || "",
+    sentAt,
+  });
+  return created.tracking;
 }
 
 /**
@@ -262,6 +319,23 @@ function buildMailTrackingQuery(
   return query;
 }
 
+async function excludeUnsentQueuedMailIds(query, userId) {
+  const pendingMailIds = (
+    await EmailQueue.distinct("metadata.mailId", {
+      userId,
+      status: { $in: ["pending", "processing"] },
+      "metadata.mailId": { $nin: [null, ""] },
+    })
+  ).filter((id) => typeof id === "string" && id.trim());
+
+  if (!pendingMailIds.length) return query;
+  const extra = { mailId: { $nin: pendingMailIds } };
+  if (query.$and) {
+    return { ...query, $and: [...query.$and, extra] };
+  }
+  return { ...query, ...extra };
+}
+
 /**
  * Filtreye uyan benzersiz (boş olmayan) şirket sayısı
  */
@@ -277,15 +351,18 @@ async function getMailTrackingStatsSummary(
   userId,
   { status, projectId, company, recipient, date, startDate, endDate } = {}
 ) {
-  const base = buildMailTrackingQuery(userId, {
-    status,
-    projectId,
-    company,
-    recipient,
-    date,
-    startDate,
-    endDate,
-  });
+  const base = await excludeUnsentQueuedMailIds(
+    buildMailTrackingQuery(userId, {
+      status,
+      projectId,
+      company,
+      recipient,
+      date,
+      startDate,
+      endDate,
+    }),
+    userId
+  );
 
   const [total, sent, delivered, opened, failed, inbox, spam, companyCount] =
     await Promise.all([
@@ -894,15 +971,18 @@ async function getUserMailTrackings(
     endDate,
   } = {}
 ) {
-  const query = buildMailTrackingQuery(userId, {
-    status,
-    projectId,
-    company,
-    recipient,
-    date,
-    startDate,
-    endDate,
-  });
+  const query = await excludeUnsentQueuedMailIds(
+    buildMailTrackingQuery(userId, {
+      status,
+      projectId,
+      company,
+      recipient,
+      date,
+      startDate,
+      endDate,
+    }),
+    userId
+  );
 
   const [rawTrackings, total, companyCount] = await Promise.all([
     MailTracking.find(query)
@@ -1080,6 +1160,7 @@ function generateTrackingPixelHtml(mailId, baseUrl) {
 
 module.exports = {
   createMailTracking,
+  finalizeQueuedMailTracking,
   recordMailOpen,
   updateMailStatus,
   getUserMailTrackings,

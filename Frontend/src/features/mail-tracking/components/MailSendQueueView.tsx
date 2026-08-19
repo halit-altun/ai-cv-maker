@@ -1,20 +1,24 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
   Alert,
   Box,
   Chip,
   CircularProgress,
+  IconButton,
   Stack,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {
+  deleteFailedSendQueueRequest,
   getSendQueueDetailRequest,
   getSendQueueSummaryRequest,
   listSendQueueRequest,
@@ -86,9 +90,38 @@ function queueStatusColor(
 }
 
 function queueItemTime(row: SendQueueItem): number {
-  const raw = row.sentAt || row.scheduledAt || row.createdAt;
+  const raw = row.lastActionAt || row.sentAt || row.processedAt || row.updatedAt || row.createdAt;
   const t = raw ? new Date(raw).getTime() : 0;
   return Number.isNaN(t) ? 0 : t;
+}
+
+function jobItemToQueueRow(row: PendingJobSendItem): SendQueueItem {
+  const status =
+    row.queueStatus ||
+    (row.itemStatus === 'failed'
+      ? 'failed'
+      : ['sending', 'fetching', 'analyzing'].includes(row.itemStatus || '')
+        ? 'processing'
+        : 'pending');
+  const lastActionAt = row.lastActionAt || row.updatedAt || row.createdAt || null;
+  return {
+    id: `job:${row.jobId}:${row.itemId}`,
+    status,
+    to: row.recipients || [],
+    recipient: (row.recipients || []).join(', ') || '—',
+    subject: row.coldEmailSubject || '',
+    companyName: row.companyName,
+    lastError: row.errorMessage || '',
+    projectId: row.projectId,
+    companyUrl: row.companyUrl,
+    todoJobId: row.jobId,
+    todoItemId: row.itemId,
+    scheduledAt: null,
+    sentAt: null,
+    createdAt: row.createdAt || lastActionAt || undefined,
+    updatedAt: row.updatedAt || undefined,
+    lastActionAt,
+  };
 }
 
 function formatInterval(minSec?: number, maxSec?: number): string {
@@ -191,8 +224,15 @@ export function MailSendQueueView({
   };
 
   const grouped = useMemo(() => {
+    const smtpKeys = new Set(
+      items.map((i) => i.todoItemId).filter(Boolean) as string[]
+    );
+    const jobRows = pendingJobItems
+      .filter((row) => !smtpKeys.has(row.itemId) || row.itemStatus === 'failed')
+      .map(jobItemToQueueRow);
+    const merged = [...jobRows, ...items];
     const map = new Map<string, SendQueueItem[]>();
-    for (const item of items) {
+    for (const item of merged) {
       const key = item.companyName?.trim() || item.domain || 'Diğer';
       const list = map.get(key) || [];
       list.push(item);
@@ -204,7 +244,33 @@ export function MailSendQueueView({
         return [company, sortedRows] as [string, SendQueueItem[]];
       })
       .sort((a, b) => queueItemTime(b[1][0]) - queueItemTime(a[1][0]));
-  }, [items]);
+  }, [items, pendingJobItems]);
+
+  const hasRows = grouped.some(([, rows]) => rows.length > 0);
+
+  const cancelQueueRow = async (row: SendQueueItem, event: MouseEvent) => {
+    event.stopPropagation();
+    const cancellable = row.status === 'pending' || row.status === 'failed';
+    if (!cancellable) return;
+    const confirmText =
+      row.status === 'failed'
+        ? 'Bu başarısız kaydı silmek istiyor musunuz?'
+        : 'Bu mail kuyruktan çıkarılacak. Sonraki mailler öne çekilir; gönderim saatleri yeniden hesaplanır. Devam?';
+    if (!window.confirm(confirmText)) return;
+    try {
+      if (row.id.startsWith('job:') && row.todoJobId && row.todoItemId) {
+        await deleteFailedSendQueueRequest({
+          jobId: row.todoJobId,
+          itemId: row.todoItemId,
+        });
+      } else {
+        await deleteFailedSendQueueRequest({ queueId: row.id });
+      }
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Kayıt silinemedi.');
+    }
+  };
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -257,71 +323,15 @@ export function MailSendQueueView({
         </Alert>
       )}
 
-      {pendingJobItems.length > 0 && (
-        <Box
-          sx={{
-            borderRadius: 3,
-            border: `1px solid ${colors.outlineVariant}`,
-            overflow: 'auto',
-            bgcolor: colors.surfaceContainerLowest,
-          }}
-        >
-          <Typography sx={{ px: 2, pt: 1.5, fontWeight: 600 }}>
-            Job kuyruğunda (henüz SMTP zamanı yok) — satıra tıklayınca analiz detayı. Liste Yenile ile güncellenir.
-          </Typography>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Şirket</TableCell>
-                <TableCell>Alıcılar</TableCell>
-                <TableCell>Durum</TableCell>
-                <TableCell>Plan</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {pendingJobItems.map((row) => (
-                <TableRow
-                  key={`${row.jobId}:${row.itemId}`}
-                  hover
-                  sx={{ cursor: 'pointer' }}
-                  onClick={() => void openDetail({ jobId: row.jobId, itemId: row.itemId })}
-                >
-                  <TableCell>{row.companyName || '—'}</TableCell>
-                  <TableCell>
-                    {row.recipients.slice(0, 4).join(', ')}
-                    {row.recipients.length > 4
-                      ? ` +${row.recipients.length - 4}`
-                      : ''}
-                    {` (${row.recipientCount})`}
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      size="small"
-                      label={row.itemStatus}
-                      color={row.itemStatus === 'failed' ? 'error' : 'warning'}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {row.itemStatus === 'failed'
-                      ? row.errorMessage || 'Gönderilemedi'
-                      : 'Gönderim bekleniyor'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Box>
-      )}
-
-      {loading && items.length === 0 ? (
+      {loading && !hasRows ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress />
         </Box>
-      ) : items.length === 0 && pendingJobItems.length === 0 ? (
+      ) : !hasRows ? (
         <Alert severity="info" sx={{ borderRadius: 2 }}>
           Aralıklı gönderim kuyruğu boş. Company-based’te analiz sonrası gönderim buraya düşer.
         </Alert>
-      ) : items.length > 0 ? (
+      ) : (
         <Box
           sx={{
             borderRadius: 3,
@@ -331,7 +341,8 @@ export function MailSendQueueView({
           }}
         >
           <Typography variant="caption" color="text.secondary" sx={{ px: 2, pt: 1.5, display: 'block' }}>
-            Satıra tıklayınca KW, CV farkları, itibar skoru ve mailler açılır.
+            En son eyleme göre (yeniden eskiye). Sıradan çıkarınca sonraki mailler öne çekilir.
+            Satıra tıklayınca analiz detayı açılır.
           </Typography>
           <Table size="small">
             <TableHead>
@@ -341,6 +352,7 @@ export function MailSendQueueView({
                 <TableCell>Planlanan</TableCell>
                 <TableCell>Durum</TableCell>
                 <TableCell>Gönderildi</TableCell>
+                <TableCell align="right" />
               </TableRow>
             </TableHead>
             <TableBody>
@@ -353,7 +365,7 @@ export function MailSendQueueView({
                     onClick={() =>
                       void openDetail(
                         row.todoJobId && row.todoItemId
-                          ? { jobId: row.todoJobId, itemId: row.todoItemId, queueId: row.id }
+                          ? { jobId: row.todoJobId, itemId: row.todoItemId, queueId: row.id.startsWith('job:') ? undefined : row.id }
                           : { queueId: row.id }
                       )
                     }
@@ -370,6 +382,11 @@ export function MailSendQueueView({
                       <Typography variant="caption" color="text.secondary">
                         {row.subject || '—'}
                       </Typography>
+                      {row.status === 'failed' && row.lastError ? (
+                        <Typography variant="caption" color="error" display="block">
+                          {row.lastError}
+                        </Typography>
+                      ) : null}
                     </TableCell>
                     <TableCell>{formatDateTime(row.scheduledAt)}</TableCell>
                     <TableCell>
@@ -380,16 +397,35 @@ export function MailSendQueueView({
                       />
                     </TableCell>
                     <TableCell>{formatDateTime(row.sentAt)}</TableCell>
+                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                      {row.status === 'pending' || row.status === 'failed' ? (
+                        <Tooltip
+                          title={
+                            row.status === 'failed'
+                              ? 'Başarısız kaydı sil'
+                              : 'Kuyruktan çıkar (sonraki saatler yeniden hesaplanır)'
+                          }
+                        >
+                          <IconButton
+                            size="small"
+                            aria-label={
+                              row.status === 'failed' ? 'Başarısız kaydı sil' : 'Kuyruktan çıkar'
+                            }
+                            onClick={(e) => void cancelQueueRow(row, e)}
+                          >
+                            <DeleteOutlineIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      ) : null}
+                    </TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
-          <ListTablePagination
-            {...buildTablePaginationProps(total)}
-          />
+          <ListTablePagination {...buildTablePaginationProps(total)} />
         </Box>
-      ) : null}
+      )}
       <MailSendQueueDetailDialog
         open={detailOpen}
         loading={detailLoading}

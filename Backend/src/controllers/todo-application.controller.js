@@ -152,17 +152,16 @@ async function startJobHandler(req, res, next) {
 /** Kuyruğa alma sonucunu kullanıcıya tek cümlede net anlat (bekleme, sıra, uyarılar). */
 function buildEnqueueMessage(result) {
   const parts = [
-    `${result.queuedRecipientCount} alıcı aralıklı gönderim kuyruğuna alındı. Sekme kapansa da devam eder.`,
+    result.dispatchedImmediately
+      ? `${result.queuedRecipientCount} alıcı, otomatik gönderimle aynı doğrulamadan geçti; SMTP sırası Profilim aralığına göre tek işte planlandı.`
+      : `${result.queuedRecipientCount} alıcı aralıklı gönderim kuyruğuna alındı.`,
   ];
 
-  if (result.jobPaused || result.pauseAfterCurrent) {
-    parts.push("Aktif iş duraklatılmış; gönderim iş devam ettirilene kadar bekler.");
-  } else if (result.aheadSendOnlyCount > 0) {
-    parts.push(
-      `Önünüzde ${result.aheadSendOnlyCount} gönderim var; sıra gelince yaklaşık ${result.processorTickSeconds} sn içinde işlenir.`
-    );
-  } else {
-    parts.push(`İlk deneme yaklaşık ${result.processorTickSeconds} sn içinde yapılır.`);
+  if (Number(result.sentCount || 0) > 0) {
+    parts.push(`${result.sentCount} mail hemen gönderildi.`);
+  }
+  if (Number(result.queuedCount || 0) > 0) {
+    parts.push(`${result.queuedCount} mail profil aralığına göre sıraya yazıldı.`);
   }
 
   if (Array.isArray(result.warnings) && result.warnings.length) {

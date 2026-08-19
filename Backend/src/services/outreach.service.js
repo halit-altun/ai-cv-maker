@@ -1,6 +1,7 @@
 const OutreachLog = require("../models/outreach-log.model");
 const MailTracking = require("../models/mail-tracking.model");
-const { enqueueEmail } = require("./email-queue.service");
+const crypto = require("crypto");
+const { enqueueEmail, attachOutreachLogToQueuedEmails } = require("./email-queue.service");
 const {
   isInfoOrContactEmail,
   anyInfoOrContactEmail,
@@ -553,28 +554,26 @@ async function sendCompanyOutreachEmailsImpl({
       let mailId = null;
       let pixelHtml = "";
       let htmlBody = text; // Plain text fallback
+      const pendingTracking = trackingEnabled
+        ? {
+            recipient: to,
+            company: resolvedCompanyName,
+            jobTitle: targetPosition || "",
+            subject: safeSubject,
+            projectId: resolvedProjectId || null,
+            projectName: resolvedProjectName,
+            linkedinMessageText: linkedinStandard,
+            linkedinInfoContactMessageText:
+              isInfoOrContactEmail(to) && linkedinStandard
+                ? linkedinInfoContact ||
+                  wrapLinkedInForGenericInbox({ bodyText: linkedinStandard })
+                : "",
+          }
+        : null;
 
-      // Mail tracking oluştur + pixel (kayıt + tracking açıksa)
+      // Pixel HTML'e enqueue anında gömülür; Mail Takip dokümanı kuyrukta SMTP sonrası yazılır.
       if (trackingEnabled) {
-        const trackingResult = await createMailTracking({
-          userId,
-          recipient: to,
-          company: resolvedCompanyName,
-          jobTitle: targetPosition || "",
-          subject: safeSubject,
-          outreachLogId: null,
-          projectId: resolvedProjectId || null,
-          projectName: resolvedProjectName,
-          linkedinMessageText: linkedinStandard,
-          linkedinInfoContactMessageText:
-            isInfoOrContactEmail(to) && linkedinStandard
-              ? linkedinInfoContact ||
-                wrapLinkedInForGenericInbox({ bodyText: linkedinStandard })
-              : "",
-        });
-        
-        mailId = trackingResult.mailId;
-        if (mailId) mailIds.push(mailId);
+        mailId = crypto.randomUUID();
         pixelHtml = generateTrackingPixelHtml(mailId, trackingPublicBaseUrl);
         htmlBody = createEmailHtmlTemplate(text, pixelHtml);
       }
@@ -598,6 +597,7 @@ async function sendCompanyOutreachEmailsImpl({
           cvTitle,
           selectedCategories,
           mailId, // Tracking ID
+          pendingTracking,
           persistHistory,
           // Todo job üzerinden gelen gönderimler aralıklı kuyruk pipeline'ıdır:
           // profil aralığı 0 olsa da kuyrukta iz bırakmalı.
@@ -614,6 +614,16 @@ async function sendCompanyOutreachEmailsImpl({
       );
 
       if (queueResult.sent && queueResult.immediate) {
+        if (trackingEnabled && mailId && pendingTracking) {
+          await createMailTracking({
+            mailId,
+            userId,
+            sentAt: new Date(),
+            outreachLogId: null,
+            ...pendingTracking,
+          });
+          mailIds.push(mailId);
+        }
         // Direkt gönderildi (interval 0)
         results.push({
           email: to,
@@ -701,7 +711,12 @@ async function sendCompanyOutreachEmailsImpl({
     });
     logId = String(log._id);
 
-    // Tracking kayıtlarını logId ile bağla
+    const queuedIds = results.map((r) => r.queueId).filter(Boolean);
+    if (queuedIds.length) {
+      await attachOutreachLogToQueuedEmails(queuedIds, log._id);
+    }
+
+    // Tracking kayıtlarını logId ile bağla (yalnızca anında gönderilenler)
     if (mailIds.length) {
       await MailTracking.updateMany(
         { mailId: { $in: mailIds } },

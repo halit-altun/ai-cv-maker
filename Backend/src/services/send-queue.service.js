@@ -1,12 +1,15 @@
 const EmailQueue = require("../models/email-queue.model");
 const mongoose = require("mongoose");
+const MailTracking = require("../models/mail-tracking.model");
 const {
   getUserIntervalSeconds,
+  compactPendingAfterRemovedSlots,
 } = require("./email-queue.service");
 const {
   listPendingCompanySendItems,
   getTodoJobItemDetail,
   findLatestJobItemWithAnalysis,
+  cancelOrRemoveCompanySendItem,
 } = require("./todo-application.service");
 const { AppError } = require("../utils/app-error");
 
@@ -96,8 +99,17 @@ function buildEmailQueueQuery(
   return query;
 }
 
+function queueLastActionAt(doc) {
+  const times = [doc.sentAt, doc.processedAt, doc.updatedAt, doc.createdAt]
+    .filter(Boolean)
+    .map((d) => new Date(d).getTime())
+    .filter((n) => Number.isFinite(n));
+  return times.length ? new Date(Math.max(...times)) : null;
+}
+
 function mapQueueItem(doc) {
   const meta = doc.metadata && typeof doc.metadata === "object" ? doc.metadata : {};
+  const lastActionAt = queueLastActionAt(doc);
   return {
     id: String(doc._id),
     status: doc.status,
@@ -118,6 +130,7 @@ function mapQueueItem(doc) {
     appliedIntervalSeconds: meta.appliedIntervalSeconds || null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
+    lastActionAt,
   };
 }
 
@@ -128,7 +141,7 @@ async function listSendQueue(userId, filters = {}) {
 
   const [docs, total, pendingJobItems] = await Promise.all([
     EmailQueue.find(query)
-      .sort({ sentAt: -1, scheduledAt: -1, createdAt: -1 })
+      .sort({ updatedAt: -1, sentAt: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .select("-attachments.contentBase64 -bodyHtml -bodyText")
@@ -138,6 +151,7 @@ async function listSendQueue(userId, filters = {}) {
       projectId: filters.projectId,
       company: filters.company,
       recipient: filters.recipient,
+      status: filters.status,
     }),
   ]);
 
@@ -312,7 +326,7 @@ async function getSendQueueDetail(userId, { jobId, itemId, queueId } = {}) {
       userId: uid,
       "metadata.todoItemId": String(resolvedItemId),
     })
-      .sort({ sentAt: -1, scheduledAt: -1, createdAt: -1 })
+      .sort({ updatedAt: -1, sentAt: -1, createdAt: -1 })
       .select("-attachments.contentBase64 -bodyHtml -bodyText")
       .lean();
     relatedQueueItems = related.map(mapQueueItem);
@@ -327,8 +341,69 @@ async function getSendQueueDetail(userId, { jobId, itemId, queueId } = {}) {
   };
 }
 
+async function deletePrematureTrackingForQueue(userId, queueDoc) {
+  const mailId = String(queueDoc?.metadata?.mailId || "").trim();
+  if (!mailId) return;
+  await MailTracking.deleteOne({ mailId, userId });
+}
+
+async function deletePendingOrFailedQueueDoc(userId, queueId) {
+  const doc = await EmailQueue.findOne({ _id: queueId, userId });
+  if (!doc) {
+    throw new AppError("Kuyruk kaydı bulunamadı.", 404, "QUEUE_NOT_FOUND");
+  }
+  if (doc.status === "processing") {
+    throw new AppError(
+      "Gönderimi devam eden mail iptal edilemez.",
+      409,
+      "QUEUE_IN_FLIGHT"
+    );
+  }
+  if (doc.status === "sent") {
+    throw new AppError("Gönderilmiş mail kuyruktan iptal edilemez.", 400, "QUEUE_ALREADY_SENT");
+  }
+  if (!["pending", "failed"].includes(doc.status)) {
+    throw new AppError("Bu kayıt iptal edilemez.", 400, "QUEUE_NOT_CANCELLABLE");
+  }
+  await deletePrematureTrackingForQueue(userId, doc);
+  const snapshot = doc.toObject ? doc.toObject() : doc;
+  await EmailQueue.deleteOne({ _id: doc._id, userId });
+  let rescheduled = 0;
+  if (snapshot.status === "pending") {
+    const compact = await compactPendingAfterRemovedSlots(userId, [snapshot]);
+    rescheduled = Number(compact.rescheduled || 0);
+  }
+  return {
+    ok: true,
+    deleted: "queue",
+    queueId: String(snapshot._id),
+    status: snapshot.status,
+    rescheduled,
+  };
+}
+
+/**
+ * Sıradaki veya başarısız kaydı siler.
+ * Pending silinince sonraki mailler öne çekilir (gönderim saatleri yeniden hesaplanır).
+ */
+async function cancelSendQueueRow(userId, { queueId, jobId, itemId } = {}) {
+  if (queueId) {
+    return deletePendingOrFailedQueueDoc(userId, queueId);
+  }
+  if (jobId && itemId) {
+    return cancelOrRemoveCompanySendItem(undefined, userId, jobId, itemId);
+  }
+  throw new AppError("queueId veya jobId+itemId gerekli.", 400, "DELETE_TARGET_REQUIRED");
+}
+
+async function deleteFailedSendQueueRow(userId, params) {
+  return cancelSendQueueRow(userId, params);
+}
+
 module.exports = {
   listSendQueue,
   getSendQueueSummary,
   getSendQueueDetail,
+  cancelSendQueueRow,
+  deleteFailedSendQueueRow,
 };

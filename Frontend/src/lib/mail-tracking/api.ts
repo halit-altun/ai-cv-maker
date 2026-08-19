@@ -305,6 +305,7 @@ export type SendQueueItem = {
   domain?: string;
   scheduledAt?: string | null;
   sentAt?: string | null;
+  processedAt?: string | null;
   lastError?: string;
   projectId?: string | null;
   companyUrl?: string;
@@ -313,6 +314,8 @@ export type SendQueueItem = {
   mailId?: string;
   appliedIntervalSeconds?: number | null;
   createdAt?: string;
+  updatedAt?: string | null;
+  lastActionAt?: string | null;
 };
 
 export type PendingJobSendItem = {
@@ -329,11 +332,15 @@ export type PendingJobSendItem = {
   recipientCount: number;
   scheduledAt?: string | null;
   waitingForJob: boolean;
+  queueStatus?: SendQueueStatus | string;
   errorMessage?: string;
   errorCode?: string;
   cvFileName?: string;
   coldEmailSubject?: string;
   hasAnalysisSnapshot?: boolean;
+  lastActionAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 export type SendQueueAnalysisDetail = {
@@ -436,6 +443,24 @@ export async function listSendQueueRequest(params?: MailTrackingListFilters & {
     total: Number(data.total || 0),
     pendingJobItems: (data.pendingJobItems || []) as PendingJobSendItem[],
   };
+}
+
+export async function deleteFailedSendQueueRequest(params: {
+  queueId?: string;
+  jobId?: string;
+  itemId?: string;
+}): Promise<void> {
+  const qs = new URLSearchParams();
+  if (params.queueId) qs.set('queueId', params.queueId);
+  if (params.jobId) qs.set('jobId', params.jobId);
+  if (params.itemId) qs.set('itemId', params.itemId);
+  const res = await authFetch(`/api/mail-tracking/send-queue/item?${qs.toString()}`, {
+    method: 'DELETE',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    throw new Error(data.message || 'Kayıt silinemedi.');
+  }
 }
 
 export async function getSendQueueSummaryRequest(

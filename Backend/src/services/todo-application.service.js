@@ -100,6 +100,7 @@ function mergeCompanySendBody(body = {}) {
       ctx.selectedCategories,
     customEmailLocalParts: body.customEmailLocalParts || ctx.customEmailLocalParts,
     rawDomainInput: body.rawDomainInput || ctx.rawDomainInput,
+    trustedEmail: body.trustedEmail || ctx.trustedEmail,
   };
 }
 
@@ -131,13 +132,15 @@ function resolveItemSendPrefs(item, settings = {}) {
     includeEnteredMainDomainInSend,
     rawDomainInput,
     domain,
-    trustedEmail: resolveTrustedSendEmail({
-      rawDomainInput,
-      domain,
-      includeEnteredMainDomainInSend,
-      includePrimaryEmailInSend,
-      skipPrimaryEmailVerification,
-    }),
+    trustedEmail: ctx.trustedEmail
+      ? String(ctx.trustedEmail).trim()
+      : resolveTrustedSendEmail({
+          rawDomainInput,
+          domain,
+          includeEnteredMainDomainInSend,
+          includePrimaryEmailInSend,
+          skipPrimaryEmailVerification,
+        }),
   };
 }
 
@@ -312,7 +315,9 @@ async function reopenFalselyAssumedSendOnlyItems() {
   for (const job of jobs) {
     let changed = false;
     for (const item of job.items || []) {
-      if (!shouldReopenAssumedSentItem(item)) continue;
+      if (!shouldReopenAssumedSentItem(item)) {
+        continue;
+      }
       reopenAssumedSentItem(item);
       changed = true;
       reopened += 1;
@@ -1202,6 +1207,7 @@ async function resumeSendOnlyForItem(job, item, settings, user) {
     item.step = "sent";
   }
   item.completedAt = new Date();
+  return sendResult;
 }
 
 async function processSingleJobItem(job, item) {
@@ -1877,8 +1883,14 @@ function buildSendOnlyJobItem(body = {}) {
         : { filename: "", contentBase64: "", contentType: "application/pdf" },
     reanalyzeContext:
       body.reanalyzeContext && typeof body.reanalyzeContext === "object"
-        ? body.reanalyzeContext
-        : null,
+        ? {
+            ...body.reanalyzeContext,
+            trustedEmail:
+              body.trustedEmail || body.reanalyzeContext.trustedEmail || "",
+          }
+        : body.trustedEmail
+          ? { trustedEmail: body.trustedEmail }
+          : null,
     adaptationNotes: String(body.adaptationNotes || "").trim(),
     analysisSnapshot:
       body.analysisSnapshot && typeof body.analysisSnapshot === "object"
@@ -1927,13 +1939,6 @@ async function enqueueCompanySend(clientId, userId, body = {}) {
   }
   if (!item.coldEmailBody) {
     throw new AppError("Cold mail gövdesi zorunludur.", 400, "BODY_REQUIRED");
-  }
-  if (!item.pdfAttachment?.contentBase64) {
-    throw new AppError(
-      "Kuyruğa almak için CV PDF eki zorunludur.",
-      400,
-      "PDF_REQUIRED"
-    );
   }
 
   const liveFilter = enqueueSendOnlyLiveJobFilter(clientId, userId);
@@ -1994,23 +1999,72 @@ async function enqueueCompanySend(clientId, userId, body = {}) {
   }
 
   job.progress = computeProgress(job.items);
+  const lastItem = job.items[job.items.length - 1];
+  lastItem.status = "sending";
+  lastItem.step = "sending_mail";
+  lastItem.mailDispatchStartedAt = new Date();
+  job.status = job.status === "cancelled" ? job.status : "running";
+  job.currentItemId = lastItem._id;
+  job.progress = computeProgress(job.items);
   await job.save();
 
-  const lastItem = job.items[job.items.length - 1];
+  let sendResult = null;
+  try {
+    sendResult = await resumeSendOnlyForItem(job, lastItem, job.settings || {}, user);
+  } catch (error) {
+    lastItem.status = "failed";
+    lastItem.step = "failed";
+    lastItem.errorMessage = error instanceof Error ? error.message : String(error);
+    lastItem.errorCode = error.code || "ITEM_FAILED";
+    lastItem.completedAt = new Date();
+    job.lastError = lastItem.errorMessage;
+    job.currentItemId = null;
+    job.progress = computeProgress(job.items);
+    const stillOpen = (job.items || []).some((i) =>
+      ["pending", "fetching", "analyzing", "sending"].includes(i.status)
+    );
+    if (!stillOpen) {
+      job.status = "completed";
+      job.completedAt = job.completedAt || new Date();
+    }
+    await job.save();
+    throw error;
+  }
+
+  job.currentItemId = null;
+  job.progress = computeProgress(job.items);
+  const stillOpen = (job.items || []).some((i) =>
+    ["pending", "fetching", "analyzing", "sending"].includes(i.status)
+  );
+  if (!stillOpen) {
+    job.status = "completed";
+    job.completedAt = job.completedAt || new Date();
+  } else if (job.status !== "paused") {
+    job.status = "running";
+  }
+  await job.save();
+
   const diagnostics = await buildEnqueueDiagnostics({
     job,
     user,
     enqueuedItemId: lastItem ? String(lastItem._id) : null,
   });
 
+  const queuedCount = (sendResult?.results || []).filter((r) => r.status === "queued").length;
+  const sentCount = Number(sendResult?.sentCount || 0);
+
   return {
     jobId: String(job._id),
     itemId: lastItem ? String(lastItem._id) : null,
     jobStatus: job.status,
     queuedRecipientCount: item.selectedRecipients.length,
+    queuedCount,
+    sentCount,
+    sendStatus: sendResult?.status || lastItem.status,
     companyName: item.companyName,
     pauseAfterCurrent: Boolean(job.pauseAfterCurrent),
     jobPaused: job.status === "paused",
+    dispatchedImmediately: true,
     ...diagnostics,
   };
 }
@@ -2046,7 +2100,7 @@ async function buildEnqueueDiagnostics({ job, user, enqueuedItemId }) {
   const warnings = [];
   if (job.status === "paused" || job.pauseAfterCurrent) {
     warnings.push(
-      "Aktif toplu iş duraklatılmış görünüyor; gönderim iş devam ettirilene kadar bekler."
+      "Aktif toplu iş duraklatılmış görünüyor; SMTP sırası yine de profil aralığına yazılır."
     );
   }
   if (!persistHistory) {
@@ -2055,7 +2109,7 @@ async function buildEnqueueDiagnostics({ job, user, enqueuedItemId }) {
     );
   } else if (minSeconds <= 0 && maxSeconds <= 0) {
     warnings.push(
-      "Profil gönderim aralığı 0 (anında). Mail kuyruğa yazılır ama beklemeden gönderilir; aralık istiyorsanız Profilim’den süre girin."
+      "Profil gönderim aralığı 0 (anında). Mail doğrulanır ve beklenmeden SMTP’ye gider; aralık istiyorsanız Profilim’den süre girin."
     );
   }
 
@@ -2072,7 +2126,10 @@ async function buildEnqueueDiagnostics({ job, user, enqueuedItemId }) {
 /**
  * EmailQueue'ya henüz düşmemiş bekleyen job mailleri.
  */
-async function listPendingCompanySendItems(userId, { projectId, company, recipient } = {}) {
+async function listPendingCompanySendItems(
+  userId,
+  { projectId, company, recipient, status } = {}
+) {
   const jobs = await TodoApplicationJob.find({
     userId,
     status: { $in: ["pending", "running", "paused", "failed", "completed"] },
@@ -2120,11 +2177,19 @@ async function listPendingCompanySendItems(userId, { projectId, company, recipie
       ) {
         continue;
       }
+      const queueStatus =
+        it.status === "failed"
+          ? "failed"
+          : ["sending", "fetching", "analyzing"].includes(it.status)
+            ? "processing"
+            : "pending";
+      if (status && queueStatus !== status) continue;
       pending.push({
         jobId: String(job._id),
         itemId: String(it._id),
         jobStatus: job.status,
         itemStatus: it.status,
+        queueStatus,
         pipeline: it.pipeline || "full",
         source: it.source || "bulk",
         projectId: itemProjectId ? String(itemProjectId) : null,
@@ -2139,6 +2204,9 @@ async function listPendingCompanySendItems(userId, { projectId, company, recipie
         cvFileName: it.cvFileName || "",
         coldEmailSubject: it.coldEmailSubject || "",
         hasAnalysisSnapshot: Boolean(it.analysisSnapshot),
+        lastActionAt: it.completedAt || it.mailDispatchStartedAt || it.startedAt || job.updatedAt || job.createdAt || null,
+        createdAt: job.createdAt || null,
+        updatedAt: job.updatedAt || it.completedAt || it.startedAt || null,
       });
     }
   }
@@ -2240,6 +2308,107 @@ async function findLatestJobItemWithAnalysis(userId, { companyName, domain } = {
   return companyFallback;
 }
 
+async function deletePendingOrFailedQueuesForTodoItem(userId, itemId) {
+  const docs = await EmailQueue.find({
+    userId,
+    "metadata.todoItemId": String(itemId),
+    status: { $in: ["pending", "failed"] },
+  });
+  const snapshots = docs.map((doc) => (doc.toObject ? doc.toObject() : doc));
+  for (const doc of docs) {
+    const mailId = String(doc.metadata?.mailId || "").trim();
+    if (mailId) {
+      await MailTracking.deleteOne({ mailId, userId });
+    }
+    await EmailQueue.deleteOne({ _id: doc._id, userId });
+  }
+  return snapshots;
+}
+
+async function cancelOrRemoveCompanySendItem(clientId, userId, jobId, itemId) {
+  if (!jobId || !itemId) {
+    throw new AppError("jobId ve itemId zorunlu.", 400, "JOB_ITEM_REQUIRED");
+  }
+  const query = { _id: jobId, userId };
+  if (clientId) query.clientId = clientId;
+  const job = await TodoApplicationJob.findOne(query);
+  if (!job) {
+    throw new AppError("İş bulunamadı.", 404, "TODO_JOB_NOT_FOUND");
+  }
+  const item = job.items.id(itemId);
+  if (!item) {
+    throw new AppError("Kuyruk öğesi bulunamadı.", 404, "TODO_ITEM_NOT_FOUND");
+  }
+
+  const processingSmtp = await EmailQueue.findOne({
+    userId,
+    "metadata.todoItemId": String(itemId),
+    status: "processing",
+  });
+  if (processingSmtp) {
+    throw new AppError(
+      "Gönderimi devam eden mail varken bu kayıt iptal edilemez.",
+      409,
+      "QUEUE_IN_FLIGHT"
+    );
+  }
+
+  let removedQueueDocs = [];
+  if (item.status === "failed") {
+    removedQueueDocs = await deletePendingOrFailedQueuesForTodoItem(userId, itemId);
+    item.deleteOne();
+  } else if (["pending", "fetching", "analyzing", "sending"].includes(item.status)) {
+    removedQueueDocs = await deletePendingOrFailedQueuesForTodoItem(userId, itemId);
+    const sentLeft = await EmailQueue.countDocuments({
+      userId,
+      "metadata.todoItemId": String(itemId),
+      status: "sent",
+    });
+    if (sentLeft > 0) {
+      item.status = "completed";
+      item.step = "completed";
+      item.queuedCount = 0;
+    } else {
+      item.status = "cancelled";
+      item.step = "cancelled";
+    }
+    item.completedAt = new Date();
+  } else {
+    throw new AppError(
+      "Yalnızca sıradaki veya başarısız kayıtlar iptal edilebilir.",
+      400,
+      "NOT_CANCELLABLE"
+    );
+  }
+
+  job.progress = computeProgress(job.items);
+  const stillOpen = (job.items || []).some((i) =>
+    ["pending", "fetching", "analyzing", "sending"].includes(i.status)
+  );
+  if (!stillOpen && ["pending", "running", "failed", "completed"].includes(job.status)) {
+    job.status = "completed";
+    job.completedAt = job.completedAt || new Date();
+  }
+  await job.save();
+  let rescheduled = 0;
+  const pendingRemoved = removedQueueDocs.filter((d) => String(d.status) === "pending");
+  if (pendingRemoved.length) {
+    const { compactPendingAfterRemovedSlots } = require("./email-queue.service");
+    const compact = await compactPendingAfterRemovedSlots(userId, pendingRemoved);
+    rescheduled = Number(compact.rescheduled || 0);
+  }
+  return {
+    ok: true,
+    jobId: String(job._id),
+    itemId: String(itemId),
+    rescheduled,
+  };
+}
+
+async function removeFailedCompanySendItem(clientId, userId, jobId, itemId) {
+  return cancelOrRemoveCompanySendItem(clientId, userId, jobId, itemId);
+}
+
 module.exports = {
   listTodoItems,
   createTodoItems,
@@ -2251,6 +2420,8 @@ module.exports = {
   listPendingCompanySendItems,
   getTodoJobItemDetail,
   findLatestJobItemWithAnalysis,
+  cancelOrRemoveCompanySendItem,
+  removeFailedCompanySendItem,
   listTodoJobs,
   getTodoJob,
   setTodoJobStatus,
