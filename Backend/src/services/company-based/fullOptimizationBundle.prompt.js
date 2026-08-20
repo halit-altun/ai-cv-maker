@@ -17,6 +17,10 @@ function buildFullOptimizationBundlePrompt(request) {
   const lengthMode = parseCvSectionLengthMode(request.cvSectionLengthMode);
   /** LinkedIn: cold mail dili varsa onu kullan (toplu outreach tutarlılığı) */
   const linkedInLang = wantCold ? coldLang : lang;
+  const coldSignOff = coldLang === "English" ? "Best regards," : "Saygılarımla,";
+  const linkedInAppSignOff =
+    linkedInLang === "English" ? "Best regards," : "İyi çalışmalar,";
+  const coverAppSignOff = isEnglish ? "Best regards," : "Saygılarımla,";
   const companyKeywords = Array.isArray(request.companyInfo?.extractedKeywords)
     ? request.companyInfo.extractedKeywords.filter(Boolean)
     : [];
@@ -218,18 +222,28 @@ ${buildCvSectionLengthPromptAddon({
    - Skills/languages/education: NEVER force-weave for this purpose.
 5) recommendations ALWAYS Turkish.
 6) Cover letter (if YES): 250-350 words total intent, 3-4 paragraphs, ${lang}, no signature, no markdown. Use only target keywords grounded in CV.
+   LANGUAGE LOCK: Entire cover letter MUST be ${lang} only. App appends "${coverAppSignOff}" + contact — do not write any sign-off yourself.
+   If ${lang} is Turkish: FORBIDDEN English stock phrases (Best regards, Kind regards, Best, Thanks, Thank you, Looking forward, Dear, Hi, Hello, Sincerely, Cheers).
+   If ${lang} is English: FORBIDDEN Turkish stock phrases (Saygılarımla, İyi çalışmalar, Merhaba, Sayın, Sevgiler).
 7) LinkedIn cold outreach (if YES) — ${linkedInLang}, plain text, NO markdown, NO signature/contact block (app appends it):
+   LANGUAGE LOCK (CRITICAL): Entire linkedinMessage MUST be ${linkedInLang} only. Never mix languages. Company website / JD language MUST NOT change outreach language.
+   If ${linkedInLang} is Turkish: FORBIDDEN English stock phrases anywhere (Best regards, Kind regards, Best, Thanks, Thank you, Looking forward, Hi, Hello, Dear, Sincerely, Cheers, Regards). Use only Turkish.
+   If ${linkedInLang} is English: FORBIDDEN Turkish stock phrases (Saygılarımla, İyi çalışmalar, Merhaba, Sayın, Sevgiler).
    LENGTH: 60-90 words body (hard). Aim ~400-600 characters; mobile-readable without scroll.
    FORMAT: Short paragraphs with blank lines between them; corporate-letter tone avoided; not an email essay.
    GREETING: First line exactly "Merhaba," (TR) or "Hi," (EN). LinkedIn is 1:1 to one person — never use "[Company] team/Ekibi", "Hiring Team", or put a company/person name in the greeting.
-   NO SIGN-OFF (CRITICAL): Do NOT end with Best / Best regards / Kind regards / Thanks / Saygılarımla / name / phone / email / links. The app ALWAYS appends "Best regards," + contact. A trailing sign-off causes duplication. End on the CTA sentence only.
+   NO SIGN-OFF (CRITICAL): Do NOT end with Best / Best regards / Kind regards / Thanks / Saygılarımla / İyi çalışmalar / name / phone / email / links. The app ALWAYS appends "${linkedInAppSignOff}" + contact. A trailing sign-off causes duplication. End on the CTA sentence only.
    A→Z FLOW (required):
      (A) Opening & context: 1 grounded sentence showing interest in THIS company's work (tech focus / sector / growth / recent focus) — ONLY from target pages/profile. No fake flattery.
      (B) Value proposition: 1-2 sentences summarizing the candidate (role + stack from CV) and how they can help THIS company's focus. Prefer real CV∩company overlap; never claim company-domain tech absent from CV.
      (C) CTA: Soft ask to review profile/CV fit and a short chat — NOT pushy interview demand. Do NOT say "I am looking for a job at your company"; frame as sharing how you can contribute.
    FORBIDDEN: long biography, fake praise, link/PDF bombardment, listing multiple URLs, "please interview me" pressure, inventing company products/clients/awards.
    Do NOT mention attaching a PDF filename in the body.
-8) Cold email (if YES): language ${coldLang}, max ~150 words, greeting + short body + Best regards/Saygılarımla + name/title/email/phone/links if known.
+8) Cold email (if YES): language ${coldLang}, max ~150 words, greeting + short body + EXACT closing "${coldSignOff}" + name/title/email/phone/links if known.
+   LANGUAGE LOCK (CRITICAL): Entire cold email (subject + body + closing) MUST be ${coldLang} only. Never mix languages. Website/JD language MUST NOT override.
+   Closing line MUST be exactly "${coldSignOff}" — never the other language's closing (do not write Best regards when Turkish; do not write Saygılarımla when English).
+   If ${coldLang} is Turkish: FORBIDDEN English stock phrases (Best regards, Kind regards, Best, Thanks, Thank you, Looking forward, Dear, Hi, Hello, Sincerely, Cheers, Regards).
+   If ${coldLang} is English: FORBIDDEN Turkish stock phrases (Saygılarımla, İyi çalışmalar, Merhaba, Sayın, Sevgiler).
    RESEARCHED / COMPANY-FIT VIBE (REQUIRED) + ZERO HALLUCINATION:
    - Reader must feel you looked at THIS company (not a mass blast).
    - Ground EVERY company claim ONLY in the target block (company pages / companyInfo / JD). If a fact is not there, do NOT write it.

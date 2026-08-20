@@ -2,7 +2,28 @@ const SIGN_OFF_LINE_RE =
   /^(with\s+)?(best(\s+regards)?|kind\s+regards|warm\s+regards|warmly|regards|all\s+the\s+best|cheers|thanks(\s+in\s+advance)?|thank\s+you|sincerely(\s+yours)?|cordially|saygılarımla|iyi\s+çalışmalar|sevgiler)$/i;
 
 const INLINE_TRAILING_SIGN_OFF_RE =
-  /(?:[,.]?\s+)(?:with\s+)?(?:best\s+regards|kind\s+regards|warm\s+regards|all\s+the\s+best|sincerely(?:\s+yours)?|cordially|saygılarımla|best|regards|thanks|thank\s+you)\s*[.,!]*\s*$/i;
+  /(?:[,.]?\s+)(?:with\s+)?(?:best\s+regards|kind\s+regards|warm\s+regards|all\s+the\s+best|sincerely(?:\s+yours)?|cordially|saygılarımla|iyi\s+çalışmalar|best|regards|thanks|thank\s+you)\s*[.,!]*\s*$/i;
+
+const APPENDED_SIGN_OFF_RE =
+  /\n\n(Best regards,|Saygılarımla,|İyi çalışmalar,)/gi;
+
+export type OutreachSignOffChannel = 'email' | 'linkedin';
+
+export function isOutreachEnglish(language?: string | null): boolean {
+  const s = String(language || '')
+    .trim()
+    .toLowerCase();
+  return s.startsWith('en');
+}
+
+/** Dil + kanal için kapanış satırı (TR e-posta: Saygılarımla, TR LinkedIn: İyi çalışmalar). */
+export function getOutreachSignOff(
+  language?: string | null,
+  channel: OutreachSignOffChannel = 'email'
+): string {
+  if (isOutreachEnglish(language)) return 'Best regards,';
+  return channel === 'linkedin' ? 'İyi çalışmalar,' : 'Saygılarımla,';
+}
 
 function isSignOffLine(line: string): boolean {
   const normalized = String(line || '')
@@ -49,4 +70,66 @@ export function stripTrailingOutreachSignOff(text: string): string {
 
   t = t.replace(INLINE_TRAILING_SIGN_OFF_RE, '').trim();
   return t;
+}
+
+export function buildOutreachSignatureBlock(
+  personalInfo?: {
+    firstName?: string;
+    lastName?: string;
+    title?: string;
+    email?: string;
+    phone?: string;
+    linkedin?: string;
+    portfolio?: string;
+  } | null,
+  language?: string | null,
+  channel: OutreachSignOffChannel = 'email'
+): string {
+  const normalizeUrlForSignature = (value: string | undefined) => {
+    const v = (value || '').trim();
+    return v
+      .replace(/^https?:\/\//i, '')
+      .replace(/^www\./i, '')
+      .replace(/\/$/, '');
+  };
+
+  const fullName = `${(personalInfo?.firstName || '').trim()} ${(personalInfo?.lastName || '').trim()}`.trim();
+  const title = (personalInfo?.title || '').trim();
+  const email = personalInfo?.email ? String(personalInfo.email).trim() : '';
+  const phone = personalInfo?.phone ? String(personalInfo.phone).trim() : '';
+  const linkedin = normalizeUrlForSignature(personalInfo?.linkedin);
+  const portfolio = normalizeUrlForSignature(personalInfo?.portfolio);
+  const signOff = getOutreachSignOff(language, channel);
+
+  return `${signOff}\n${fullName}\n${title}\n${email}\n${phone}\n${linkedin}\n${portfolio}`;
+}
+
+/**
+ * Cover letter / LinkedIn için uygulamanın sonuna eklediği imza bloğunu metinden ayırır.
+ */
+export function stripAppendedOutreachSignature(fullText: string): string {
+  const t = String(fullText || '');
+  let last = -1;
+  APPENDED_SIGN_OFF_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = APPENDED_SIGN_OFF_RE.exec(t)) !== null) {
+    last = m.index;
+  }
+  if (last === -1) return t.trim();
+  return t.slice(0, last).trim();
+}
+
+/** Gövdedeki yanlış dildeki kapanış satırını hedef dile çeker (dil karmaşası güvenlik ağı). */
+export function normalizeOutreachSignOffLanguage(
+  text: string,
+  language?: string | null,
+  channel: OutreachSignOffChannel = 'email'
+): string {
+  const target = getOutreachSignOff(language, channel);
+  const lines = String(text || '')
+    .replace(/\r\n/g, '\n')
+    .split('\n');
+  return lines
+    .map((line) => (isSignOffLine(line) ? target : line))
+    .join('\n');
 }

@@ -123,7 +123,7 @@ function wrapColdEmailForInfoContactInbox(params) {
     ""
   );
 
-  const signRe = /(\n+)(Best regards,|Saygılarımla,)(\s*\n)/i;
+  const signRe = /(\n+)(Best regards,|Saygılarımla,|İyi çalışmalar,)(\s*\n)/i;
   if (signRe.test(core)) {
     core = core.replace(signRe, `\n\n${thanksLine}$1$2$3`);
   } else {
@@ -159,7 +159,7 @@ function wrapLinkedInForGenericInbox(params) {
     ""
   );
 
-  const signRe = /(\n+)(Best regards,|Saygılarımla,)(\s*\n)/i;
+  const signRe = /(\n+)(Best regards,|Saygılarımla,|İyi çalışmalar,)(\s*\n)/i;
   if (signRe.test(core)) {
     core = core.replace(signRe, `\n\n${thanksLine}$1$2$3`);
   } else {
@@ -188,14 +188,15 @@ function buildGenericInboxRoutingPromptAddon({
       : "Sayın Ekip,";
   const route = isEnglish ? ROUTE_EN : ROUTE_TR;
   const thanks = isEnglish ? THANKS_EN : THANKS_TR;
+  const signOff = isEnglish ? "Best regards," : "Saygılarımla,";
 
   return `
 GENERIC INBOX ROUTING (${GENERIC_INBOX_LABEL} ONLY — apply this EXTRA structure; keep all other cold-email rules above unchanged for the middle body):
 1) First line MUST be exactly: ${dear}
 2) Second beat (1 short sentence): ask them to forward/route this email to HR or recruiting (${isEnglish ? `"${ROUTE_EN}"` : `"${ROUTE_TR}"`} or equivalent short wording).
 3) Then write the SAME cold-email body logic as usual (researched opening like "I reviewed …" / Turkish equivalent, middle achievements, CTA) — do not invent extra claims.
-4) Immediately BEFORE Best regards/Saygılarımla, add exactly: ${thanks}
-5) Then Best regards/Saygılarımla + name/title/email/phone/links as usual.
+4) Immediately BEFORE ${signOff}, add exactly: ${thanks}
+5) Then ${signOff} + name/title/email/phone/links as usual. LANGUAGE LOCK: entire email must stay in ${isEnglish ? "English" : "Turkish"} only.
 `.trim();
 }
 

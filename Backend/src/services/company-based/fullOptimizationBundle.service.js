@@ -10,6 +10,7 @@ const {
   normalizeOutreachLetterFormatting,
   stripTrailingOutreachSignOff,
   buildOutreachSignatureBlock,
+  normalizeOutreachSignOffLanguage,
 } = require("./normalizeCv");
 const {
   applyAdaptedCvFromBundle,
@@ -97,12 +98,17 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
             coverLetter.replace(new RegExp(escaped, "gi"), "")
           );
         }
-        const signature = buildOutreachSignatureBlock(parsedCV.personalInfo);
+        const coverLangKey = meta.lang === "English" ? "english" : "turkish";
+        const signature = buildOutreachSignatureBlock(
+          parsedCV.personalInfo,
+          coverLangKey,
+          "email"
+        );
         coverLetter = sanitizeOutreachPlaceholders(
           `${stripTrailingOutreachSignOff(coverLetter)}\n\n${signature}`.trim(),
           {
             kind: "body",
-            language: meta.coverLang === "English" ? "english" : "turkish",
+            language: coverLangKey,
             companyName: recipientCompany,
             candidateName: `${parsedCV.personalInfo?.firstName || ""} ${
               parsedCV.personalInfo?.lastName || ""
@@ -112,11 +118,13 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
       }
 
       if (linkedinMessage) {
+        const linkedInLangKey =
+          meta.linkedInLang === "English" ? "english" : "turkish";
         linkedinMessage = normalizeOutreachLetterFormatting(
           linkedinMessage.replace(/\[company\]/gi, "")
         );
         linkedinMessage = sanitizeOutreachPlaceholders(linkedinMessage, {
-          language: meta.linkedInLang === "English" ? "english" : "turkish",
+          language: linkedInLangKey,
           companyName: recipientCompany,
           candidateName: `${parsedCV.personalInfo?.firstName || ""} ${
             parsedCV.personalInfo?.lastName || ""
@@ -133,12 +141,16 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
             linkedinMessage.replace(new RegExp(escaped, "gi"), "")
           );
         }
-        const signature = buildOutreachSignatureBlock(parsedCV.personalInfo);
+        const signature = buildOutreachSignatureBlock(
+          parsedCV.personalInfo,
+          linkedInLangKey,
+          "linkedin"
+        );
         linkedinMessage = sanitizeOutreachPlaceholders(
           `${stripTrailingOutreachSignOff(linkedinMessage)}\n\n${signature}`.trim(),
           {
             kind: "body",
-            language: meta.linkedInLang === "English" ? "english" : "turkish",
+            language: linkedInLangKey,
             companyName: recipientCompany,
             candidateName: `${parsedCV.personalInfo?.firstName || ""} ${
               parsedCV.personalInfo?.lastName || ""
@@ -221,6 +233,11 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
               }
             );
           }
+          body = normalizeOutreachSignOffLanguage(
+            body,
+            coldLang === "English" ? "english" : "turkish",
+            "email"
+          );
           coldEmail = { subject, body };
         }
       }

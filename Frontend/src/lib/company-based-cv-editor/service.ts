@@ -30,7 +30,12 @@ import {
 } from '@/lib/outreach/coldEmailGenericInbox';
 import { sanitizeOutreachPlaceholders, textAlreadyHasUrl } from '@/lib/outreach/sanitizeOutreachPlaceholders';
 import { resolveCompanyDisplayName } from '@/lib/company/normalizeCompanyDisplayName';
-import { stripTrailingOutreachSignOff } from './outreachSignature';
+import {
+  buildOutreachSignatureBlock,
+  normalizeOutreachSignOffLanguage,
+  stripAppendedOutreachSignature,
+  stripTrailingOutreachSignOff,
+} from './outreachSignature';
 
 /** Company-based optimizer Gemini modeli (3.5 yerine 2.5 Flash). */
 const COMPANY_BASED_GEMINI_MODEL = 'gemini-2.5-flash';
@@ -1037,34 +1042,12 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
       .trim();
   }
 
-  private static buildOutreachSignatureBlock(personalInfo?: Partial<CompanyBasedCVData['personalInfo']>): string {
-    const normalizeUrlForSignature = (value: string | undefined) => {
-      const v = (value || '').trim();
-      return v
-        .replace(/^https?:\/\//i, '')
-        .replace(/^www\./i, '')
-        .replace(/\/$/, '');
-    };
-
-    const fullName = `${(personalInfo?.firstName || '').trim()} ${(personalInfo?.lastName || '').trim()}`.trim();
-    const title = (personalInfo?.title || '').trim();
-    const email = (personalInfo as any)?.email ? String((personalInfo as any).email).trim() : '';
-    const phone = (personalInfo as any)?.phone ? String((personalInfo as any).phone).trim() : '';
-    const linkedin = normalizeUrlForSignature(personalInfo?.linkedin);
-    const portfolio = normalizeUrlForSignature(personalInfo?.portfolio);
-
-    return `Best regards,\n${fullName}\n${title}\n${email}\n${phone}\n${linkedin}\n${portfolio}`;
-  }
-
   /**
    * Cover letter / LinkedIn için uygulamanın sonuna eklediği imza bloğunu metinden ayırır.
    * Kelime hedefi (ör. LinkedIn gövde 50-70) yalnızca dönen metin üzerinden sayılmalıdır.
    */
   static stripAppendedOutreachSignature(fullText: string): string {
-    const sig = '\n\nBest regards,';
-    const i = fullText.lastIndexOf(sig);
-    if (i === -1) return (fullText || '').trim();
-    return fullText.slice(0, i).trim();
+    return stripAppendedOutreachSignature(fullText);
   }
 
   // Cover letter üret (şirket bilgisi veya ilan metnine göre)
@@ -1206,8 +1189,9 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
          "I would welcome the opportunity to discuss how my skills can support your team in this role."
       10. Do not repeat the same idea/phrase more than once (e.g., duplicated "I am confident", "I believe", "I am eager").
       11. Do NOT use these phrases: "I invite you to contact me".
-      12. Do NOT include any signature block text (do not write "Best regards," and do not add contact details). The app will append the signature.
+      12. Do NOT include any signature block text (do not write "Best regards," and do not add contact details). The app will append "Best regards," + contact.
       13. Return only the final cover letter text (without signature).
+      LANGUAGE LOCK: Entire letter MUST be English only. Forbidden Turkish closings/greetings: Saygılarımla, İyi çalışmalar, Merhaba, Sayın, Sevgiler.
       `
       : `
       Verilen hedefe göre, profesyonel, kısa ve etkileyici bir ön yazı (cover letter) hazırla.
@@ -1274,8 +1258,9 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
          "Bu rol kapsamında ekibinize nasıl katkı sağlayabileceğimi görüşme fırsatını memnuniyetle değerlendiririm."
       10. Aynı fikri/ifade kalıbını tekrar etme (örn. iki kez "eminim", "inanıyorum", "istekliyim" gibi).
       11. "Benimle iletişime geçmenizi rica ederim" gibi ifadeler kullanma.
-      12. "Best regards," ve iletişim imzasını yazma; app sonuna ekleyecek.
+      12. "Saygılarımla," ve iletişim imzasını yazma; app sonuna "Saygılarımla," + iletişim ekleyecek.
       13. Sadece nihai ön yazı metnini döndür (imzasız).
+      DİL KİLİDİ: Metnin tamamı Türkçe olmalı. Yasak İngilizce kalıplar: Best regards, Kind regards, Best, Thanks, Thank you, Looking forward, Dear, Hi, Hello, Sincerely, Cheers.
       `;
 
     const response = await this.callGeminiAPI(prompt);
@@ -1301,11 +1286,15 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
       letter = letter.replace(/-\s*\n/, '\n');
     }
 
-    const signatureBlock = CompanyBasedCVService.buildOutreachSignatureBlock(personalInfo);
+    const signatureBlock = buildOutreachSignatureBlock(
+      personalInfo,
+      cvLanguage,
+      'email'
+    );
 
     return sanitizeOutreachPlaceholders(
       `${stripTrailingOutreachSignOff(letter)}\n\n${signatureBlock}`.trim(),
-      { kind: 'body' }
+      { kind: 'body', language: isEnglish ? 'english' : 'turkish' }
     );
   }
 
@@ -1451,7 +1440,7 @@ E-MAIL WRITING RULES:
 5. FORBIDDEN: "I hope you are well". Empty flattery. Fake company knowledge. Fake candidate tech ownership. Full CV dump. Do not write "CV eki", attachment filename, or "I attached my CV" — recipient already sees the file. FORBIDDEN template tokens anywhere: [Name], [Company], [İlgili Kişi Adı Soyadı], [kullanıcı].
 6. CANDIDATE FACTS: Never invent metrics or technologies not supported by candidate data. ${experienceRule}
 7. Optional links below may be used in the signature only if provided; do not invent URLs.
-8. Language: ${isEnglish ? 'English only' : 'Turkish only'}.
+8. Language: ${isEnglish ? 'English only — forbidden Turkish closings/greetings: Saygılarımla, İyi çalışmalar, Merhaba, Sayın, Sevgiler. Closing line MUST be exactly "Best regards,"' : 'Turkish only — forbidden English stock phrases: Best regards, Kind regards, Best, Thanks, Thank you, Looking forward, Dear, Hi, Hello, Sincerely, Cheers, Regards. Closing line MUST be exactly "Saygılarımla,"'}.
 ${genericInboxAddon}
 STYLE EXAMPLES (only when domain is grounded in target data — otherwise omit domain phrase):
 
@@ -1483,7 +1472,7 @@ ${optionalLinksBlock || '(none provided)'}
 Return ONLY valid JSON:
 {
   "subject": "...",
-  "body": "full email including greeting, body, Best regards/Saygılarımla and signature lines"
+  "body": "full email including greeting, body, exact closing ${isEnglish ? 'Best regards,' : 'Saygılarımla,'} and signature lines"
 }
 `;
 
@@ -1542,6 +1531,12 @@ Return ONLY valid JSON:
         { ...sanitizeOpts, kind: 'body' }
       );
     }
+
+    body = normalizeOutreachSignOffLanguage(
+      body,
+      isEnglish ? 'english' : 'turkish',
+      'email'
+    );
 
     return { subject, body };
   }
@@ -1673,9 +1668,10 @@ Return ONLY valid JSON:
           "I'd welcome a quick conversation if there's a good fit."
       11. Do not repeat the same idea/phrase more than once.
       12. Do NOT use: "I invite you to contact me".
-      13. CRITICAL — Body only: Do NOT include phone, email, LinkedIn URL, portfolio/GitHub URLs, mailing address, or any sign-off ("Best regards", name line). The app appends the signature. Your output must end with the required CTA sentence.
+      13. CRITICAL — Body only: Do NOT include phone, email, LinkedIn URL, portfolio/GitHub URLs, mailing address, or any sign-off ("Best regards", name line). The app appends "Best regards," + contact. Your output must end with the required CTA sentence.
       14. VERY IMPORTANT: If no company name is provided, DO NOT invent a company name and DO NOT use "[company]" placeholder.
       15. Return only the message body text (no signature).
+      LANGUAGE LOCK: Entire message MUST be English only. Forbidden: Saygılarımla, İyi çalışmalar, Merhaba, Sayın, Sevgiler.
       `
       : `
       Verilen hedefe göre LinkedIn üzerinden gönderilecek kısa, profesyonel bir mesaj yaz.
@@ -1703,9 +1699,9 @@ Return ONLY valid JSON:
       - HEDEF METNİNDE GEÇENLER (KRİTİK): Cover letter ile aynı — mesaj gövdesinde teknoloji/araç adı yalnızca ilan veya hedef metinde geçiyorsa yaz; CV’de olup ilanda olmayanları (ör. Node.js) yazma.
 
       Kurallar:
-      1. Dil: Türkçe. İngilizce cümle kullanma.
+      1. Dil: Türkçe. İngilizce cümle veya kapanış kullanma (yasak: Best regards, Kind regards, Best, Thanks, Thank you, Looking forward, Hi, Hello, Dear, Sincerely, Cheers, Regards).
       2. Uzunluk: Yalnızca MESAJ GÖVDESİ 50-70 kelime olacak (zorunlu).
-         - Uygulama, cover letter ile aynı biçimde ayrı bir iletişim/imza bloğunu sona ekleyecek; sen o bloğu yazma.
+         - Uygulama sonuna "İyi çalışmalar," + iletişim bloğunu ekleyecek; sen o bloğu yazma.
          - Eklenen imza/iletişim kelime sayısına dahil edilmez — gövde her durumda 50-70 kelime aralığında kalmalıdır.
       3. Bu bir e-posta veya kapak yazısı değil: üstte formal başlık satırı yok; selamlamadan sonra en fazla 2 kısa paragraf.
       4. Ton: profesyonel, sıcak, ikna edici ama gerçekçi.
@@ -1729,9 +1725,10 @@ Return ONLY valid JSON:
           "Uygun olursa kısa bir görüşmeyi memnuniyetle değerlendiririm."
       11. Aynı fikri/ifadeyi tekrarlama.
       12. "Benimle iletişime geçmenizi rica ederim" gibi ifadeler kullanma.
-      13. KRİTİK — Yalnızca gövde: Telefon, e-posta, LinkedIn/portfolio/GitHub linki, adres veya imza kapanışı yazma; uygulama ekleyecek. Çıktı zorunlu son cümleyle bitsin.
+      13. KRİTİK — Yalnızca gövde: Telefon, e-posta, LinkedIn/portfolio/GitHub linki, adres veya imza kapanışı yazma; uygulama "İyi çalışmalar," + iletişim ekleyecek. Çıktı zorunlu son cümleyle bitsin.
       14. VERY IMPORTANT: Alıcı şirket adı verilmediyse şirket adı uydurma ve "[company]" placeholder kullanma.
       15. Sadece gövde metnini döndür (imzasız).
+      DİL KİLİDİ: Mesajın tamamı Türkçe; İngilizce kalıp yasak.
       `;
 
     const response = await this.callGeminiAPI(prompt);
@@ -1744,11 +1741,15 @@ Return ONLY valid JSON:
       message = CompanyBasedCVService.normalizeOutreachLetterFormatting(message.replace(new RegExp(escaped, 'gi'), ''));
     }
 
-    const signatureBlock = CompanyBasedCVService.buildOutreachSignatureBlock(personalInfo);
+    const signatureBlock = buildOutreachSignatureBlock(
+      personalInfo,
+      cvLanguage,
+      'linkedin'
+    );
 
     return sanitizeOutreachPlaceholders(
       `${stripTrailingOutreachSignOff(message)}\n\n${signatureBlock}`.trim(),
-      { kind: 'body' }
+      { kind: 'body', language: isEnglish ? 'english' : 'turkish' }
     );
   }
 

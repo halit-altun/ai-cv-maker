@@ -262,7 +262,20 @@ const SIGN_OFF_LINE_RE =
   /^(with\s+)?(best(\s+regards)?|kind\s+regards|warm\s+regards|warmly|regards|all\s+the\s+best|cheers|thanks(\s+in\s+advance)?|thank\s+you|sincerely(\s+yours)?|cordially|saygılarımla|iyi\s+çalışmalar|sevgiler)$/i;
 
 const INLINE_TRAILING_SIGN_OFF_RE =
-  /(?:[,.]?\s+)(?:with\s+)?(?:best\s+regards|kind\s+regards|warm\s+regards|all\s+the\s+best|sincerely(?:\s+yours)?|cordially|saygılarımla|best|regards|thanks|thank\s+you)\s*[.,!]*\s*$/i;
+  /(?:[,.]?\s+)(?:with\s+)?(?:best\s+regards|kind\s+regards|warm\s+regards|all\s+the\s+best|sincerely(?:\s+yours)?|cordially|saygılarımla|iyi\s+çalışmalar|best|regards|thanks|thank\s+you)\s*[.,!]*\s*$/i;
+
+function isOutreachEnglish(language) {
+  const s = String(language || "")
+    .trim()
+    .toLowerCase();
+  return s.startsWith("en");
+}
+
+/** Dil + kanal için kapanış satırı (TR e-posta: Saygılarımla, TR LinkedIn: İyi çalışmalar). */
+function getOutreachSignOff(language, channel = "email") {
+  if (isOutreachEnglish(language)) return "Best regards,";
+  return channel === "linkedin" ? "İyi çalışmalar," : "Saygılarımla,";
+}
 
 function isSignOffLine(line) {
   const normalized = String(line || "")
@@ -314,7 +327,11 @@ function stripTrailingOutreachSignOff(text) {
   return t;
 }
 
-function buildOutreachSignatureBlock(personalInfo = {}) {
+function buildOutreachSignatureBlock(
+  personalInfo = {},
+  language = "turkish",
+  channel = "email"
+) {
   const normalizeUrlForSignature = (value) =>
     String(value || "")
       .trim()
@@ -330,8 +347,23 @@ function buildOutreachSignatureBlock(personalInfo = {}) {
   const phone = personalInfo.phone ? String(personalInfo.phone).trim() : "";
   const linkedin = normalizeUrlForSignature(personalInfo.linkedin);
   const portfolio = normalizeUrlForSignature(personalInfo.portfolio);
+  const signOff = getOutreachSignOff(language, channel);
 
-  return `Best regards,\n${fullName}\n${title}\n${email}\n${phone}\n${linkedin}\n${portfolio}`;
+  return `${signOff}\n${fullName}\n${title}\n${email}\n${phone}\n${linkedin}\n${portfolio}`;
+}
+
+/** Gövdedeki yanlış dildeki kapanış satırını hedef dile çeker. */
+function normalizeOutreachSignOffLanguage(
+  text,
+  language = "turkish",
+  channel = "email"
+) {
+  const target = getOutreachSignOff(language, channel);
+  return String(text || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => (isSignOffLine(line) ? target : line))
+    .join("\n");
 }
 
 module.exports = {
@@ -340,6 +372,9 @@ module.exports = {
   normalizeOutreachLetterFormatting,
   stripTrailingOutreachSignOff,
   buildOutreachSignatureBlock,
+  normalizeOutreachSignOffLanguage,
+  getOutreachSignOff,
+  isOutreachEnglish,
   normalizeSkills,
   countWords: require("./wordLengthBudget").countWords,
 };
