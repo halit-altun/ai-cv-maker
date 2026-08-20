@@ -18,6 +18,8 @@ import {
   refineKeywordsAgainstCv,
   resolvePrimaryKeywordSection,
 } from './keywordPipeline';
+import { enforceFitRangeOnAnalysis } from './cvSectionLength';
+import { stripCvMarkdownEmphasis } from '@/lib/cv-maker/stripCvMarkdown';
 import {
   claimGeminiKeyIndex,
   getGeminiKeyCount,
@@ -551,9 +553,15 @@ Kurallar:
       throw new Error('Optimizasyon bundle eksik yanıt döndü.');
     }
 
+    const analysis = enforceFitRangeOnAnalysis(data.analysis, data.parsedCV, {
+      mode: request.cvSectionLengthMode,
+      aboutEnabled: request.keywordTargetSections?.about === true,
+      experienceEnabled: request.keywordTargetSections?.workExperience === true,
+    });
+
     return {
       parsedCV: data.parsedCV,
-      analysis: data.analysis,
+      analysis,
       coverLetter: String(data.coverLetter || ''),
       linkedinMessage: String(data.linkedinMessage || ''),
       coldEmail: data.coldEmail ?? null,
@@ -914,12 +922,15 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
           attempt === 0
             ? response
             : await this.callGeminiAPI(prompt, { jsonMode: true });
-        return this.normalizeCVAnalysisResponse(
-          this.parseJSONResponse(raw, { useCompanyFallback: false }),
-          {
-            cvText: request.cvText,
-            keywordTargetSections: request.keywordTargetSections,
-          }
+        return this.enforceLegacyAnalysisLength(
+          this.normalizeCVAnalysisResponse(
+            this.parseJSONResponse(raw, { useCompanyFallback: false }),
+            {
+              cvText: request.cvText,
+              keywordTargetSections: request.keywordTargetSections,
+            }
+          ),
+          request
         );
       } catch (error) {
         lastParseError = error;
@@ -939,6 +950,24 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
       : new Error('AI yanıtı geçerli JSON formatında ayrıştırılamadı. Lütfen tekrar deneyin.');
   }
 
+  private static enforceLegacyAnalysisLength(
+    analysis: CVAnalysisResponse,
+    request: CVAnalysisRequest
+  ): CVAnalysisResponse {
+    return enforceFitRangeOnAnalysis(analysis, {
+      about: request.currentAbout,
+      workExperience: request.currentWorkExperience,
+    }, {
+      mode: 'fit_range',
+      aboutEnabled:
+        request.keywordTargetSections?.about === true ||
+        Boolean(String(request.currentAbout || '').trim()),
+      experienceEnabled:
+        request.keywordTargetSections?.workExperience === true ||
+        Boolean(request.currentWorkExperience?.length),
+    });
+  }
+
   private static normalizeCVAnalysisResponse(
     parsed: Record<string, unknown>,
     options?: {
@@ -947,11 +976,14 @@ ${bulletBudgetLines.length ? bulletBudgetLines.join('\n') : '  - No structured b
     }
   ): CVAnalysisResponse {
     const toText = (value: unknown): string => {
-      if (typeof value === 'string') return value;
+      if (typeof value === 'string') return stripCvMarkdownEmphasis(value);
       if (Array.isArray(value)) {
-        return value.map((item) => String(item ?? '').trim()).filter(Boolean).join(', ');
+        return value
+          .map((item) => stripCvMarkdownEmphasis(String(item ?? '')).trim())
+          .filter(Boolean)
+          .join(', ');
       }
-      return value != null ? String(value) : '';
+      return value != null ? stripCvMarkdownEmphasis(String(value)) : '';
     };
 
     const toStringArray = (value: unknown): string[] => {

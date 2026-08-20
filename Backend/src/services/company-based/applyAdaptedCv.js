@@ -1,5 +1,10 @@
 const { countWords } = require("./wordLengthBudget");
-const { parseCvSectionLengthMode } = require("../../utils/cv-section-length");
+const {
+  parseCvSectionLengthMode,
+  fitAboutText,
+  fitBulletText,
+} = require("../../utils/cv-section-length");
+const { stripCvMarkdownEmphasis } = require("../../utils/cv-plain-text");
 
 function parseWorkExperienceFromText(
   text,
@@ -139,6 +144,34 @@ function parseWorkExperienceFromText(
   });
 }
 
+function serializeWorkExperience(list = []) {
+  return (Array.isArray(list) ? list : [])
+    .map((exp) => {
+      const header = [exp?.position, exp?.company].filter(Boolean).join("\n");
+      const bullets = (Array.isArray(exp?.bulletPoints) ? exp.bulletPoints : [])
+        .map((b) => `• ${String(b || "").trim()}`)
+        .filter((line) => line.length > 2)
+        .join("\n");
+      return [header, bullets].filter(Boolean).join("\n").trim();
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function fitWorkExperienceBullets(list, originalList = []) {
+  return (Array.isArray(list) ? list : []).map((exp, i) => {
+    const origBullets = Array.isArray(originalList[i]?.bulletPoints)
+      ? originalList[i].bulletPoints
+      : [];
+    return {
+      ...exp,
+      bulletPoints: (Array.isArray(exp?.bulletPoints) ? exp.bulletPoints : []).map(
+        (b, j) => fitBulletText(b, origBullets[j] || b)
+      ),
+    };
+  });
+}
+
 function parseSkillsFromText(text, existingSkills = []) {
   const normalizedExisting = (existingSkills || [])
     .map((skill) => String(skill || "").trim())
@@ -176,7 +209,14 @@ function applyAdaptedCvFromBundle({
   const skipShortenGuard =
     parseCvSectionLengthMode(cvSectionLengthMode) === "fit_range";
 
-  const originalAbout = parsedCV.about || "";
+  const originalAbout = analysis.originalAbout || parsedCV.about || "";
+  if (skipShortenGuard && aboutEnabled) {
+    analysis.updatedAbout = fitAboutText(
+      analysis.updatedAbout || originalAbout,
+      originalAbout
+    );
+  }
+
   let about = originalAbout;
   if (aboutEnabled) {
     const updated = analysis.updatedAbout || "";
@@ -186,6 +226,38 @@ function applyAdaptedCvFromBundle({
       about =
         !skipShortenGuard && o > 0 && u < o * 0.9 ? originalAbout : updated;
     }
+  }
+
+  let workExperience = expEnabled
+    ? parseWorkExperienceFromText(
+        analysis.updatedExperience,
+        parsedCV.workExperience || [],
+        { skipShortenGuard }
+      )
+    : parsedCV.workExperience || [];
+
+  if (skipShortenGuard && expEnabled) {
+    workExperience = fitWorkExperienceBullets(
+      workExperience,
+      parsedCV.workExperience || []
+    );
+    analysis.updatedExperience = serializeWorkExperience(workExperience);
+  }
+
+  about = stripCvMarkdownEmphasis(about);
+  workExperience = (workExperience || []).map((exp) => ({
+    ...exp,
+    bulletPoints: (Array.isArray(exp?.bulletPoints) ? exp.bulletPoints : []).map(
+      (b) => stripCvMarkdownEmphasis(String(b || "")).trim()
+    ),
+  }));
+  if (analysis) {
+    analysis.updatedAbout = stripCvMarkdownEmphasis(
+      String(analysis.updatedAbout || "")
+    );
+    analysis.updatedExperience = stripCvMarkdownEmphasis(
+      String(analysis.updatedExperience || "")
+    );
   }
 
   return {
@@ -204,13 +276,7 @@ function applyAdaptedCvFromBundle({
       includePhoto: false,
     },
     about,
-    workExperience: expEnabled
-      ? parseWorkExperienceFromText(
-          analysis.updatedExperience,
-          parsedCV.workExperience || [],
-          { skipShortenGuard }
-        )
-      : parsedCV.workExperience || [],
+    workExperience,
     education: parsedCV.education || [],
     skills: skillsEnabled
       ? parseSkillsFromText(analysis.updatedSkills, parsedCV.skills || [])

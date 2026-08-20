@@ -2,6 +2,7 @@ const {
   refineKeywordsAgainstCv,
   resolvePrimaryKeywordSection,
 } = require("./keywordPipeline");
+const { stripCvMarkdownEmphasis } = require("../../utils/cv-plain-text");
 
 function normalizeDateToYYYYMM(rawDate) {
   if (!rawDate) return "";
@@ -113,7 +114,9 @@ function normalizeParsedCVData(parsedData, cvText) {
         startDate: normalizeDateToYYYYMM(String(item.startDate ?? "")),
         endDate: normalizeDateToYYYYMM(String(item.endDate ?? "")),
         bulletPoints: Array.isArray(item.bulletPoints)
-          ? item.bulletPoints.map((bp) => String(bp ?? "")).filter((bp) => bp.trim())
+          ? item.bulletPoints
+              .map((bp) => stripCvMarkdownEmphasis(String(bp ?? "")).trim())
+              .filter(Boolean)
           : [],
       }))
     : [];
@@ -141,7 +144,7 @@ function normalizeParsedCVData(parsedData, cvText) {
       github: String(parsedPersonal.github ?? fallbackPersonal.github ?? ""),
       linkedin: String(parsedPersonal.linkedin ?? fallbackPersonal.linkedin ?? ""),
     },
-    about: String(parsedData?.about ?? ""),
+    about: stripCvMarkdownEmphasis(String(parsedData?.about ?? "")),
     workExperience,
     education,
     skills: normalizeSkills(parsedData?.skills),
@@ -151,11 +154,14 @@ function normalizeParsedCVData(parsedData, cvText) {
 
 function normalizeCVAnalysisResponse(parsed, options = {}) {
   const toText = (value) => {
-    if (typeof value === "string") return value;
+    if (typeof value === "string") return stripCvMarkdownEmphasis(value);
     if (Array.isArray(value)) {
-      return value.map((item) => String(item ?? "").trim()).filter(Boolean).join(", ");
+      return value
+        .map((item) => stripCvMarkdownEmphasis(String(item ?? "")).trim())
+        .filter(Boolean)
+        .join(", ");
     }
-    return value != null ? String(value) : "";
+    return value != null ? stripCvMarkdownEmphasis(String(value)) : "";
   };
 
   const toStringArray = (value) => {

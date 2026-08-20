@@ -22,6 +22,7 @@ import {
 import { pdf } from '@react-pdf/renderer';
 import PDFDocument from './PDFDocument';
 import { prepareCvDataForPdf } from './sanitizeCvDataForPdf';
+import { stripCvMarkdownEmphasis } from '@/lib/cv-maker/stripCvMarkdown';
 import { WorkExperienceItem } from './WorkExperience';
 import { EducationItem } from './Education';
 import { LanguageItem } from './Languages';
@@ -626,7 +627,7 @@ const formatLinkedInDisplayUrl = (url: string) => {
               Hakkımda
             </Typography>
             <Typography variant="body2" sx={{ textAlign: 'left', lineHeight: 1.6, color: '#333' }}>
-              {data.about}
+              {stripCvMarkdownEmphasis(data.about)}
             </Typography>
           </Box>
       )}
@@ -688,7 +689,7 @@ const formatLinkedInDisplayUrl = (url: string) => {
                           variant="body2"
                           sx={{ mb: 0.5, color: '#333', lineHeight: 1.5 }}
                         >
-                          {bullet}
+                          {stripCvMarkdownEmphasis(bullet)}
                         </Typography>
                       ))}
                   </Box>

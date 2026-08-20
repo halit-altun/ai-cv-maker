@@ -16,6 +16,7 @@ const {
   applyAdaptedCvFromBundle,
   buildAdaptationNotes,
 } = require("./applyAdaptedCv");
+const { enforceFitRangeOnAnalysis } = require("../../utils/cv-section-length");
 const {
   wrapColdEmailForInfoContactInbox,
 } = require("../../utils/cold-email-generic-inbox");
@@ -69,6 +70,11 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
           about: kwAbout,
           workExperience: kwExp,
         },
+      });
+      enforceFitRangeOnAnalysis(analysis, parsedCV, {
+        mode: request.cvSectionLengthMode,
+        aboutEnabled: kwAbout,
+        experienceEnabled: kwExp,
       });
 
       let coverLetter = wantCover ? String(parsed.coverLetter || "").trim() : "";
@@ -295,6 +301,10 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
         targetPosition,
         cvSectionLengthMode: request.cvSectionLengthMode,
       });
+
+      return {
+        parsedCV,
+        analysis,
 
       return {
         parsedCV,

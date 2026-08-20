@@ -16,6 +16,7 @@ import {
   CompanyLink,
 } from '@/lib/company-based-cv-editor/types';
 import { countWords } from '@/lib/company-based-cv-editor/wordLengthBudget';
+import { stripCvMarkdownEmphasis } from '@/lib/cv-maker/stripCvMarkdown';
 import {
   defaultAISettings,
   ANALYSIS_PREFS_STORAGE_KEY,
@@ -24,6 +25,9 @@ import type { AIAdaptationSettings, CompanyCvOptimizerState, OutreachCvAttachmen
 import {
   DEFAULT_CV_SECTION_LENGTH_MODE,
   parseCvSectionLengthMode,
+  isFitRangeLengthMode,
+  fitAboutText,
+  fitWorkExperienceBullets,
   type CvSectionLengthMode,
 } from '@/lib/company-based-cv-editor/cvSectionLength';
 import type { EmailPrefixCategoryId, CompanyPageType } from '../constants/outreachConstants';
@@ -1701,10 +1705,12 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           photoSizePt: CV_PHOTO_SIZE_PT,
         },
         about: (() => {
-          const originalAbout = String(parsedCVData.about || '');
-          if (!aiSettings.about) return originalAbout;
+          const originalAbout = String(
+            analysis.originalAbout || parsedCVData.about || ''
+          );
+          if (!aiSettings.about) return stripCvMarkdownEmphasis(originalAbout);
           const updated = String(analysis.updatedAbout || '');
-          if (!updated.trim()) return originalAbout;
+          if (!updated.trim()) return stripCvMarkdownEmphasis(originalAbout);
           const o = countWords(originalAbout);
           const u = countWords(updated);
           if (
@@ -1713,15 +1719,34 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
             u < o * 0.9
           ) {
             console.warn(`Hakkımda kısaltıldı (${u}/${o}) — orijinal korundu`);
-            return originalAbout;
+            return stripCvMarkdownEmphasis(originalAbout);
           }
-          return updated;
+          if (isFitRangeLengthMode(cvSectionLengthMode)) {
+            const fitted = fitAboutText(updated, originalAbout);
+            analysis.updatedAbout = fitted;
+            return stripCvMarkdownEmphasis(fitted);
+          }
+          return stripCvMarkdownEmphasis(updated);
         })(),
         workExperience: aiSettings.workExperience
-          ? parseWorkExperienceFromText(
-              analysis.updatedExperience,
-              parsedCVData.workExperience || []
-            )
+          ? (() => {
+              const parsed = parseWorkExperienceFromText(
+                analysis.updatedExperience,
+                parsedCVData.workExperience || []
+              );
+              const fitted = isFitRangeLengthMode(cvSectionLengthMode)
+                ? fitWorkExperienceBullets(
+                    parsed,
+                    parsedCVData.workExperience || []
+                  )
+                : parsed;
+              return fitted.map((exp) => ({
+                ...exp,
+                bulletPoints: (exp.bulletPoints || []).map((b) =>
+                  stripCvMarkdownEmphasis(String(b || '')).trim()
+                ),
+              }));
+            })()
           : parsedCVData.workExperience || [],
         education: parsedCVData.education || [],
         skills: aiSettings.skills

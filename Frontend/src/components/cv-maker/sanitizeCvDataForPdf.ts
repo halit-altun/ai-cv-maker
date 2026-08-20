@@ -1,3 +1,5 @@
+import { stripCvMarkdownEmphasis } from '@/lib/cv-maker/stripCvMarkdown';
+
 /**
  * PDF üretimi için CV verisini güvenli hale getirir.
  * Analiz sonrası gelen object/null alanlar ve CORS'lu fotoğraf
@@ -99,7 +101,7 @@ export function sanitizeCvDataForPdf(data: PdfCvData | null | undefined): PdfCvD
       includePhoto: Boolean(personal.includePhoto && asText(personal.photoUrl)),
       photoSizePt: Number(personal.photoSizePt) || undefined,
     },
-    about: asText(data?.about),
+    about: stripCvMarkdownEmphasis(asText(data?.about)),
     workExperience: work.filter(Boolean).map((exp, index) => ({
       id: asText(exp?.id) || String(index + 1),
       position: asText(exp?.position),
@@ -109,7 +111,7 @@ export function sanitizeCvDataForPdf(data: PdfCvData | null | undefined): PdfCvD
       startDate: asText(exp?.startDate),
       endDate: asText(exp?.endDate),
       bulletPoints: Array.isArray(exp?.bulletPoints)
-        ? exp.bulletPoints.map((bp) => asText(bp).trim()).filter(Boolean)
+        ? exp.bulletPoints.map((bp) => stripCvMarkdownEmphasis(asText(bp)).trim()).filter(Boolean)
         : [],
     })),
     education: edu.filter(Boolean).map((item, index) => ({

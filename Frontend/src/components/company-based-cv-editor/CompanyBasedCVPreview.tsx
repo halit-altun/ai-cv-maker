@@ -49,6 +49,7 @@ import {
 import { pdf } from '@react-pdf/renderer';
 import PDFDocument from '../cv-maker/PDFDocument';
 import { prepareCvDataForPdf } from '../cv-maker/sanitizeCvDataForPdf';
+import { stripCvMarkdownEmphasis } from '@/lib/cv-maker/stripCvMarkdown';
 import {
   CV_FONT_FAMILY,
   DEFAULT_CV_BODY_FONT_SIZE,
@@ -206,7 +207,7 @@ const SortableBulletItem = ({
       <TextField
         fullWidth
         size="small"
-        value={bullet}
+        value={stripCvMarkdownEmphasis(bullet)}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdate(expIndex, bulletIndex, e.target.value)}
         placeholder="Görev açıklaması"
         multiline
@@ -1044,7 +1045,7 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                     fullWidth
                     multiline
                     rows={4}
-                    value={data.about}
+                    value={stripCvMarkdownEmphasis(data.about)}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdateField?.('about', e.target.value)}
                     variant="outlined"
                     size="small"
@@ -1057,7 +1058,7 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                   />
                 ) : (
                   <Typography variant="body2" sx={{ textAlign: 'left', lineHeight: 1.6, color: '#333' }}>
-                    {data.about}
+                    {stripCvMarkdownEmphasis(data.about)}
                   </Typography>
                 )}
               </Box>
@@ -1190,7 +1191,7 @@ const CompanyBasedCVPreview: React.FC<CompanyBasedCVPreviewProps> = ({
                                 variant="body2"
                                 sx={{ color: '#333', lineHeight: 1.5, mb: 0.5 }}
                               >
-                                {bullet}
+                                {stripCvMarkdownEmphasis(bullet)}
                               </Typography>
                             ))
                         )}
