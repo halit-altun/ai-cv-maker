@@ -1664,8 +1664,8 @@ Return ONLY valid JSON:
          - MUST NOT include any "Manual must NOT mention topics".
          - If a must-mention topic is not supported by CV facts, mention it as interest/learning/adaptation only (no fake claims).
       - Manual topics can be Turkish/English mixed; in English output, rewrite all manual topics in natural English only.
-      10. Call-to-action: The final sentence MUST be exactly:
-          "I'd welcome a quick conversation if there's a good fit."
+      10. Call-to-action: The final sentence MUST convey ALL of: (1) review my profile through my CV/resume, (2) a short conversation with you OR your HR team, (3) about open roles OR a potential collaboration. Prefer this wording (or a close paraphrase that still fits the 50-70 word body limit):
+          "I'd appreciate if you could review my profile through my CV/resume; I'd love a short conversation with you or your HR team about open roles or a potential collaboration."
       11. Do not repeat the same idea/phrase more than once.
       12. Do NOT use: "I invite you to contact me".
       13. CRITICAL — Body only: Do NOT include phone, email, LinkedIn URL, portfolio/GitHub URLs, mailing address, or any sign-off ("Best regards", name line). The app appends "Best regards," + contact. Your output must end with the required CTA sentence.
@@ -1721,8 +1721,8 @@ Return ONLY valid JSON:
          - "Manuel bahsedilmesin konuları" kesinlikle geçmesin.
          - CV ile desteklenmiyorsa yalnızca ilgi/öğrenme/adapte olma şeklinde yaz.
       - Manuel konular karışık gelebilir; çıktıda tümünü doğal Türkçeye çevir.
-      10. Son cümle TAM olarak şu olsun:
-          "Uygun olursa kısa bir görüşmeyi memnuniyetle değerlendiririm."
+      10. Son cümle MUTLAKA şunların hepsini içersin: (1) özgeçmiş/CV üzerinden profilimi inceleme, (2) sizinle VEYA İK ekibinizle kısa görüşme, (3) açık pozisyonlar VEYA potansiyel iş birliği. Tercih edilen ifade (kelime bütçesine sığması için hafif kısaltılabilir, anlam aynı kalsın):
+          "Özgeçmişim üzerinden profilimi incelemenizi rica eder; ekibinizdeki açık pozisyonlar veya potansiyel bir iş birliği için sizinle veya İK ekibinizle kısa bir görüşme yapmayı çok isterim."
       11. Aynı fikri/ifadeyi tekrarlama.
       12. "Benimle iletişime geçmenizi rica ederim" gibi ifadeler kullanma.
       13. KRİTİK — Yalnızca gövde: Telefon, e-posta, LinkedIn/portfolio/GitHub linki, adres veya imza kapanışı yazma; uygulama "İyi çalışmalar," + iletişim ekleyecek. Çıktı zorunlu son cümleyle bitsin.

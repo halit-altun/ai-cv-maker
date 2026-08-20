@@ -236,7 +236,9 @@ ${buildCvSectionLengthPromptAddon({
    A→Z FLOW (required):
      (A) Opening & context: 1 grounded sentence showing interest in THIS company's work (tech focus / sector / growth / recent focus) — ONLY from target pages/profile. No fake flattery.
      (B) Value proposition: 1-2 sentences summarizing the candidate (role + stack from CV) and how they can help THIS company's focus. Prefer real CV∩company overlap; never claim company-domain tech absent from CV.
-     (C) CTA: Soft ask to review profile/CV fit and a short chat — NOT pushy interview demand. Do NOT say "I am looking for a job at your company"; frame as sharing how you can contribute.
+     (C) CTA (REQUIRED — final sentence): Soft ask that MUST convey ALL of: (1) review my profile via CV/resume/özgeçmiş, (2) a short conversation with you OR your HR/recruiting team, (3) about open roles OR a potential collaboration. NOT a pushy interview demand. Do NOT say "I am looking for a job at your company"; frame as sharing how you can contribute.
+       Preferred TR wording (or close paraphrase still fitting the word budget): "Özgeçmişim üzerinden profilimi incelemenizi rica eder; ekibinizdeki açık pozisyonlar veya potansiyel bir iş birliği için sizinle veya İK ekibinizle kısa bir görüşme yapmayı çok isterim."
+       Preferred EN wording (or close paraphrase still fitting the word budget): "I'd appreciate if you could review my profile through my CV/resume; I'd love a short conversation with you or your HR team about open roles or a potential collaboration."
    FORBIDDEN: long biography, fake praise, link/PDF bombardment, listing multiple URLs, "please interview me" pressure, inventing company products/clients/awards.
    Do NOT mention attaching a PDF filename in the body.
 8) Cold email (if YES): language ${coldLang}, max ~150 words, greeting + short body + EXACT closing "${coldSignOff}" + name/title/email/phone/links if known.
