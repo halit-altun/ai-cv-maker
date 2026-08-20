@@ -47,6 +47,7 @@ const {
 } = require("../utils/persist-outreach-history");
 const { parseCvSectionLengthMode } = require("../utils/cv-section-length");
 const { getUserIntervalSeconds } = require("./email-queue.service");
+const { logIntervalVerify, formatOutreachDispatchSummary } = require("../utils/outreach-dispatch-summary");
 
 let processingLock = false;
 
@@ -1159,7 +1160,7 @@ async function resumeSendOnlyForItem(job, item, settings, user) {
     targetPosition: settings.targetPosition,
     forceResend: Boolean(item.forceResend || settings.forceResend),
     pdfAttachment: pdf,
-    skipVerification: prefs.skipPrimaryEmailVerification,
+    skipVerification: false,
     rawDomainInput: prefs.rawDomainInput,
     trustedEmail,
     projectId: itemProjectId,
@@ -1169,6 +1170,13 @@ async function resumeSendOnlyForItem(job, item, settings, user) {
     todoJobId: String(job._id),
     todoItemId: String(item._id),
     analysisSnapshot: item.analysisSnapshot || undefined,
+  });
+
+  logIntervalVerify({
+    jobId: String(job._id),
+    itemId: String(item._id),
+    companyName: item.companyName,
+    sendResult,
   });
 
   item.outreachLogId = sendResult.logId || null;
@@ -1557,7 +1565,7 @@ async function processSingleJobItem(job, item) {
     targetPosition: settings.targetPosition,
     forceResend: Boolean(settings.forceResend),
     pdfAttachment: pdf,
-    skipVerification: prefs.skipPrimaryEmailVerification,
+    skipVerification: false,
     rawDomainInput: prefs.rawDomainInput,
     trustedEmail,
     projectId: job.projectId,
@@ -2052,6 +2060,10 @@ async function enqueueCompanySend(clientId, userId, body = {}) {
 
   const queuedCount = (sendResult?.results || []).filter((r) => r.status === "queued").length;
   const sentCount = Number(sendResult?.sentCount || 0);
+  const verifySummary = formatOutreachDispatchSummary({
+    results: sendResult?.results,
+    verification: sendResult?.verification,
+  });
 
   return {
     jobId: String(job._id),
@@ -2065,6 +2077,11 @@ async function enqueueCompanySend(clientId, userId, body = {}) {
     pauseAfterCurrent: Boolean(job.pauseAfterCurrent),
     jobPaused: job.status === "paused",
     dispatchedImmediately: true,
+    verification: sendResult?.verification || null,
+    results: sendResult?.results || [],
+    selectedRecipients: sendResult?.selectedRecipients || lastItem.selectedRecipients || [],
+    logId: sendResult?.logId || lastItem.outreachLogId || null,
+    verifySummary: verifySummary.text,
     ...diagnostics,
   };
 }

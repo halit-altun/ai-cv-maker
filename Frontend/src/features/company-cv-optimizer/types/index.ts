@@ -127,6 +127,7 @@ export interface CompanyCvOptimizerState {
   setOutreachPhone: (v: string) => void;
   outreachSending: boolean;
   outreachSendResult: string | null;
+  outreachSendSeverity: 'success' | 'warning';
   outreachCvAttachmentSource: OutreachCvAttachmentSource;
   setOutreachCvAttachmentSource: (v: OutreachCvAttachmentSource) => void;
   handleSendCompanyEmail: (opts?: {

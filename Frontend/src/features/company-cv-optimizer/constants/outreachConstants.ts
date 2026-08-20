@@ -360,7 +360,7 @@ export function buildRecipientEmails(params: {
   return withEnteredMainDomain(ordered, rawInput, domain, includeEnteredMain);
 }
 
-/** Doğrulamasız (direkt) gönderilecek adres: ana domain seçeneği veya trusted ana adres. */
+/** Doğrulamasız gönderilecek adres: yalnızca “ana adresi doğrulamadan geçir” kutusu. */
 export function resolveTrustedSendEmail(params: {
   rawDomainInput?: string;
   domain?: string;
@@ -370,9 +370,6 @@ export function resolveTrustedSendEmail(params: {
 }): string | undefined {
   const raw = String(params.rawDomainInput || '').trim();
   const domain = params.domain || raw;
-  if (params.includeEnteredMainDomain) {
-    return resolveEnteredMainDomainEmail(raw, domain) || undefined;
-  }
   if (
     params.includePrimaryEmail !== false &&
     params.skipPrimaryEmailVerification &&

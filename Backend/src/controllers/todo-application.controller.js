@@ -151,14 +151,19 @@ async function startJobHandler(req, res, next) {
 
 /** Kuyruğa alma sonucunu kullanıcıya tek cümlede net anlat (bekleme, sıra, uyarılar). */
 function buildEnqueueMessage(result) {
-  const parts = [
-    result.dispatchedImmediately
-      ? `${result.queuedRecipientCount} alıcı, otomatik gönderimle aynı doğrulamadan geçti; SMTP sırası Profilim aralığına göre tek işte planlandı.`
-      : `${result.queuedRecipientCount} alıcı aralıklı gönderim kuyruğuna alındı.`,
-  ];
+  const parts = [];
+  if (result.verifySummary) {
+    parts.push(result.verifySummary);
+  } else if (result.dispatchedImmediately) {
+    parts.push(
+      `${result.queuedRecipientCount} alıcı doğrulamadan geçirildi; SMTP sırası Profilim aralığına göre planlandı.`
+    );
+  } else {
+    parts.push(`${result.queuedRecipientCount} alıcı aralıklı gönderim kuyruğuna alındı.`);
+  }
 
   if (Number(result.sentCount || 0) > 0) {
-    parts.push(`${result.sentCount} mail hemen gönderildi.`);
+    parts.push(`${result.sentCount} mail hemen gitti.`);
   }
   if (Number(result.queuedCount || 0) > 0) {
     parts.push(`${result.queuedCount} mail profil aralığına göre sıraya yazıldı.`);

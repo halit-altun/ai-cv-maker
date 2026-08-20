@@ -83,6 +83,7 @@ function recipientStatusLabel(status?: string): string {
   if (s === 'failed') return 'Başarısız';
   if (s === 'skipped') return 'Atlandı';
   if (s === 'invalid') return 'Geçersiz';
+  if (s === 'queued') return 'Sırada';
   return status || '—';
 }
 
@@ -744,7 +745,7 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
                   previewDomain
                     ? `Çözümlenen domain: @${previewDomain} — prefix'ler buna eklenir${
                         props.includeEnteredMainDomainInSend
-                          ? '; girilen ana domain doğrulamasız (direkt) gider'
+                          ? '; girilen ana domain listeye eklenir, doğrulamadan geçer'
                           : props.includePrimaryEmailInSend &&
                               props.emailDomainOverride.includes('@')
                             ? props.skipPrimaryEmailVerification
@@ -800,10 +801,9 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
                 sx={{ mt: 0, alignItems: 'flex-start' }}
               />
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                İlk seçenek: girilen ana adresi alıcı listesine ekler. İkinci seçenek (ayrı): o
-                adresi MX/Reacher/EmailVerify’a sokmadan gönderir. Üçüncü: girilen ana domain
-                adresini (email varsa o, yoksa info@domain) kategoriye bakmaksızın ekler ve
-                doğrulamadan direkt gönderir.
+                İlk seçenek: girilen ana adresi alıcı listesine ekler. İkinci: yalnız o adresi
+                MX/Reacher/EmailVerify’a sokmadan gönderir (ik@ / kariyer@ yine doğrulanır). Üçüncü:
+                ana domain adresini kategoriye bakmaksızın listeye ekler; o da doğrulamadan geçer.
               </Typography>
 
               {domainCheckLoading && (
@@ -811,6 +811,76 @@ export function JobAnalysisStep(props: JobAnalysisStepProps) {
                   <CircularProgress size={16} />
                   <Typography variant="caption">Domain geçmişi kontrol ediliyor…</Typography>
                 </Box>
+              )}
+
+              {domainHistory?.lastVerification && (
+                <Alert severity="info" sx={{ borderRadius: 2, mb: 1 }}>
+                  <Typography fontWeight={600} fontSize="0.85rem" sx={{ mb: 0.75 }}>
+                    Son doğrulama logu (aralıklı dahil)
+                    {domainHistory.lastVerification.sentAt
+                      ? ` · ${new Date(domainHistory.lastVerification.sentAt).toLocaleString('tr-TR')}`
+                      : ''}
+                  </Typography>
+                  {(domainHistory.lastVerification.verification?.checks?.length ?? 0) > 0 && (
+                    <Table
+                      size="small"
+                      sx={{ mb: 1, bgcolor: 'background.paper', borderRadius: 1 }}
+                    >
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Aday e-posta</TableCell>
+                          <TableCell>Doğrulama API</TableCell>
+                          <TableCell>API sonucu</TableCell>
+                          <TableCell>Geçerli mi?</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {domainHistory.lastVerification.verification!.checks!.map((c) => (
+                          <TableRow key={`last-verify-${c.email}`}>
+                            <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+                              {c.email}
+                            </TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>
+                              {verifyProviderLabel(c.provider)}
+                            </TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>
+                              {verifyResultLabel(c.result)}
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                size="small"
+                                color={c.isValid ? 'success' : 'default'}
+                                label={c.isValid ? 'Geçti' : 'Geçmedi'}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                  {(domainHistory.lastVerification.recipients?.length ?? 0) > 0 && (
+                    <Table size="small" sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Alıcı</TableCell>
+                          <TableCell>Mail durumu</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {domainHistory.lastVerification.recipients.map((r) => (
+                          <TableRow key={`last-verify-rec-${r.email}`}>
+                            <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+                              {r.email}
+                            </TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>
+                              {recipientStatusLabel(r.status)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </Alert>
               )}
 
               {domainHistory?.previouslyContacted && (

@@ -96,13 +96,9 @@ function withEnteredMainDomain(emails, rawDomainInput, domain, includeEnteredMai
 function resolveTrustedSendEmail({
   rawDomainInput,
   domain,
-  includeEnteredMainDomainInSend,
   includePrimaryEmailInSend,
   skipPrimaryEmailVerification,
 } = {}) {
-  if (includeEnteredMainDomainInSend) {
-    return resolveEnteredMainDomainEmail(rawDomainInput, domain) || undefined;
-  }
   if (
     includePrimaryEmailInSend !== false &&
     skipPrimaryEmailVerification &&

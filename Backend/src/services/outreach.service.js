@@ -942,6 +942,34 @@ async function checkDomainHistory(clientId, domain) {
     ...new Set(mailLogs.flatMap((l) => extractActuallySentEmails(l))),
   ];
 
+  const extractQueuedOrSentEmails = (log) => {
+    return (log.recipients || [])
+      .filter((r) => r && (r.status === "sent" || r.status === "logged" || r.status === "queued"))
+      .map((r) => String(r.email || "").trim().toLowerCase())
+      .filter(Boolean);
+  };
+
+  const lastVerificationLog = mapped.find((l) => {
+    if (l.status === "analysis_only") return false;
+    if ((l.verification?.checks || []).length) return true;
+    if (l.verification?.enabled) return true;
+    return (l.recipients || []).some(
+      (r) => r && (r.verifyResult || ["queued", "sent", "invalid", "failed"].includes(r.status))
+    );
+  });
+  const lastVerification = lastVerificationLog
+    ? {
+        id: lastVerificationLog.id,
+        sentAt: lastVerificationLog.sentAt,
+        status: lastVerificationLog.status,
+        companyName: lastVerificationLog.companyName,
+        subject: lastVerificationLog.subject,
+        queuedOrSentEmails: extractQueuedOrSentEmails(lastVerificationLog),
+        verification: lastVerificationLog.verification,
+        recipients: lastVerificationLog.recipients || [],
+      }
+    : null;
+
   const lastOutreach = successful
     ? {
         id: successful.id,
@@ -981,6 +1009,7 @@ async function checkDomainHistory(clientId, domain) {
     lastAnalysisAt: lastAnalysis?.sentAt || null,
     lastAnalysis,
     lastOutreach,
+    lastVerification,
     allSentEmails,
     items: mapped,
     limits,

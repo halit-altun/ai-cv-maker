@@ -67,7 +67,7 @@ import {
   sendCompanyOutreachRequest,
 } from '@/lib/outreach/api';
 import { enqueueCompanySendRequest } from '@/lib/todo-applications/api';
-import { describeDispatchSkip, planPostAnalysisDispatch } from '../lib/postAnalysisDispatch';
+import { describeDispatchSkip, formatDispatchVerifyNotice, planPostAnalysisDispatch } from '../lib/postAnalysisDispatch';
 import {
   listOutreachProjectsRequest,
   selectOutreachProjectRequest,
@@ -234,6 +234,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
   const [outreachSending, setOutreachSending] = useState(false);
   const outreachSendingLockRef = useRef(false);
   const [outreachSendResult, setOutreachSendResult] = useState<string | null>(null);
+  const [outreachSendSeverity, setOutreachSendSeverity] = useState<'success' | 'warning'>('success');
   const [outreachCvAttachmentSource, setOutreachCvAttachmentSource] =
     useState<OutreachCvAttachmentSource>('optimized');
   /** Profilim ayarı: analiz sonrası otomatik mail */
@@ -739,6 +740,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
 
       setActiveStep(0);
       setOutreachSendResult(null);
+    setOutreachSendSeverity('success');
       setError(null);
     };
 
@@ -1280,6 +1282,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
       setCvRestoredFromCache(false);
       setError(null);
       setOutreachSendResult(null);
+    setOutreachSendSeverity('success');
       setActiveStep(1);
     } else {
       setError('Lütfen geçerli bir PDF dosyası seçin.');
@@ -1294,6 +1297,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     setActiveStep(0);
     setError(null);
     setOutreachSendResult(null);
+    setOutreachSendSeverity('success');
   };
 
   /** Aynı PDF ile ilan/şirket hedefini değiştirip yeniden analiz (sonuçları sıfırlar, CV kalır). */
@@ -1308,6 +1312,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     setError(null);
     if (!options?.preserveSendNotice) {
       setOutreachSendResult(null);
+      setOutreachSendSeverity('success');
     }
     setOutreachSending(false);
     setOutreachEmailSubject('');
@@ -1315,8 +1320,10 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     setOutreachInfoContactEmailBody('');
     setSelectedOutreachRecipients([]);
     setForceOutreachResend(false);
-    // Eski firma e-posta domaini kalmasın — yalnızca bu alan
-    setEmailDomainOverride('');
+    if (!options?.preserveSendNotice) {
+      setEmailDomainOverride('');
+    }
+    setDomainHistoryCheckNonce((n) => n + 1);
     setActiveStep(1);
   };
 
@@ -1444,6 +1451,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     setError(null);
     // Önceki firmanın gönderim mesajı yeni analizde kalmasın
     setOutreachSendResult(null);
+    setOutreachSendSeverity('success');
     setOutreachSending(false);
 
     try {
@@ -2150,6 +2158,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     outreachSendingLockRef.current = true;
     setOutreachSending(true);
     setOutreachSendResult(null);
+    setOutreachSendSeverity('success');
     setError(null);
 
     try {
@@ -2380,8 +2389,10 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           adaptationNotes: (analysisForSnapshot?.recommendations || []).join('\n'),
           analysisSnapshot,
         });
+        const notice = formatDispatchVerifyNotice(result);
+        setOutreachSendSeverity(notice.severity);
         setOutreachSendResult(
-          `${result.message}${
+          `${notice.text}${
             pdfAttachment?.contentBase64 ? ` PDF eki: ${attachmentLabel}.` : ''
           } Sıra için Mail Takip → Aralıklı gönderim.`
         );
@@ -2396,7 +2407,6 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           domain: inferredDomain,
           rawDomainInput,
           trustedEmail,
-          skipVerification: skipPrimaryEmailVerification,
           cvFileName: pdfAttachment?.filename || cvFile?.name || undefined,
           cvTitle,
           selectedCategories: selectedEmailPrefixCategories,
@@ -2409,8 +2419,10 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
           reanalyzeContext,
           analysisSnapshot,
         });
+        const notice = formatDispatchVerifyNotice(result);
+        setOutreachSendSeverity(notice.severity);
         setOutreachSendResult(
-          `${result.message}${pdfAttachment?.contentBase64 ? ` PDF eki: ${attachmentLabel}.` : ''}`
+          `${notice.text}${pdfAttachment?.contentBase64 ? ` PDF eki: ${attachmentLabel}.` : ''}`
         );
       }
       // Gönderim sonrası itibar skorunu yenile (engagement sayısı güncellensin)
@@ -2599,6 +2611,7 @@ export function useCompanyCvOptimizer(): CompanyCvOptimizerState {
     setOutreachPhone,
     outreachSending,
     outreachSendResult,
+    outreachSendSeverity,
     outreachCvAttachmentSource,
     setOutreachCvAttachmentSource,
     handleSendCompanyEmail,

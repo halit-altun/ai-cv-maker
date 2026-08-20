@@ -271,10 +271,15 @@ function acceptCandidatesAfterMailboxChecks({
   mxOk,
   validEmails,
   candidates,
+  mailboxAttempted = false,
 } = {}) {
   const valid = Array.isArray(validEmails) ? validEmails.filter(Boolean) : [];
   if (valid.length) {
     return { ok: true, emails: valid, usedMxFallback: false };
+  }
+  // Reacher/EmailVerify çalıştıysa geçmeyeni MX yüzünden kabul etme.
+  if (mailboxAttempted) {
+    return { ok: false, emails: [], usedMxFallback: false };
   }
   const list = Array.isArray(candidates) ? candidates.filter(Boolean) : [];
   if (mxOk && allowMxOnlyFallback() && list.length) {
@@ -798,10 +803,15 @@ async function pickValidRecipient(candidates, options = {}) {
     );
 
   const validEmailsFromChecks = validChecks.map((c) => c.email);
+  const mailboxAttempted = checks.some((c) => {
+    const provider = String(c?.provider || "").toLowerCase();
+    return provider === "reacher" || provider === "emailverify";
+  });
   const accepted = acceptCandidatesAfterMailboxChecks({
     mxOk: true,
     validEmails: validEmailsFromChecks,
     candidates: list,
+    mailboxAttempted,
   });
 
   if (!accepted.ok) {

@@ -1317,7 +1317,7 @@ export function PreviewStep(props: PreviewStepProps) {
 
               <Alert severity="info" sx={{ mt: 1.5, py: 0.5 }}>
                 {props.includeEnteredMainDomainInSend
-                  ? 'Girilen ana domain adresi listede ve doğrulanmadan (direkt) gider. '
+                  ? 'Girilen ana domain adresi listede ve diğerleri gibi doğrulanır. '
                   : !props.includePrimaryEmailInSend
                     ? 'Ana adres gönderime kapalı — yalnızca baz domain / seçili prefix’ler. '
                     : props.skipPrimaryEmailVerification
@@ -1578,7 +1578,7 @@ export function PreviewStep(props: PreviewStepProps) {
               <Typography variant="body2" sx={{ mb: 0.5 }}>
                 <strong>Alıcı adayları:</strong> {props.selectedOutreachRecipients.length}
                 {props.includeEnteredMainDomainInSend
-                  ? ' (ana domain trusted/direkt; diğerleri doğrulanır)'
+                  ? ' (ana domain listede ve doğrulanır)'
                   : props.includePrimaryEmailInSend
                     ? props.skipPrimaryEmailVerification
                       ? ' (ana adres trusted/doğrulamasız; diğerleri doğrulanır)'
@@ -1606,7 +1606,7 @@ export function PreviewStep(props: PreviewStepProps) {
               </Box>
               <Alert severity="warning" sx={{ my: 1, py: 0.5 }}>
                 {props.includeEnteredMainDomainInSend
-                  ? 'Girilen ana domain doğrulanmadan (direkt) gider; '
+                  ? 'Girilen ana domain diğerleri gibi doğrulanır; '
                   : !props.includePrimaryEmailInSend
                     ? 'Ana adres gönderime kapalı; '
                     : props.skipPrimaryEmailVerification

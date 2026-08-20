@@ -55,7 +55,10 @@ export function CompanyCvOptimizerView() {
 
         {/* Önizleme adımı gönderim sonucunu kendi panelinde gösterir; diğer adımlarda üstte */}
         {!isPreview && state.outreachSendResult && (
-          <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>
+          <Alert
+            severity={state.outreachSendSeverity || 'success'}
+            sx={{ mb: 3, borderRadius: 2 }}
+          >
             {state.outreachSendResult}
           </Alert>
         )}

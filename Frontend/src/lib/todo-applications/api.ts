@@ -1,6 +1,7 @@
 import { authFetch } from '@/lib/auth/authFetch';
 import type { EmailPrefixCategoryId } from '@/features/company-cv-optimizer/constants/outreachConstants';
 import type { CompanyPageType } from '@/features/company-cv-optimizer/constants/outreachConstants';
+import type { OutreachSendResult } from '@/lib/outreach/api';
 
 export type TodoApplicationItem = {
   id: string;
@@ -216,6 +217,15 @@ export type EnqueueCompanySendResult = {
   persistHistory?: boolean;
   processorTickSeconds?: number;
   warnings?: string[];
+  verification?: OutreachSendResult['verification'];
+  results?: OutreachSendResult['results'];
+  selectedRecipients?: string[];
+  logId?: string | null;
+  verifySummary?: string;
+  dispatchedImmediately?: boolean;
+  queuedCount?: number;
+  sentCount?: number;
+  sendStatus?: string;
 };
 
 export type TodoSendHistoryFilter = 'all' | 'sent' | 'unsent';

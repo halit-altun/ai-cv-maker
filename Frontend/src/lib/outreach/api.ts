@@ -192,6 +192,16 @@ export type DomainCheckResult = {
     verification?: OutreachLogItem['verification'];
     recipients: OutreachLogItem['recipients'];
   } | null;
+  lastVerification?: {
+    id: string;
+    sentAt: string;
+    status: string;
+    companyName: string;
+    subject?: string;
+    queuedOrSentEmails: string[];
+    verification?: OutreachLogItem['verification'];
+    recipients: OutreachLogItem['recipients'];
+  } | null;
   items: OutreachLogItem[];
   limits?: {
     maxRecipientsPerSend: number;

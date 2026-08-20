@@ -44,6 +44,47 @@ export function describeDispatchSkip(
   return reason ? SKIP_MESSAGES[reason] : null;
 }
 
+export function formatDispatchVerifyNotice(result: {
+  message?: string;
+  verifySummary?: string;
+  selectedRecipients?: string[];
+  verification?: {
+    checks?: Array<{
+      email: string;
+      isValid: boolean;
+      provider?: string;
+      result?: string;
+    }>;
+  };
+  results?: Array<{ email?: string; status?: string; errorMessage?: string }>;
+}): { text: string; severity: 'success' | 'warning' } {
+  const summary = String(result.verifySummary || '').trim();
+  if (summary) {
+    const rejected = /\bGeçmeyen \(([1-9]\d*)\)/.test(summary);
+    return { text: summary, severity: rejected ? 'warning' : 'success' };
+  }
+
+  const checks = result.verification?.checks || [];
+  const rows = result.results || [];
+  const passed = checks.filter((c) => c.isValid).map((c) => c.email);
+  const failed = checks.filter((c) => !c.isValid).map((c) => c.email);
+  const queued = rows.filter((r) => r.status === 'queued').map((r) => r.email).filter(Boolean);
+  const sent = rows.filter((r) => r.status === 'sent').map((r) => r.email).filter(Boolean);
+  const parts: string[] = [];
+  if (passed.length) parts.push(`Geçen (${passed.length}): ${passed.join(', ')}.`);
+  if (failed.length) parts.push(`Geçmeyen (${failed.length}): ${failed.join(', ')}.`);
+  if (sent.length) parts.push(`${sent.length} mail hemen gitti.`);
+  if (queued.length) parts.push(`${queued.length} mail sıraya yazıldı.`);
+  if (!parts.length && result.message) {
+    return { text: result.message, severity: 'success' };
+  }
+  const extra = result.message ? ` ${result.message}` : '';
+  return {
+    text: `${parts.join(' ')}${extra}`.trim(),
+    severity: failed.length ? 'warning' : 'success',
+  };
+}
+
 /**
  * Analiz bittiğinde mail üretilsin/gönderilsin mi?
  * Profilde otomatik veya aralıklı kuyruk açıksa checkbox kapalı olsa da gönderim aktif sayılır.
