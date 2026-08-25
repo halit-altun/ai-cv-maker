@@ -305,10 +305,6 @@ async function runFullOptimizationBundle(request = {}, options = {}) {
       return {
         parsedCV,
         analysis,
-
-      return {
-        parsedCV,
-        analysis,
         coverLetter,
         linkedinMessage,
         coldEmail,
