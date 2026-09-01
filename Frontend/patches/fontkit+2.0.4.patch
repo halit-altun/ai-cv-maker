@@ -1,0 +1,60 @@
+diff --git a/node_modules/fontkit/dist/browser-module.mjs b/node_modules/fontkit/dist/browser-module.mjs
+index 4d0a389..026ab32 100644
+--- a/node_modules/fontkit/dist/browser-module.mjs
++++ b/node_modules/fontkit/dist/browser-module.mjs
+@@ -12673,7 +12673,9 @@ class $4c1709dee528ea76$export$2e2bcd8739ae039 {
+             else if (this.directory.tables.COLR && this.directory.tables.CPAL) this._glyphs[glyph] = new (0, $0d411f0165859681$export$2e2bcd8739ae039)(glyph, characters, this);
+             else this._getBaseGlyph(glyph, characters);
+         }
+-        return this._glyphs[glyph] || null;
++        const cachedGlyph = this._glyphs[glyph];
++        if (cachedGlyph && characters.length > 0 && !(cachedGlyph.codePoints && cachedGlyph.codePoints.length)) cachedGlyph.codePoints = characters;
++        return cachedGlyph || null;
+     }
+     /**
+    * Returns a Subset for this font.
+diff --git a/node_modules/fontkit/dist/browser.cjs b/node_modules/fontkit/dist/browser.cjs
+index a5fa901..114dc37 100644
+--- a/node_modules/fontkit/dist/browser.cjs
++++ b/node_modules/fontkit/dist/browser.cjs
+@@ -12690,7 +12690,9 @@ class $0a8ef2660a6ce4b6$export$2e2bcd8739ae039 {
+             else if (this.directory.tables.COLR && this.directory.tables.CPAL) this._glyphs[glyph] = new (0, $42d9dbd2de9ee2d8$export$2e2bcd8739ae039)(glyph, characters, this);
+             else this._getBaseGlyph(glyph, characters);
+         }
+-        return this._glyphs[glyph] || null;
++        const cachedGlyph = this._glyphs[glyph];
++        if (cachedGlyph && characters.length > 0 && !(cachedGlyph.codePoints && cachedGlyph.codePoints.length)) cachedGlyph.codePoints = characters;
++        return cachedGlyph || null;
+     }
+     /**
+    * Returns a Subset for this font.
+diff --git a/node_modules/fontkit/dist/main.cjs b/node_modules/fontkit/dist/main.cjs
+index 851b2d2..b58a951 100644
+--- a/node_modules/fontkit/dist/main.cjs
++++ b/node_modules/fontkit/dist/main.cjs
+@@ -12711,7 +12711,9 @@ class $0a8ef2660a6ce4b6$export$2e2bcd8739ae039 {
+             else if (this.directory.tables.COLR && this.directory.tables.CPAL) this._glyphs[glyph] = new (0, $42d9dbd2de9ee2d8$export$2e2bcd8739ae039)(glyph, characters, this);
+             else this._getBaseGlyph(glyph, characters);
+         }
+-        return this._glyphs[glyph] || null;
++        const cachedGlyph = this._glyphs[glyph];
++        if (cachedGlyph && characters.length > 0 && !(cachedGlyph.codePoints && cachedGlyph.codePoints.length)) cachedGlyph.codePoints = characters;
++        return cachedGlyph || null;
+     }
+     /**
+    * Returns a Subset for this font.
+diff --git a/node_modules/fontkit/dist/module.mjs b/node_modules/fontkit/dist/module.mjs
+index fde88fc..aab2ddc 100644
+--- a/node_modules/fontkit/dist/module.mjs
++++ b/node_modules/fontkit/dist/module.mjs
+@@ -12694,7 +12694,9 @@ class $4c1709dee528ea76$export$2e2bcd8739ae039 {
+             else if (this.directory.tables.COLR && this.directory.tables.CPAL) this._glyphs[glyph] = new (0, $0d411f0165859681$export$2e2bcd8739ae039)(glyph, characters, this);
+             else this._getBaseGlyph(glyph, characters);
+         }
+-        return this._glyphs[glyph] || null;
++        const cachedGlyph = this._glyphs[glyph];
++        if (cachedGlyph && characters.length > 0 && !(cachedGlyph.codePoints && cachedGlyph.codePoints.length)) cachedGlyph.codePoints = characters;
++        return cachedGlyph || null;
+     }
+     /**
+    * Returns a Subset for this font.

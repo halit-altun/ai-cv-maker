@@ -1,0 +1,194 @@
+diff --git a/node_modules/@react-pdf/pdfkit/lib/pdfkit.browser.js b/node_modules/@react-pdf/pdfkit/lib/pdfkit.browser.js
+index e779075..d8a4984 100644
+--- a/node_modules/@react-pdf/pdfkit/lib/pdfkit.browser.js
++++ b/node_modules/@react-pdf/pdfkit/lib/pdfkit.browser.js
+@@ -44098,7 +44098,23 @@ const createEmbeddedFont = PDFFont => class EmbeddedFont extends PDFFont {
+   }
+   layoutRun(text, features) {
+     // passing LTR To force fontkit to not reverse the string
+-    const run = this.font.layout(text, features, undefined, undefined, 'ltr');
++    const atsFeatures = Object.assign({
++      liga: false,
++      clig: false,
++      dlig: false,
++      hlig: false,
++      calt: false,
++      rlig: false,
++      ccmp: false,
++      locl: false,
++      salt: false,
++      frac: false,
++      numr: false,
++      dnom: false,
++      kern: false,
++      cpsp: false
++    }, features || {});
++    const run = this.font.layout(text, atsFeatures, undefined, undefined, 'ltr');
+ 
+     // Normalize position values
+     for (let i = 0; i < run.positions.length; i++) {
+@@ -44155,6 +44171,26 @@ const createEmbeddedFont = PDFFont => class EmbeddedFont extends PDFFont {
+       advanceWidth
+     };
+   }
++  glyphCodePoints(glyph) {
++    if (glyph && Array.isArray(glyph.codePoints) && glyph.codePoints.length) {
++      return glyph.codePoints;
++    }
++    const gid = glyph && typeof glyph.id === 'number' ? glyph.id : 0;
++    try {
++      const strings = this.font.stringsForGlyph(gid) || [];
++      const codePoints = [];
++      for (const str of strings) {
++        for (const ch of str) {
++          const cp = ch.codePointAt(0);
++          if (cp != null) codePoints.push(cp);
++        }
++        if (codePoints.length) break;
++      }
++      return codePoints;
++    } catch (err) {
++      return [];
++    }
++  }
+   encode(text, features) {
+     const {
+       glyphs,
+@@ -44168,8 +44204,9 @@ const createEmbeddedFont = PDFFont => class EmbeddedFont extends PDFFont {
+       if (this.widths[gid] == null) {
+         this.widths[gid] = glyph.advanceWidth * this.scale;
+       }
+-      if (this.unicode[gid] == null) {
+-        this.unicode[gid] = glyph.codePoints;
++      const codePoints = this.glyphCodePoints(glyph);
++      if (this.unicode[gid] == null || !this.unicode[gid].length && codePoints.length) {
++        this.unicode[gid] = codePoints;
+       }
+     }
+     return [res, positions];
+@@ -44183,8 +44220,9 @@ const createEmbeddedFont = PDFFont => class EmbeddedFont extends PDFFont {
+       if (this.widths[gid] == null) {
+         this.widths[gid] = glyph.advanceWidth * this.scale;
+       }
+-      if (this.unicode[gid] == null) {
+-        this.unicode[gid] = glyph.codePoints;
++      const codePoints = this.glyphCodePoints(glyph);
++      if (this.unicode[gid] == null || !this.unicode[gid].length && codePoints.length) {
++        this.unicode[gid] = codePoints;
+       }
+     }
+     return res;
+@@ -44279,6 +44317,7 @@ const createEmbeddedFont = PDFFont => class EmbeddedFont extends PDFFont {
+     let entries = [];
+     let unicodeMap = '/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo <<\n  /Registry (Adobe)\n  /Ordering (UCS)\n  /Supplement 0\n>> def\n/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000><ffff>\nendcodespacerange';
+     for (let [index, codePoints] of this.unicode.entries()) {
++      if (!codePoints || !codePoints.length) continue;
+       const encoded = [];
+       if (entries.length >= 100) {
+         unicodeMap += '\n' + entries.length + ' beginbfchar\n' + entries.join('\n') + '\nendbfchar';
+@@ -44293,7 +44332,7 @@ const createEmbeddedFont = PDFFont => class EmbeddedFont extends PDFFont {
+         }
+         encoded.push(toHex(value));
+       }
+-      entries.push('<' + toHex(index) + '>' + '<' + encoded.join(' ') + '>');
++      entries.push('<' + toHex(index) + '>' + '<' + encoded.join('') + '>');
+     }
+     if (entries.length) {
+       unicodeMap += '\n' + entries.length + ' beginbfchar\n' + entries.join('\n') + '\nendbfchar\n';
+diff --git a/node_modules/@react-pdf/pdfkit/lib/pdfkit.js b/node_modules/@react-pdf/pdfkit/lib/pdfkit.js
+index d443632..5f3b9bc 100644
+--- a/node_modules/@react-pdf/pdfkit/lib/pdfkit.js
++++ b/node_modules/@react-pdf/pdfkit/lib/pdfkit.js
+@@ -36378,7 +36378,23 @@ const createEmbeddedFont = PDFFont => class EmbeddedFont extends PDFFont {
+   }
+   layoutRun(text, features) {
+     // passing LTR To force fontkit to not reverse the string
+-    const run = this.font.layout(text, features, undefined, undefined, 'ltr');
++    const atsFeatures = Object.assign({
++      liga: false,
++      clig: false,
++      dlig: false,
++      hlig: false,
++      calt: false,
++      rlig: false,
++      ccmp: false,
++      locl: false,
++      salt: false,
++      frac: false,
++      numr: false,
++      dnom: false,
++      kern: false,
++      cpsp: false
++    }, features || {});
++    const run = this.font.layout(text, atsFeatures, undefined, undefined, 'ltr');
+ 
+     // Normalize position values
+     for (let i = 0; i < run.positions.length; i++) {
+@@ -36435,6 +36451,26 @@ const createEmbeddedFont = PDFFont => class EmbeddedFont extends PDFFont {
+       advanceWidth
+     };
+   }
++  glyphCodePoints(glyph) {
++    if (glyph && Array.isArray(glyph.codePoints) && glyph.codePoints.length) {
++      return glyph.codePoints;
++    }
++    const gid = glyph && typeof glyph.id === 'number' ? glyph.id : 0;
++    try {
++      const strings = this.font.stringsForGlyph(gid) || [];
++      const codePoints = [];
++      for (const str of strings) {
++        for (const ch of str) {
++          const cp = ch.codePointAt(0);
++          if (cp != null) codePoints.push(cp);
++        }
++        if (codePoints.length) break;
++      }
++      return codePoints;
++    } catch (err) {
++      return [];
++    }
++  }
+   encode(text, features) {
+     const {
+       glyphs,
+@@ -36448,8 +36484,9 @@ const createEmbeddedFont = PDFFont => class EmbeddedFont extends PDFFont {
+       if (this.widths[gid] == null) {
+         this.widths[gid] = glyph.advanceWidth * this.scale;
+       }
+-      if (this.unicode[gid] == null) {
+-        this.unicode[gid] = glyph.codePoints;
++      const codePoints = this.glyphCodePoints(glyph);
++      if (this.unicode[gid] == null || !this.unicode[gid].length && codePoints.length) {
++        this.unicode[gid] = codePoints;
+       }
+     }
+     return [res, positions];
+@@ -36463,8 +36500,9 @@ const createEmbeddedFont = PDFFont => class EmbeddedFont extends PDFFont {
+       if (this.widths[gid] == null) {
+         this.widths[gid] = glyph.advanceWidth * this.scale;
+       }
+-      if (this.unicode[gid] == null) {
+-        this.unicode[gid] = glyph.codePoints;
++      const codePoints = this.glyphCodePoints(glyph);
++      if (this.unicode[gid] == null || !this.unicode[gid].length && codePoints.length) {
++        this.unicode[gid] = codePoints;
+       }
+     }
+     return res;
+@@ -36559,6 +36597,7 @@ const createEmbeddedFont = PDFFont => class EmbeddedFont extends PDFFont {
+     let entries = [];
+     let unicodeMap = '/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo <<\n  /Registry (Adobe)\n  /Ordering (UCS)\n  /Supplement 0\n>> def\n/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000><ffff>\nendcodespacerange';
+     for (let [index, codePoints] of this.unicode.entries()) {
++      if (!codePoints || !codePoints.length) continue;
+       const encoded = [];
+       if (entries.length >= 100) {
+         unicodeMap += '\n' + entries.length + ' beginbfchar\n' + entries.join('\n') + '\nendbfchar';
+@@ -36573,7 +36612,7 @@ const createEmbeddedFont = PDFFont => class EmbeddedFont extends PDFFont {
+         }
+         encoded.push(toHex(value));
+       }
+-      entries.push('<' + toHex(index) + '>' + '<' + encoded.join(' ') + '>');
++      entries.push('<' + toHex(index) + '>' + '<' + encoded.join('') + '>');
+     }
+     if (entries.length) {
+       unicodeMap += '\n' + entries.length + ' beginbfchar\n' + entries.join('\n') + '\nendbfchar\n';

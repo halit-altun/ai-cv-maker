@@ -25,7 +25,7 @@ const PATCH_FILE = path.join(ROOT, "patches", "@react-pdf+textkit+6.1.0.patch");
 const FONT_PATH = path.join(ROOT, "public", "fonts", "Carlito-Regular.ttf");
 
 const ATS_FEATURES_SNIPPET =
-  "{ liga: false, clig: false, dlig: false, hlig: false, calt: false }";
+  "{ liga: false, clig: false, dlig: false, hlig: false, calt: false, rlig: false, ccmp: false, locl: false, salt: false, frac: false, numr: false, dnom: false, kern: false, cpsp: false }";
 
 const UNPATCHED_CALLS = [
   "font.layout(string, undefined, undefined, undefined, 'ltr')",
@@ -33,7 +33,7 @@ const UNPATCHED_CALLS = [
 ];
 
 const PROBE =
-  "solutions workflow finishing office efficient notifications";
+  "solutions workflow finishing office efficient notifications Information";
 
 const REQUIRED_WORDS = [
   "solutions",
@@ -42,6 +42,7 @@ const REQUIRED_WORDS = [
   "office",
   "efficient",
   "notifications",
+  "Information",
 ];
 
 function assertTextkitPatchApplied() {
@@ -50,11 +51,14 @@ function assertTextkitPatchApplied() {
 
   const source = fs.readFileSync(TEXTKIT_JS, "utf8");
   const featureHits = source.split(ATS_FEATURES_SNIPPET).length - 1;
-  assert.strictEqual(
-    featureHits,
-    2,
-    `textkit ligature yaması eksik/bozuk (beklenen 2 layout çağrısı, bulunan ${featureHits}). ` +
+  assert.ok(
+    featureHits >= 2,
+    `textkit ligature yaması eksik/bozuk (beklenen ≥2 layout çağrısı, bulunan ${featureHits}). ` +
       `npm install sonrası patch-package çalıştı mı? patches/@react-pdf+textkit+6.1.0.patch`
+  );
+  assert.ok(
+    source.includes("fillEmptyGlyphCodePoints"),
+    "textkit ATS codePoints yaması eksik (fillEmptyGlyphCodePoints)."
   );
 
   for (const unpatched of UNPATCHED_CALLS) {
@@ -127,6 +131,8 @@ async function assertPdfExtractionKeepsLigaturePairs() {
     ["office", "ofce"],
     ["efficient", "efcient"],
     ["notifications", "noticatons"],
+    ["Information", "Informaon"],
+    ["Information", "Infor*ation"],
   ];
   for (const [good, bad] of corruptions) {
     assert.ok(

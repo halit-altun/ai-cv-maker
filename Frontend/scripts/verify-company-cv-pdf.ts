@@ -15,16 +15,7 @@ const FONT_DIR = path.join(ROOT, 'public', 'fonts');
 
 Font.register({
   family: 'Calibri',
-  fonts: [
-    { src: path.join(FONT_DIR, 'Carlito-Regular.ttf'), fontWeight: 400 },
-    { src: path.join(FONT_DIR, 'Carlito-Bold.ttf'), fontWeight: 700 },
-    { src: path.join(FONT_DIR, 'Carlito-Italic.ttf'), fontStyle: 'italic' },
-    {
-      src: path.join(FONT_DIR, 'Carlito-BoldItalic.ttf'),
-      fontWeight: 700,
-      fontStyle: 'italic',
-    },
-  ],
+  fonts: [{ src: path.join(FONT_DIR, 'Carlito-Regular.ttf'), fontWeight: 400 }],
 });
 
 function testSanitize() {

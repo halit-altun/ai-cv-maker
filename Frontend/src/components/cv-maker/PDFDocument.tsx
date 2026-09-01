@@ -90,50 +90,17 @@ function pdfFontSrc(filename: string): string {
   return cwd.replace(/[/\\]+$/, '').endsWith('Frontend') ? local : nested;
 }
 
-// Calibri ile metrik uyumlu, açık lisanslı Carlito dosyalarını Calibri ailesi
-// olarak kaydet. Böylece PDF çıktısı platformdan bağımsız ve ATS uyumlu kalır.
+// Calibri ile metrik uyumlu Carlito Regular. Bold TTF gömülmez: ayrı
+// Identity-H subset'in ToUnicode'su ATS'de tamamen bozuluyor (Hakkımda→Hakka,
+// Eğitim→#$iti, Diller→ill). fontWeight 700 Regular'a düşer; başlık vurgusu
+// punto + alt çizgi ile kalır. Önizleme CSS hâlâ bold kullanabilir.
 Font.register({
   family: 'Calibri',
   fonts: [
     {
       src: pdfFontSrc('Carlito-Regular.ttf'),
-      fontWeight: 300,
-      fontStyle: 'normal',
-    },
-    {
-      src: pdfFontSrc('Carlito-Italic.ttf'),
-      fontWeight: 300,
-      fontStyle: 'italic',
-    },
-    {
-      src: pdfFontSrc('Carlito-Regular.ttf'),
       fontWeight: 400,
       fontStyle: 'normal',
-    },
-    {
-      src: pdfFontSrc('Carlito-Italic.ttf'),
-      fontWeight: 400,
-      fontStyle: 'italic',
-    },
-    {
-      src: pdfFontSrc('Carlito-Regular.ttf'),
-      fontWeight: 500,
-      fontStyle: 'normal',
-    },
-    {
-      src: pdfFontSrc('Carlito-Italic.ttf'),
-      fontWeight: 500,
-      fontStyle: 'italic',
-    },
-    {
-      src: pdfFontSrc('Carlito-Bold.ttf'),
-      fontWeight: 700,
-      fontStyle: 'normal',
-    },
-    {
-      src: pdfFontSrc('Carlito-BoldItalic.ttf'),
-      fontWeight: 700,
-      fontStyle: 'italic',
     },
   ],
 });
@@ -142,11 +109,18 @@ Font.register({
 Font.registerHyphenationCallback((word) => [word.replace(/\u00AD/g, '')]);
 
 /**
- * Ligature (fi/fl/ti vb.) ATS text extraction için kapatılır.
- * @react-pdf/textkit fontkit.layout'a varsayılan OpenType features geçirirdi;
- * ligature glyph'leri bazı parser'larda harf kaybettirir (solutions→solutons).
- * Kalıcı yama: patches/@react-pdf+textkit+6.1.0.patch (postinstall → patch-package).
- * Regression: npm test / npm run test:pdf-ligatures (prebuild'de de çalışır).
+ * ATS text extraction yamaları (postinstall → patch-package):
+ * - Ligature (fi/fl/ti): textkit fontkit.layout features kapalı; aksi halde
+ *   solutions→solutons. patches/@react-pdf+textkit+6.1.0.patch
+ * - ToUnicode/codePoints: fontkit glyph cache Ü/ğ bileşenlerinde U/g'yi boş
+ *   bırakır; sonraki İngilizce PDF'de University→niversity, Languages→Lan$ua$es.
+ *   patches/fontkit+2.0.4.patch + @react-pdf+pdfkit+4.1.0.patch
+ * - Italic TTF gömülmez (ATS bazı parser'larda tarihi 202+ / matematiksel italic
+ *   harfe çevirir). Tarih ve şirket satırı Regular + renk ile ayrılır.
+ * - Bold TTF gömülmez: kalın Identity-H ToUnicode ATS'de #$%&'(! sembollerine
+ *   düşer (Hakkımda→Hakka, Eğitim→#$iti). Tek Regular subset kullanılır.
+ * - ToUnicode dest hex birleşimi boşluksuz; ligature CMap zehirlenmesin.
+ * Regression: npm test / test:pdf-ligatures / test:pdf-ats-encoding (prebuild).
  */
 const createStyles = (
   bodyPt: CvBodyFontSize,
@@ -310,12 +284,12 @@ const createStyles = (
     experienceDate: {
       fontSize: bodyPt,
       color: PDF_ACCENT_BLUE,
-      fontStyle: 'italic',
+      fontStyle: 'normal',
     },
     experienceCompany: {
       fontSize: bodyPt,
       color: '#666',
-      fontStyle: 'italic',
+      fontStyle: 'normal',
       marginBottom: 5,
     },
     bulletPoint: {
