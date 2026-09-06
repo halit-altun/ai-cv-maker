@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "node scripts/start-production.js",
     "postinstall": "patch-package",
+    "predev": "patch-package",
     "test": "npm run test:pdf-ligatures && npm run test:cv-pagination && npm run test:company-cv-pdf && npm run test:cv-profile-photo && npm run test:pdf-ats-encoding",
     "test:pdf-ligatures": "node scripts/verify-pdf-ligatures.js",
     "test:pdf-ats-encoding": "npx --yes tsx scripts/verify-pdf-ats-encoding.ts",

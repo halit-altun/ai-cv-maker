@@ -1,13 +1,17 @@
 /**
  * ATS PDF encoding regression.
  *
- * ChatGPT/ATS specified: visually fine English CV, but extraction drops/corrupts
- * letters (University→niversity, Unit→nit, Languages→Lan$ua$es).
+ * ChatGPT/ATS + Ctrl+A kopya belirtileri: görselde doğru İngilizce CV,
+ * extract/kopyada harf düşer veya bozulur:
+ *   University → (niversity / niversity
+ *   Unit → (nit
+ *   Languages → Lan$ua$es
  *
  * Root cause: fontkit caches glyphs by id. Turkish composites (Ü, ğ) call
  * getGlyph(U/g) without codePoints; the next English PDF then embeds empty
  * ToUnicode for those letters. All create/edit/company/bulk paths share
  * PDFDocument + Font.register, so one sequential render reproduces it.
+ * Company-based badge stil Ctrl+A formatı da bu fixture ile kilitlenir.
  *
  * Çalıştır: npm run test:pdf-ats-encoding
  */
@@ -47,6 +51,7 @@ const REQUIRED_ENGLISH = [
   'Yıldız Technical University',
   'Information Technologies and Cyber Security Unit',
   'Information Technologies',
+  'Biruni University',
   'Languages',
   'University',
   'Unit',
@@ -59,6 +64,7 @@ const FORBIDDEN_ENGLISH = [
   'Lan ua es',
   'Lan$ua es',
   '(ni)ersity',
+  '(niversity',
   'Infor*ation',
   '(nit',
   '202+',
@@ -75,6 +81,10 @@ const CHARSET_PROBE = `TR ${CHARSET_TR} EN ${CHARSET_EN_UPPER}${CHARSET_EN_LOWER
 
 type SampleCv = Parameters<typeof sanitizeCvDataForPdf>[0];
 
+/**
+ * Kullanıcının Ctrl+A kopyasında görülen bozulma senaryosu (badge stil):
+ * University→(niversity, Unit→(nit, Languages→Lan$ua$es
+ */
 function englishCv(): SampleCv {
   return {
     personalInfo: {
@@ -92,7 +102,7 @@ function englishCv(): SampleCv {
       photoUrl: '',
     },
     about:
-      'Analytical full stack developer focused on secure web platforms, marketplace integrations and maintainable TypeScript services.',
+      'As a Full Stack Web Developer specialized in the Next.js, .NET, and TypeScript ecosystems, I have been developing e-commerce solutions for global marketplaces such as Amazon, eBay, Trendyol, and Hepsiburada since 2021. I develop scalable applications in multi-marketplace API integrations, workflow automation, and performance-oriented system architectures.',
     workExperience: [
       {
         id: '1',
@@ -101,38 +111,59 @@ function englishCv(): SampleCv {
         city: 'Istanbul',
         country: 'Turkey',
         startDate: '2025-01',
-        endDate: 'Present',
+        endDate: '2026-06',
         bulletPoints: [
-          'Built marketplace integrations for Amazon, Trendyol and Hepsiburada.',
-          'Implemented JWT authentication and role-based access control.',
+          'Built scalable web apps with Next.js, .NET, SQL Server, and TypeScript, applying modern UI/UX principles to deliver maintainable solutions.',
+          'Improved Amazon, Trendyol, and Hepsiburada API integrations by streamlining workflows; comparisons showed approximately 80% higher efficiency.',
         ],
       },
       {
         id: '2',
         position: 'Intern / Backend Web Developer',
-        company: 'Information Technologies and Cyber Security Unit',
+        company:
+          'Yıldız Technical University / Information Technologies and Cyber Security Unit',
         city: 'Istanbul',
         country: 'Turkey',
         startDate: '2023-08',
         endDate: '2023-10',
         bulletPoints: [
-          'Developed a multi-layer web app with .NET Core Identity.',
+          'Built a multi-layered architecture with .NET Core Identity Framework, creating secure and comprehensive authentication and authorization systems.',
+          'Designed role-based and claim-based authorization to manage roles and permissions dynamically; implemented JWT for secure identity management.',
         ],
       },
     ],
     education: [
       {
         id: '1',
-        university: 'Yıldız Technical University',
+        university: 'Biruni University / Istanbul, Turkey',
         department: 'Computer Engineering',
         startDate: '2020-10',
         endDate: '2024-06',
       },
     ],
-    skills: ['React', 'TypeScript', 'Next.js', '.NET', 'SQL Server'],
+    skills: [
+      'C#',
+      '.NET',
+      'Next.js',
+      'TypeScript',
+      'React',
+      'JavaScript',
+      'Node.js',
+      'SQL',
+      'MongoDB',
+      'AWS',
+      'Docker',
+      'GitHub',
+      'Bitbucket',
+      'Jira',
+      'HTML',
+      'CSS',
+      'Agile',
+      'Scrum',
+    ],
     languages: [
-      { id: '1', language: 'Turkish', level: 'Native' },
-      { id: '2', language: 'English', level: 'Professional' },
+      { id: '1', language: 'English', level: 'B1' },
+      { id: '2', language: 'Turkish', level: 'C2' },
     ],
   };
 }
@@ -154,7 +185,7 @@ function turkishCv(): SampleCv {
       photoUrl: '',
     },
     about:
-      'Gelişime açık, analitik ve yenilikçi bir full stack web developer olarak çalışıyorum. Öğrenci işleri ve üniversite süreçlerinde güvenli çözümler üretirim.',
+      "Next.js, .NET ve TypeScript ekosistemlerinde uzmanlaşmış Full Stack Web Developer olarak 2021'den bu yana Amazon, eBay, Trendyol ve Hepsiburada gibi global pazaryerlerinde e-ticaret çözümleri geliştiriyorum. Çoklu pazaryeri API entegrasyonları, iş akışı otomasyonu ve performans odaklı sistem mimarilerinde ölçeklenebilir uygulamalar üretiyorum.",
     workExperience: [
       {
         id: '1',
@@ -163,35 +194,58 @@ function turkishCv(): SampleCv {
         city: 'İstanbul',
         country: 'Türkiye',
         startDate: '2025-01',
-        endDate: 'Present',
+        endDate: '2026-06',
         bulletPoints: [
-          'Çoklu pazaryeri entegrasyonlarını geliştirdim ve operasyonel süreçleri hızlandırdım.',
+          'Next.js, .NET, SQL Server ve TypeScript ile modern UI/UX ilkelerine uygun ölçeklenebilir web uygulamaları geliştirerek sürdürülebilir çözümler sundum.',
         ],
       },
       {
         id: '2',
-        position: 'Stajyer / Backend Web Developer',
-        company: 'Yıldız Teknik Üniversitesi',
+        position: 'Stajyer/ Backend Web Developer',
+        company:
+          'Yıldız Teknik Üniversitesi / Bilgi Teknolojileri ve Siber Güvenlik Birimi',
         city: 'İstanbul',
         country: 'Türkiye',
         startDate: '2023-08',
         endDate: '2023-10',
         bulletPoints: [
-          '.NET Core Identity ile çok katmanlı web uygulaması geliştirdim.',
+          '.NET Core Identity Framework ile çok katmanlı mimari geliştirip güvenli ve kapsamlı kimlik doğrulama ve yetkilendirme sistemleri oluşturdum.',
         ],
       },
     ],
     education: [
       {
         id: '1',
-        university: 'Biruni Üniversitesi',
+        university: 'Biruni Üniversitesi / İstanbul, Türkiye',
         department: 'Bilgisayar Mühendisliği',
         startDate: '2020-10',
         endDate: '2024-06',
       },
     ],
-    skills: ['React', 'TypeScript', 'Next.js'],
-    languages: [{ id: '1', language: 'Türkçe', level: 'Ana dil' }],
+    skills: [
+      'C#',
+      '.NET',
+      'Next.js',
+      'TypeScript',
+      'React',
+      'JavaScript',
+      'Node.js',
+      'SQL',
+      'MongoDB',
+      'AWS',
+      'Docker',
+      'GitHub',
+      'Bitbucket',
+      'Jira',
+      'HTML',
+      'CSS',
+      'Agile',
+      'Scrum',
+    ],
+    languages: [
+      { id: '1', language: 'İngilizce', level: 'B1' },
+      { id: '2', language: 'Türkçe', level: 'C2' },
+    ],
   };
 }
 
@@ -336,10 +390,16 @@ async function extractWithPdfJs(buffer: Buffer): Promise<string> {
   return text;
 }
 
-async function renderCvPdf(data: SampleCv, isEnglish: boolean): Promise<Buffer> {
+async function renderCvPdf(
+  data: SampleCv,
+  isEnglish: boolean,
+  options: { skillsStyle?: 'plain' | 'badge'; languagesStyle?: 'plain' | 'badge' } = {}
+): Promise<Buffer> {
   const document = React.createElement(PDFDocument, {
     data: sanitizeCvDataForPdf(data),
     isEnglish,
+    skillsStyle: options.skillsStyle ?? 'plain',
+    languagesStyle: options.languagesStyle ?? 'plain',
   }) as Parameters<typeof pdf>[0];
   const blob = await pdf(document).toBlob();
   return Buffer.from(await blob.arrayBuffer());
@@ -440,8 +500,9 @@ function assertTurkishHeadings(label: string, extracted: string) {
     'Beceriler',
     'Diller',
     'Full Stack Web Developer',
-    'Stajyer / Backend Web Developer',
+    'Stajyer/ Backend Web Developer',
     'Biruni Üniversitesi',
+    'Yıldız Teknik Üniversitesi',
   ];
   for (const phrase of required) {
     assert.ok(
@@ -516,7 +577,10 @@ function assertNoEmbeddedBoldOrItalic(buffer: Buffer, label: string) {
 }
 
 async function assertSequentialPdfDocumentExtraction() {
-  const turkishBuf = await renderCvPdf(turkishCv(), false);
+  const turkishBuf = await renderCvPdf(turkishCv(), false, {
+    skillsStyle: 'badge',
+    languagesStyle: 'badge',
+  });
   assert.ok(turkishBuf.length > 1000, 'Türkçe PDF üretilemedi');
   assertNoEmbeddedBoldOrItalic(turkishBuf, 'turkish');
   const turkishParse = await extractWithPdfParse(turkishBuf);
@@ -524,20 +588,33 @@ async function assertSequentialPdfDocumentExtraction() {
   assertTurkishHeadings('pdfjs TR', await extractWithPdfJs(turkishBuf));
   console.log('✓ pdf 1/2: Turkish headings/titles extract (no Bold TTF)');
 
-  const englishBuf = await renderCvPdf(englishCv(), true);
+  const englishBuf = await renderCvPdf(englishCv(), true, {
+    skillsStyle: 'badge',
+    languagesStyle: 'badge',
+  });
   assert.ok(englishBuf.length > 1000, 'İngilizce PDF üretilemedi');
   assertNoEmbeddedBoldOrItalic(englishBuf, 'english');
 
   const pdfParseText = await extractWithPdfParse(englishBuf);
-  assertEnglishExtraction('pdf-parse', pdfParseText);
+  assertEnglishExtraction('pdf-parse badge', pdfParseText);
+  assert.ok(
+    !pdfParseText.includes('C# - .NET'),
+    'badge stilinde skill ayırıcı tire olmamalı (Ctrl+A formatı)'
+  );
 
   assertToUnicodeMapsLetters(englishBuf);
-  assertEnglishExtraction('pdfjs', await extractWithPdfJs(englishBuf));
+  assertEnglishExtraction('pdfjs badge', await extractWithPdfJs(englishBuf));
 
-  const englishAgain = await renderCvPdf(englishCv(), true);
-  assertEnglishExtraction('pdf-parse 3rd render', await extractWithPdfParse(englishAgain));
+  const englishAgain = await renderCvPdf(englishCv(), true, {
+    skillsStyle: 'badge',
+    languagesStyle: 'badge',
+  });
+  assertEnglishExtraction('pdf-parse 3rd badge render', await extractWithPdfParse(englishAgain));
 
-  console.log('✓ dynamic: sequential TR→EN→EN PDFDocument extraction keeps U/g/Languages');
+  const englishPlain = await renderCvPdf(englishCv(), true);
+  assertEnglishExtraction('pdf-parse plain after badge', await extractWithPdfParse(englishPlain));
+
+  console.log('✓ dynamic: sequential TR→EN badge/plain PDFDocument extraction keeps U/g/Languages');
 
   const charsetTr = await renderCvPdf(charsetCv(), false);
   const charsetEn = await renderCvPdf(charsetCv(), true);
